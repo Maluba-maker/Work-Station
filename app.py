@@ -518,26 +518,29 @@ signal = "WAIT"
 reason = "No valid price action setup"
 confidence = 0
 
+has_bullish_candle = candle_pa == "BULLISH"
+has_bearish_candle = candle_pa == "BEARISH"
+
 # ================= TREND CONTINUATION =================
-if bos and momentum_lost and candle_pa:
-    if trend == "UPTREND" and candle_pa == "BULLISH":
+if bool(bos) and bool(momentum_lost):
+    if trend == "UPTREND" and has_bullish_candle:
         signal = "BUY"
         reason = "Uptrend continuation after BOS"
         confidence = 85
 
-    if trend == "DOWNTREND" and candle_pa == "BEARISH":
+    if trend == "DOWNTREND" and has_bearish_candle:
         signal = "SELL"
         reason = "Downtrend continuation after BOS"
         confidence = 85
 
 # ================= PULLBACK ENTRY =================
-if pullback and momentum_lost and candle_pa:
-    if trend == "UPTREND" and candle_pa == "BULLISH":
+elif bool(pullback) and bool(momentum_lost):
+    if trend == "UPTREND" and has_bullish_candle:
         signal = "BUY"
         reason = "Uptrend pullback entry"
         confidence = 80
 
-    if trend == "DOWNTREND" and candle_pa == "BEARISH":
+    if trend == "DOWNTREND" and has_bearish_candle:
         signal = "SELL"
         reason = "Downtrend pullback entry"
         confidence = 80
