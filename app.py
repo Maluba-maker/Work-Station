@@ -383,12 +383,21 @@ candle = candle_type(data_5m.iloc[:-1])
 def get_swings(df, lookback=3):
     highs, lows = [], []
 
-    for i in range(lookback, len(df) - lookback):
-        if df["High"].iloc[i] == max(df["High"].iloc[i-lookback:i+lookback+1]):
-            highs.append((i, float(df["High"].iloc[i])))
+    if df is None or df.empty:
+        return highs, lows
 
-        if df["Low"].iloc[i] == min(df["Low"].iloc[i-lookback:i+lookback+1]):
-            lows.append((i, float(df["Low"].iloc[i])))
+    for i in range(lookback, len(df) - lookback):
+        window_highs = df["High"].iloc[i-lookback:i+lookback+1]
+        window_lows  = df["Low"].iloc[i-lookback:i+lookback+1]
+
+        cur_high = float(df["High"].iloc[i])
+        cur_low  = float(df["Low"].iloc[i])
+
+        if cur_high == float(window_highs.max()):
+            highs.append((i, cur_high))
+
+        if cur_low == float(window_lows.min()):
+            lows.append((i, cur_low))
 
     return highs, lows
 
