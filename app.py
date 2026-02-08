@@ -408,6 +408,9 @@ def detect_trend(highs, lows):
     return "RANGE"
 
 def break_of_structure(df, trend, highs, lows):
+    if not highs or not lows:
+        return False
+
     close = float(df["Close"].iloc[-1])
 
     if trend == "UPTREND":
@@ -553,12 +556,6 @@ if signal in ["BUY","SELL"] and not data_5m.empty:
     expiry_time = entry_time + timedelta(minutes=5)
 
 # ================= DISPLAY =================
-signal_class = {
-    "BUY": "signal-buy",
-    "SELL": "signal-sell",
-    "WAIT": "signal-wait"
-}[signal]
-
 signal_class = {
     "BUY": "signal-buy",
     "SELL": "signal-sell",
