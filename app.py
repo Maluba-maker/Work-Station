@@ -449,35 +449,51 @@ def loss_of_momentum(df):
     return body_last < body_prev * 0.6
 
 def candle_confirmation(df):
-    if len(df) < 3:
+    if df is None or len(df) < 3:
         return None
 
-    c1, c2, c3 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+    try:
+        c1 = df.iloc[-3]
+        c2 = df.iloc[-2]
+        c3 = df.iloc[-1]
 
+        o1, c1_ = float(c1["Open"]), float(c1["Close"])
+        o2, c2_ = float(c2["Open"]), float(c2["Close"])
+        o3, c3_ = float(c3["Open"]), float(c3["Close"])
+
+    except Exception:
+        return None
+
+    # ================= ENGULFING =================
     bullish_engulf = (
-        c2["Close"] < c2["Open"] and
-        c3["Close"] > c3["Open"] and
-        c3["Close"] > c2["Open"] and
-        c3["Open"] < c2["Close"]
+        c2_ < o2 and
+        c3_ > o3 and
+        c3_ > o2 and
+        o3 < c2_
     )
 
     bearish_engulf = (
-        c2["Close"] > c2["Open"] and
-        c3["Close"] < c3["Open"] and
-        c3["Open"] > c2["Close"] and
-        c3["Close"] < c2["Open"]
+        c2_ > o2 and
+        c3_ < o3 and
+        o3 > c2_ and
+        c3_ < o2
     )
 
+    # ================= MORNING / EVENING STAR =================
+    body1 = abs(c1_ - o1)
+    body2 = abs(c2_ - o2)
+    body3 = abs(c3_ - o3)
+
     morning_star = (
-        c1["Close"] < c1["Open"] and
-        abs(c2["Close"] - c2["Open"]) < abs(c1["Close"] - c1["Open"]) * 0.5 and
-        c3["Close"] > c3["Open"]
+        c1_ < o1 and
+        body2 < body1 * 0.5 and
+        c3_ > o3
     )
 
     evening_star = (
-        c1["Close"] > c1["Open"] and
-        abs(c2["Close"] - c2["Open"]) < abs(c1["Close"] - c1["Open"]) * 0.5 and
-        c3["Close"] < c3["Open"]
+        c1_ > o1 and
+        body2 < body1 * 0.5 and
+        c3_ < o3
     )
 
     if bullish_engulf or morning_star:
