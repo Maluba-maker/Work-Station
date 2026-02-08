@@ -448,13 +448,22 @@ def pullback_zone(price, trend, highs, lows, tolerance=0.003):
     return False
 
 def loss_of_momentum(df):
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
+    try:
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
 
-    body_last = abs(last["Close"] - last["Open"])
-    body_prev = abs(prev["Close"] - prev["Open"])
+        o_last = float(last["Open"])
+        c_last = float(last["Close"])
+        o_prev = float(prev["Open"])
+        c_prev = float(prev["Close"])
 
-    return body_last < body_prev * 0.6
+        body_last = abs(c_last - o_last)
+        body_prev = abs(c_prev - o_prev)
+
+        return body_last < body_prev * 0.6
+
+    except Exception:
+        return False
 
 def candle_confirmation(df):
     if df is None or len(df) < 3:
