@@ -431,11 +431,19 @@ def break_of_structure(df, trend, highs, lows):
     return False
 
 def pullback_zone(price, trend, highs, lows, tolerance=0.003):
-    if trend == "UPTREND" and lows:
-        return abs(price - lows[-1][1]) / price < tolerance
+    try:
+        price = float(price)
 
-    if trend == "DOWNTREND" and highs:
-        return abs(price - highs[-1][1]) / price < tolerance
+        if trend == "UPTREND" and isinstance(lows, list) and len(lows) > 0:
+            last_low = float(lows[-1][1])
+            return abs(price - last_low) / price < tolerance
+
+        if trend == "DOWNTREND" and isinstance(highs, list) and len(highs) > 0:
+            last_high = float(highs[-1][1])
+            return abs(price - last_high) / price < tolerance
+
+    except Exception:
+        pass
 
     return False
 
