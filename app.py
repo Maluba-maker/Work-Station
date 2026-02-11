@@ -232,9 +232,20 @@ def indicators(df):
         return None
 
     close = df["Close"]
+    high = df["High"]
+    low = df["Low"]
+
+    # 🔒 Force Series (not DataFrame)
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
+    if isinstance(high, pd.DataFrame):
+        high = high.iloc[:, 0]
+    if isinstance(low, pd.DataFrame):
+        low = low.iloc[:, 0]
+
     close = close.astype(float)
+    high = high.astype(float)
+    low = low.astype(float)
 
     return {
         "close": close,
@@ -243,8 +254,8 @@ def indicators(df):
         "ema200": ta.trend.ema_indicator(close, 200),
         "rsi": ta.momentum.rsi(close, 14),
         "macd": ta.trend.macd_diff(close),
-        "atr": ta.volatility.average_true_range(df["High"], df["Low"], close, 14),
-        "adx": ta.trend.adx(df["High"], df["Low"], close, 14),
+        "atr": ta.volatility.average_true_range(high, low, close, 14),
+        "adx": ta.trend.adx(high, low, close, 14)
     }
 
 i5 = indicators(data_5m)
