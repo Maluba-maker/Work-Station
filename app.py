@@ -262,32 +262,65 @@ i5 = indicators(data_5m)
 
 # ================= PRICE STRUCTURE (LIVE DATA) =================
 
-def detect_structure_from_price(df):
+def detect_structure_from_price(df, indicators):
     """
-    Uses swing logic on CLOSE prices.
-    FIXED: ensures scalar values (no pandas ambiguity)
+    Improved trend detection using:
+    - Higher High / Higher Low logic
+    - EMA alignment
+    - ADX strength filter
     """
-    if df is None or len(df) < 20:
+
+    if df is None or df.empty or indicators is None:
         return "RANGE"
 
     closes = df["Close"]
+    highs = df["High"]
+    lows = df["Low"]
 
-    # 🔒 FORCE Series (not DataFrame)
+    # 🔒 Ensure Series
     if isinstance(closes, pd.DataFrame):
         closes = closes.iloc[:, 0]
+    if isinstance(highs, pd.DataFrame):
+        highs = highs.iloc[:, 0]
+    if isinstance(lows, pd.DataFrame):
+        lows = lows.iloc[:, 0]
 
     closes = closes.astype(float)
+    highs = highs.astype(float)
+    lows = lows.astype(float)
 
-    recent_low  = float(closes.iloc[-10:].min())
-    prior_low   = float(closes.iloc[-20:-10].min())
+    if len(closes) < 30:
+        return "RANGE"
 
-    recent_high = float(closes.iloc[-10:].max())
-    prior_high  = float(closes.iloc[-20:-10].max())
+    # --- Structure (HH + HL) ---
+    recent_high = float(highs.iloc[-10:].max())
+    prior_high  = float(highs.iloc[-20:-10].max())
 
-    if recent_low > prior_low:
+    recent_low  = float(lows.iloc[-10:].min())
+    prior_low   = float(lows.iloc[-20:-10].min())
+
+    # --- EMA Alignment ---
+    ema20 = indicators["ema20"].iloc[-1]
+    ema50 = indicators["ema50"].iloc[-1]
+    price = closes.iloc[-1]
+
+    # --- Strength ---
+    adx = indicators["adx"].iloc[-1]
+
+    # --- Bullish Trend ---
+    if (recent_high > prior_high and
+        recent_low > prior_low and
+        ema20 > ema50 and
+        price > ema20 and
+        adx > 20):
         return "BULLISH"
 
-    if recent_high < prior_high:
+    # --- Bearish Trend ---
+    if (recent_high < prior_high and
+        recent_low < prior_low and
+        ema20 < ema50 and
+        price < ema20 and
+        adx > 20):
         return "BEARISH"
 
     return "RANGE"
@@ -414,7 +447,7 @@ candle = candle_type(data_5m.iloc[:-1])
 
 # ================= SIGNAL EVALUATION =================
 
-structure = detect_structure_from_price(data_5m)
+structure = detect_structure_from_price(data_5m, i5)
 phase = detect_phase_from_price(data_5m, structure)
 regime = detect_regime(data_5m, i5)
 
