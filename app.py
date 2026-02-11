@@ -243,6 +243,8 @@ def indicators(df):
         "ema200": ta.trend.ema_indicator(close, 200),
         "rsi": ta.momentum.rsi(close, 14),
         "macd": ta.trend.macd_diff(close)
+        "atr": ta.volatility.average_true_range(df["High"], df["Low"], close, 14),
+        "adx": ta.trend.adx(df["High"], df["Low"], close, 14),
     }
 
 i5 = indicators(data_5m)
@@ -300,6 +302,25 @@ def detect_phase_from_price(df, structure):
         return "CONTINUATION" if last <= prev else "PULLBACK"
 
     return "NO_TRADE"
+
+def detect_regime(df, indicators):
+    if indicators is None:
+        return "UNKNOWN"
+
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+    adx = indicators["adx"].iloc[-1]
+
+    if adx > 25 and atr > atr_avg:
+        return "STRONG_TREND"
+
+    if adx > 20:
+        return "TREND"
+
+    if atr < atr_avg * 0.8:
+        return "LOW_VOLATILITY"
+
+    return "RANGE"
 
 def classify_market_state(structure, phase):
 
@@ -380,187 +401,31 @@ def candle_type(df):
 
 candle = candle_type(data_5m.iloc[:-1])
 
-def get_swings(df, lookback=3):
-    highs, lows = [], []
-
-    if df is None or df.empty:
-        return highs, lows
-
-    for i in range(lookback, len(df) - lookback):
-        window_highs = df["High"].iloc[i-lookback:i+lookback+1]
-        window_lows  = df["Low"].iloc[i-lookback:i+lookback+1]
-
-        cur_high = float(df["High"].iloc[i])
-        cur_low  = float(df["Low"].iloc[i])
-
-        if cur_high == float(window_highs.max()):
-            highs.append((i, cur_high))
-
-        if cur_low == float(window_lows.min()):
-            lows.append((i, cur_low))
-
-    return highs, lows
-
-def detect_trend(highs, lows):
-    if len(highs) < 2 or len(lows) < 2:
-        return "RANGE"
-
-    h1, h2 = highs[-2][1], highs[-1][1]
-    l1, l2 = lows[-2][1], lows[-1][1]
-
-    if h2 > h1 and l2 > l1:
-        return "UPTREND"
-
-    if h2 < h1 and l2 < l1:
-        return "DOWNTREND"
-
-    return "RANGE"
-
-def break_of_structure(df, trend, highs, lows):
-    if not highs or not lows:
-        return False
-
-    close = float(df["Close"].iloc[-1])
-
-    if trend == "UPTREND":
-        return close > highs[-1][1]
-
-    if trend == "DOWNTREND":
-        return close < lows[-1][1]
-
-    return False
-
-def pullback_zone(price, trend, highs, lows, tolerance=0.003):
-    try:
-        price = float(price)
-
-        if trend == "UPTREND" and isinstance(lows, list) and len(lows) > 0:
-            last_low = float(lows[-1][1])
-            return abs(price - last_low) / price < tolerance
-
-        if trend == "DOWNTREND" and isinstance(highs, list) and len(highs) > 0:
-            last_high = float(highs[-1][1])
-            return abs(price - last_high) / price < tolerance
-
-    except Exception:
-        pass
-
-    return False
-
-def loss_of_momentum(df):
-    try:
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
-
-        o_last = float(last["Open"])
-        c_last = float(last["Close"])
-        o_prev = float(prev["Open"])
-        c_prev = float(prev["Close"])
-
-        body_last = abs(c_last - o_last)
-        body_prev = abs(c_prev - o_prev)
-
-        return body_last < body_prev * 0.6
-
-    except Exception:
-        return False
-
-def candle_confirmation(df):
-    if df is None or len(df) < 3:
-        return None
-
-    try:
-        c1 = df.iloc[-3]
-        c2 = df.iloc[-2]
-        c3 = df.iloc[-1]
-
-        o1, c1_ = float(c1["Open"]), float(c1["Close"])
-        o2, c2_ = float(c2["Open"]), float(c2["Close"])
-        o3, c3_ = float(c3["Open"]), float(c3["Close"])
-
-    except Exception:
-        return None
-
-    # ================= ENGULFING =================
-    bullish_engulf = (
-        c2_ < o2 and
-        c3_ > o3 and
-        c3_ > o2 and
-        o3 < c2_
-    )
-
-    bearish_engulf = (
-        c2_ > o2 and
-        c3_ < o3 and
-        o3 > c2_ and
-        c3_ < o2
-    )
-
-    # ================= MORNING / EVENING STAR =================
-    body1 = abs(c1_ - o1)
-    body2 = abs(c2_ - o2)
-    body3 = abs(c3_ - o3)
-
-    morning_star = (
-        c1_ < o1 and
-        body2 < body1 * 0.5 and
-        c3_ > o3
-    )
-
-    evening_star = (
-        c1_ > o1 and
-        body2 < body1 * 0.5 and
-        c3_ < o3
-    )
-
-    if bullish_engulf or morning_star:
-        return "BULLISH"
-
-    if bearish_engulf or evening_star:
-        return "BEARISH"
-
-    return None
-
 # ================= SIGNAL EVALUATION =================
-highs, lows = get_swings(data_5m)
-trend = detect_trend(highs, lows)
-bos = break_of_structure(data_5m, trend, highs, lows)
 
-price = float(data_5m["Close"].iloc[-1])
-pullback = pullback_zone(price, trend, highs, lows)
-momentum_lost = loss_of_momentum(data_5m)
-candle_pa = candle_confirmation(data_5m)
+structure = detect_structure_from_price(data_5m)
+phase = detect_phase_from_price(data_5m, structure)
+regime = detect_regime(data_5m, i5)
 
-signal = "WAIT"
-reason = "No valid price action setup"
-confidence = 0
+if regime == "STRONG_TREND":
+    if phase == "CONTINUATION":
+        signal, reason, confidence = classify_market_state(structure, phase)
+    else:
+        signal, reason, confidence = "WAIT", "Pullback ignored in strong trend", 0
 
-has_bullish_candle = candle_pa == "BULLISH"
-has_bearish_candle = candle_pa == "BEARISH"
+elif regime == "RANGE":
+    if sr["support"]:
+        signal, reason, confidence = "BUY", "Range support bounce", 65
+    elif sr["resistance"]:
+        signal, reason, confidence = "SELL", "Range resistance rejection", 65
+    else:
+        signal, reason, confidence = "WAIT", "No range edge", 0
 
-# ================= TREND CONTINUATION =================
-if bool(bos) and bool(momentum_lost):
-    if trend == "UPTREND" and has_bullish_candle:
-        signal = "BUY"
-        reason = "Uptrend continuation after BOS"
-        confidence = 85
+elif regime == "LOW_VOLATILITY":
+    signal, reason, confidence = "WAIT", "Market compression", 0
 
-    if trend == "DOWNTREND" and has_bearish_candle:
-        signal = "SELL"
-        reason = "Downtrend continuation after BOS"
-        confidence = 85
-
-# ================= PULLBACK ENTRY =================
-elif bool(pullback) and bool(momentum_lost):
-    if trend == "UPTREND" and has_bullish_candle:
-        signal = "BUY"
-        reason = "Uptrend pullback entry"
-        confidence = 80
-
-    if trend == "DOWNTREND" and has_bearish_candle:
-        signal = "SELL"
-        reason = "Downtrend pullback entry"
-        confidence = 80
+else:
+    signal, reason, confidence = classify_market_state(structure, phase)
 
 # ================= SIGNAL MEMORY =================
 if "last_signal" not in st.session_state:
@@ -607,6 +472,12 @@ signal_class = {
     "WAIT": "signal-wait"
 }[signal]
 
+signal_class = {
+    "BUY": "signal-buy",
+    "SELL": "signal-sell",
+    "WAIT": "signal-wait"
+}[signal]
+
 st.markdown(f"""
 <div class="block center">
   <div class="{signal_class}">{signal}</div>
@@ -618,6 +489,7 @@ st.markdown(f"""
 
   <div class="small">{reason}</div>
   <div class="small">
-    Trend (M5): {trend} • BOS: {bos} • Candle: {candle_pa}
+    Structure (M5): {structure} • Phase: {phase} • Regime: {regime} • Candle: {candle}
   </div>
 """, unsafe_allow_html=True)
+
