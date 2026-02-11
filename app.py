@@ -242,7 +242,7 @@ def indicators(df):
         "ema50": ta.trend.ema_indicator(close, 50),
         "ema200": ta.trend.ema_indicator(close, 200),
         "rsi": ta.momentum.rsi(close, 14),
-        "macd": ta.trend.macd_diff(close)
+        "macd": ta.trend.macd_diff(close),
         "atr": ta.volatility.average_true_range(df["High"], df["Low"], close, 14),
         "adx": ta.trend.adx(df["High"], df["Low"], close, 14),
     }
