@@ -251,7 +251,7 @@ def indicators(df):
         "close": close,
         "ema20": ta.trend.ema_indicator(close, 20),
         "ema50": ta.trend.ema_indicator(close, 50),
-        "ema200": ta.trend.ema_indicator(close, 200),
+        "ema100": ta.trend.ema_indicator(close, 100),
         "rsi": ta.momentum.rsi(close, 14),
         "macd": ta.trend.macd_diff(close),
         "atr": ta.volatility.average_true_range(high, low, close, 14),
