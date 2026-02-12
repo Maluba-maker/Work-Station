@@ -374,11 +374,9 @@ def classify_market_state(structure, phase):
     if structure == "BEARISH" and phase == "CONTINUATION":
         return "SELL", "Downtrend continuation", 80
 
-    if structure == "BULLISH" and phase == "PULLBACK":
-        return "SELL", "Pullback in uptrend", 70
-
-    if structure == "BEARISH" and phase == "PULLBACK":
-        return "BUY", "Pullback in downtrend", 70
+    # Pullbacks are ignored for beginners
+    if phase == "PULLBACK":
+        return "WAIT", "Pullback ignored for safety", 0
 
     return "WAIT", "No clear structure", 0
 
