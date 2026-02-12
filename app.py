@@ -366,6 +366,41 @@ def detect_regime(df, indicators):
 
     return "RANGE"
 
+def detect_market_personality(df, indicators, sr):
+    if indicators is None:
+        return "UNKNOWN"
+
+    adx = indicators["adx"].iloc[-1]
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+
+    # Count SR hits in last 30 candles
+    sr_hits = 0
+    closes = indicators["close"].iloc[-30:]
+
+    recent_low  = closes.min()
+    recent_high = closes.max()
+
+    for price in closes:
+        if abs(price - recent_low) / price < 0.002:
+            sr_hits += 1
+        if abs(price - recent_high) / price < 0.002:
+            sr_hits += 1
+
+    # --- TREND DOMINANT ---
+    if adx > 25 and atr > atr_avg:
+        return "TREND_DOMINANT"
+
+    # --- MEAN REVERTING ---
+    if adx < 20 and sr_hits >= 5:
+        return "MEAN_REVERTING"
+
+    # --- RANGE ---
+    if 15 <= adx <= 22:
+        return "RANGE_BOUND"
+
+    return "MIXED"
+
 def classify_market_state(structure, phase):
 
     if structure == "BULLISH" and phase == "CONTINUATION":
@@ -445,26 +480,31 @@ candle = candle_type(data_5m.iloc[:-1])
 
 # ================= SIGNAL EVALUATION =================
 
+# ================= SIGNAL EVALUATION =================
+
 structure = detect_structure_from_price(data_5m, i5)
 phase = detect_phase_from_price(data_5m, structure)
 regime = detect_regime(data_5m, i5)
+personality = detect_market_personality(data_5m, i5, sr)
 
-if regime == "STRONG_TREND":
-    if phase == "CONTINUATION":
-        signal, reason, confidence = classify_market_state(structure, phase)
-    else:
-        signal, reason, confidence = "WAIT", "Pullback ignored in strong trend", 0
+if personality == "TREND_DOMINANT":
+    signal, reason, confidence = classify_market_state(structure, phase)
 
-elif regime == "RANGE":
+elif personality == "MEAN_REVERTING":
     if sr["support"]:
-        signal, reason, confidence = "BUY", "Range support bounce", 65
+        signal, reason, confidence = "BUY", "Mean reversion bounce", 70
     elif sr["resistance"]:
-        signal, reason, confidence = "SELL", "Range resistance rejection", 65
+        signal, reason, confidence = "SELL", "Mean reversion rejection", 70
+    else:
+        signal, reason, confidence = "WAIT", "No reversal edge", 0
+
+elif personality == "RANGE_BOUND":
+    if sr["support"]:
+        signal, reason, confidence = "BUY", "Range support", 65
+    elif sr["resistance"]:
+        signal, reason, confidence = "SELL", "Range resistance", 65
     else:
         signal, reason, confidence = "WAIT", "No range edge", 0
-
-elif regime == "LOW_VOLATILITY":
-    signal, reason, confidence = "WAIT", "Market compression", 0
 
 else:
     signal, reason, confidence = classify_market_state(structure, phase)
