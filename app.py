@@ -44,41 +44,6 @@ body { background:#0b0f14; color:white; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= HEADER =================
-st.markdown("""
-<div class="block">
-<h1>Malagna</h1>
-<div class="metric">20-Rule Dominant Engine • All Markets • True M5</div>
-</div>
-""", unsafe_allow_html=True)
-
-if st.button("Scan Best Trade 🔍"):
-    best = scan_all_markets()
-
-    if best:
-        st.success(f"""
-BEST TRADE FOUND 🚀
-
-Pair: {best['asset']}
-Signal: {best['signal']}
-Confidence: {best['confidence']}%
-Personality: {best['personality']}
-Structure: {best['structure']}
-Phase: {best['phase']}
-""")
-    else:
-        st.warning("No strong setup found.")
-
-# ================= USER NOTE =================
-st.markdown("""
-<div class="block small">
-⚠️ <b>Important Note</b><br>
-Signals are generated using <b>M5 price action only</b>.<br>
-Always confirm with your own analysis, trend context, and risk management.<br>
-This tool supports decisions — it does not replace them.
-</div>
-""", unsafe_allow_html=True)
-
 # ================= MARKETS =================
 CURRENCIES = {
     "EUR/JPY": "EURJPY=X",
@@ -204,6 +169,40 @@ elif market == "Commodities":
 else:
     asset = st.text_input("Stock ticker (e.g. AAPL, TSLA, MSFT)").upper()
     symbol = asset
+# ================= HEADER =================
+st.markdown("""
+<div class="block">
+<h1>Malagna</h1>
+<div class="metric">20-Rule Dominant Engine • All Markets • True M5</div>
+</div>
+""", unsafe_allow_html=True)
+
+if st.button("Scan Best Trade 🔍"):
+    best = scan_all_markets()
+
+    if best:
+        st.success(f"""
+BEST TRADE FOUND 🚀
+
+Pair: {best['asset']}
+Signal: {best['signal']}
+Confidence: {best['confidence']}%
+Personality: {best['personality']}
+Structure: {best['structure']}
+Phase: {best['phase']}
+""")
+    else:
+        st.warning("No strong setup found.")
+
+# ================= USER NOTE =================
+st.markdown("""
+<div class="block small">
+⚠️ <b>Important Note</b><br>
+Signals are generated using <b>M5 price action only</b>.<br>
+Always confirm with your own analysis, trend context, and risk management.<br>
+This tool supports decisions — it does not replace them.
+</div>
+""", unsafe_allow_html=True)
 
 # ================= TRADINGVIEW SYMBOL =================
 TV_SYMBOLS = {}
