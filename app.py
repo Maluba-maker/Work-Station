@@ -324,17 +324,27 @@ def scan_all_markets():
             if personality == "TREND_DOMINANT":
                 score += 5
 
-            if score > best_score:
-                best_score = score
-                best_trade = {
-                    "asset": asset,
-                    "signal": signal,
-                    "confidence": score,
-                    "personality": personality,
-                    "structure": structure,
-                    "phase": phase,
-                    "regime": regime
-                }
+        if score > best_score:
+
+            # 🕒 Entry & Expiry Time
+            last_close = df.index[-1].to_pydatetime()
+
+            minute = (last_close.minute // 5 + 1) * 5
+            entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
+            expiry_time = entry_time + timedelta(minutes=5)
+
+            best_score = score
+            best_trade = {
+                "asset": asset,
+                "signal": signal,
+                "confidence": score,
+                "personality": personality,
+                "structure": structure,
+                "phase": phase,
+                "regime": regime,
+                "entry": entry_time.strftime("%H:%M"),
+                "expiry": expiry_time.strftime("%H:%M")
+            }
 
     return best_trade
 
@@ -362,12 +372,13 @@ if st.button("Scan Market 🔍"):
             <div class="{signal_class}">{best['signal']}</div>
             <div class="metric">Best Opportunity: {best['asset']}</div>
             <div class="metric"><b>Confidence:</b> {best['confidence']}%</div>
-            <div class="small">
-                Structure: {best['structure']} • 
-                Phase: {best['phase']} • 
-                Regime: {best['regime']} • 
-                Personality: {best['personality']}
-            </div>
+        <div class="small">
+            Structure: {best['structure']} • 
+            Phase: {best['phase']} • 
+            Regime: {best['regime']} • 
+            Personality: {best['personality']}<br><br>
+           🟢 Entry: {best['entry']}<br>
+           🔴 Expiry: {best['expiry']}
         </div>
         """, unsafe_allow_html=True)
 
