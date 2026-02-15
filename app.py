@@ -116,8 +116,6 @@ def indicators(df):
         "adx": ta.trend.adx(high, low, close, 14)
     }
 
-i5 = indicators(data_5m)
-
 def scan_all_markets():
 
     best_trade = None
@@ -343,6 +341,8 @@ def extract_currencies(asset):
     return []
 
 data_5m  = fetch(symbol, "5m", "5d")
+
+i5 = indicators(data_5m)
 
 # ================= PRICE STRUCTURE (LIVE DATA) =================
 
