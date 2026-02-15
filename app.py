@@ -52,6 +52,23 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+if st.button("Scan Best Trade 🔍"):
+    best = scan_all_markets()
+
+    if best:
+        st.success(f"""
+BEST TRADE FOUND 🚀
+
+Pair: {best['asset']}
+Signal: {best['signal']}
+Confidence: {best['confidence']}%
+Personality: {best['personality']}
+Structure: {best['structure']}
+Phase: {best['phase']}
+""")
+    else:
+        st.warning("No strong setup found.")
+
 # ================= USER NOTE =================
 st.markdown("""
 <div class="block small">
@@ -120,6 +137,73 @@ elif market == "Commodities":
 else:
     asset = st.text_input("Stock ticker (e.g. AAPL, TSLA, MSFT)").upper()
     symbol = asset
+
+def scan_all_markets():
+
+    best_trade = None
+    best_score = 0
+
+    for asset, symbol in CURRENCIES.items():
+
+        df = fetch(symbol, "5m", "2d")
+        i = indicators(df)
+
+        if df is None or i is None:
+            continue
+
+        structure = detect_structure_from_price(df, i)
+        phase = detect_phase_from_price(df, structure)
+        regime = detect_regime(df, i)
+
+        sr_local = {
+            "support": False,
+            "resistance": False
+        }
+
+        recent_low  = i["close"].rolling(20).min().iloc[-1]
+        recent_high = i["close"].rolling(20).max().iloc[-1]
+        price = i["close"].iloc[-1]
+
+        if abs(price - recent_low) / price < 0.002:
+            sr_local["support"] = True
+        if abs(price - recent_high) / price < 0.002:
+            sr_local["resistance"] = True
+
+        personality = detect_market_personality(df, i, sr_local)
+
+        # Generate signal
+        if personality == "TREND_DOMINANT":
+            signal, reason, confidence = classify_market_state(structure, phase)
+
+        elif personality == "MEAN_REVERTING":
+            if sr_local["support"]:
+                signal, reason, confidence = "BUY", "Mean reversion bounce", 70
+            elif sr_local["resistance"]:
+                signal, reason, confidence = "SELL", "Mean reversion rejection", 70
+            else:
+                signal, reason, confidence = "WAIT", "", 0
+        else:
+            signal, reason, confidence = classify_market_state(structure, phase)
+
+        if signal in ["BUY", "SELL"]:
+            score = confidence
+
+            # Boost strong trend setups
+            if personality == "TREND_DOMINANT" and regime == "STRONG_TREND":
+                score += 10
+
+            if score > best_score:
+                best_score = score
+                best_trade = {
+                    "asset": asset,
+                    "signal": signal,
+                    "confidence": score,
+                    "personality": personality,
+                    "structure": structure,
+                    "phase": phase
+                }
+
+    return best_trade
 
 # ================= TRADINGVIEW SYMBOL =================
 TV_SYMBOLS = {}
