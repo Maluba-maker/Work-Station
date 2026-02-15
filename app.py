@@ -85,6 +85,39 @@ COMMODITIES = {
 def fetch(symbol, interval, period):
     return yf.download(symbol, interval=interval, period=period, progress=False)
 
+def indicators(df):
+    if df is None or df.empty or "Close" not in df.columns:
+        return None
+
+    close = df["Close"]
+    high = df["High"]
+    low = df["Low"]
+
+    # 🔒 Force Series (not DataFrame)
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    if isinstance(high, pd.DataFrame):
+        high = high.iloc[:, 0]
+    if isinstance(low, pd.DataFrame):
+        low = low.iloc[:, 0]
+
+    close = close.astype(float)
+    high = high.astype(float)
+    low = low.astype(float)
+
+    return {
+        "close": close,
+        "ema20": ta.trend.ema_indicator(close, 20),
+        "ema50": ta.trend.ema_indicator(close, 50),
+        "ema100": ta.trend.ema_indicator(close, 100),
+        "rsi": ta.momentum.rsi(close, 14),
+        "macd": ta.trend.macd_diff(close),
+        "atr": ta.volatility.average_true_range(high, low, close, 14),
+        "adx": ta.trend.adx(high, low, close, 14)
+    }
+
+i5 = indicators(data_5m)
+
 def scan_all_markets():
 
     best_trade = None
@@ -310,39 +343,6 @@ def extract_currencies(asset):
     return []
 
 data_5m  = fetch(symbol, "5m", "5d")
-
-def indicators(df):
-    if df is None or df.empty or "Close" not in df.columns:
-        return None
-
-    close = df["Close"]
-    high = df["High"]
-    low = df["Low"]
-
-    # 🔒 Force Series (not DataFrame)
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    if isinstance(high, pd.DataFrame):
-        high = high.iloc[:, 0]
-    if isinstance(low, pd.DataFrame):
-        low = low.iloc[:, 0]
-
-    close = close.astype(float)
-    high = high.astype(float)
-    low = low.astype(float)
-
-    return {
-        "close": close,
-        "ema20": ta.trend.ema_indicator(close, 20),
-        "ema50": ta.trend.ema_indicator(close, 50),
-        "ema100": ta.trend.ema_indicator(close, 100),
-        "rsi": ta.momentum.rsi(close, 14),
-        "macd": ta.trend.macd_diff(close),
-        "atr": ta.volatility.average_true_range(high, low, close, 14),
-        "adx": ta.trend.adx(high, low, close, 14)
-    }
-
-i5 = indicators(data_5m)
 
 # ================= PRICE STRUCTURE (LIVE DATA) =================
 
