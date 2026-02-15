@@ -431,6 +431,3 @@ def classify_market_state(structure, phase):
 
     return "WAIT", "No clear structure", 0
 
-else:
-    st.warning("No strong trade available right now.")
-
