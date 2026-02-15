@@ -116,28 +116,6 @@ COMMODITIES = {
     "Copper":"HG=F","Corn":"ZC=F","Wheat":"ZW=F"
 }
 
-market = st.radio("Market", ["Currencies","Crypto","Commodities","Stocks"], horizontal=True)
-
-if market == "Currencies":
-    asset = st.selectbox(
-    "Pair",
-    list(CURRENCIES.keys()),
-    key="currency_pair_select"
-)
-    symbol = CURRENCIES[asset]
-
-elif market == "Crypto":
-    asset = st.selectbox("Crypto", list(CRYPTO.keys()))
-    symbol = CRYPTO[asset]
-
-elif market == "Commodities":
-    asset = st.selectbox("Commodity", list(COMMODITIES.keys()))
-    symbol = COMMODITIES[asset]
-
-else:
-    asset = st.text_input("Stock ticker (e.g. AAPL, TSLA, MSFT)").upper()
-    symbol = asset
-
 def scan_all_markets():
 
     best_trade = None
@@ -204,6 +182,28 @@ def scan_all_markets():
                 }
 
     return best_trade
+    
+market = st.radio("Market", ["Currencies","Crypto","Commodities","Stocks"], horizontal=True)
+
+if market == "Currencies":
+    asset = st.selectbox(
+    "Pair",
+    list(CURRENCIES.keys()),
+    key="currency_pair_select"
+)
+    symbol = CURRENCIES[asset]
+
+elif market == "Crypto":
+    asset = st.selectbox("Crypto", list(CRYPTO.keys()))
+    symbol = CRYPTO[asset]
+
+elif market == "Commodities":
+    asset = st.selectbox("Commodity", list(COMMODITIES.keys()))
+    symbol = COMMODITIES[asset]
+
+else:
+    asset = st.text_input("Stock ticker (e.g. AAPL, TSLA, MSFT)").upper()
+    symbol = asset
 
 # ================= TRADINGVIEW SYMBOL =================
 TV_SYMBOLS = {}
