@@ -81,6 +81,10 @@ COMMODITIES = {
     "Copper":"HG=F","Corn":"ZC=F","Wheat":"ZW=F"
 }
 
+@st.cache_data(ttl=60)
+def fetch(symbol, interval, period):
+    return yf.download(symbol, interval=interval, period=period, progress=False)
+
 def scan_all_markets():
 
     best_trade = None
@@ -251,9 +255,6 @@ if tv_symbol:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= DATA =================
-@st.cache_data(ttl=60)
-def fetch(symbol, interval, period):
-    return yf.download(symbol, interval=interval, period=period, progress=False)
 
 def forex_factory_red_news(currencies, window_minutes=30):
     """
