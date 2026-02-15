@@ -133,11 +133,8 @@ def scan_all_markets():
         phase = detect_phase_from_price(df, structure)
         regime = detect_regime(df, i)
 
-        sr_local = {
-            "support": False,
-            "resistance": False
-        }
-
+        # Support / Resistance
+        sr_local = {"support": False, "resistance": False}
         recent_low  = i["close"].rolling(20).min().iloc[-1]
         recent_high = i["close"].rolling(20).max().iloc[-1]
         price = i["close"].iloc[-1]
@@ -149,7 +146,6 @@ def scan_all_markets():
 
         personality = detect_market_personality(df, i, sr_local)
 
-        # Generate signal
         if personality == "TREND_DOMINANT":
             signal, reason, confidence = classify_market_state(structure, phase)
 
@@ -164,11 +160,14 @@ def scan_all_markets():
             signal, reason, confidence = classify_market_state(structure, phase)
 
         if signal in ["BUY", "SELL"]:
+
             score = confidence
 
-            # Boost strong trend setups
-            if personality == "TREND_DOMINANT" and regime == "STRONG_TREND":
+            if regime == "STRONG_TREND":
                 score += 10
+
+            if personality == "TREND_DOMINANT":
+                score += 5
 
             if score > best_score:
                 best_score = score
@@ -178,32 +177,12 @@ def scan_all_markets():
                     "confidence": score,
                     "personality": personality,
                     "structure": structure,
-                    "phase": phase
+                    "phase": phase,
+                    "regime": regime
                 }
 
     return best_trade
-    
-market = st.radio("Market", ["Currencies","Crypto","Commodities","Stocks"], horizontal=True)
 
-if market == "Currencies":
-    asset = st.selectbox(
-    "Pair",
-    list(CURRENCIES.keys()),
-    key="currency_pair_select"
-)
-    symbol = CURRENCIES[asset]
-
-elif market == "Crypto":
-    asset = st.selectbox("Crypto", list(CRYPTO.keys()))
-    symbol = CRYPTO[asset]
-
-elif market == "Commodities":
-    asset = st.selectbox("Commodity", list(COMMODITIES.keys()))
-    symbol = COMMODITIES[asset]
-
-else:
-    asset = st.text_input("Stock ticker (e.g. AAPL, TSLA, MSFT)").upper()
-    symbol = asset
 # ================= HEADER =================
 st.markdown("""
 <div class="block">
@@ -212,22 +191,33 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-if st.button("Scan Best Trade 🔍"):
+if st.button("Scan Market 🔍"):
+
     best = scan_all_markets()
 
     if best:
-        st.success(f"""
-BEST TRADE FOUND 🚀
 
-Pair: {best['asset']}
-Signal: {best['signal']}
-Confidence: {best['confidence']}%
-Personality: {best['personality']}
-Structure: {best['structure']}
-Phase: {best['phase']}
-""")
+        signal_class = {
+            "BUY": "signal-buy",
+            "SELL": "signal-sell"
+        }[best["signal"]]
+
+        st.markdown(f"""
+        <div class="block center">
+            <div class="{signal_class}">{best['signal']}</div>
+            <div class="metric">Best Opportunity: {best['asset']}</div>
+            <div class="metric"><b>Confidence:</b> {best['confidence']}%</div>
+            <div class="small">
+                Structure: {best['structure']} • 
+                Phase: {best['phase']} • 
+                Regime: {best['regime']} • 
+                Personality: {best['personality']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     else:
-        st.warning("No strong setup found.")
+        st.warning("No strong trade available right now.")
 
 # ================= USER NOTE =================
 st.markdown("""
@@ -238,52 +228,6 @@ Always confirm with your own analysis, trend context, and risk management.<br>
 This tool supports decisions — it does not replace them.
 </div>
 """, unsafe_allow_html=True)
-
-# ================= TRADINGVIEW SYMBOL =================
-TV_SYMBOLS = {}
-
-# FX
-for k in CURRENCIES.keys():
-    TV_SYMBOLS[k] = f"FX:{k.replace('/','')}"
-
-# Crypto
-for k in CRYPTO.keys():
-    TV_SYMBOLS[k] = f"BINANCE:{k.replace('/','').replace('USD','USDT')}"
-
-# Commodities
-TV_SYMBOLS.update({
-    "Gold": "COMEX:GC1!",
-    "Silver": "COMEX:SI1!",
-    "Crude Oil": "NYMEX:CL1!",
-    "Brent Oil": "ICEEUR:BRN1!",
-    "Natural Gas": "NYMEX:NG1!",
-    "Copper": "COMEX:HG1!",
-    "Corn": "CBOT:ZC1!",
-    "Wheat": "CBOT:ZW1!"
-})
-
-if market == "Stocks" and asset:
-    tv_symbol = f"NASDAQ:{asset}"
-else:
-    tv_symbol = TV_SYMBOLS.get(asset)
-
-# ================= TRADINGVIEW CHART =================
-if tv_symbol:
-    st.markdown("<div class='block'>", unsafe_allow_html=True)
-    st.components.v1.html(
-        f"""
-        <iframe
-            src="https://s.tradingview.com/widgetembed/?symbol={tv_symbol}&interval=5&theme=dark&style=1&locale=en"
-            width="100%"
-            height="420"
-            frameborder="0"
-            allowtransparency="true"
-            scrolling="no">
-        </iframe>
-        """,
-        height=430,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= DATA =================
 
@@ -334,15 +278,6 @@ def forex_factory_red_news(currencies, window_minutes=30):
         pass
 
     return False
-
-def extract_currencies(asset):
-    if "/" in asset:
-        return asset.split("/")
-    return []
-
-data_5m  = fetch(symbol, "5m", "5d")
-
-i5 = indicators(data_5m)
 
 # ================= PRICE STRUCTURE (LIVE DATA) =================
 
@@ -499,163 +434,6 @@ def classify_market_state(structure, phase):
 
     return "WAIT", "No clear structure", 0
 
-# ================= SHORT-TERM MOMENTUM (EMA20 SLOPE) =================
-ema20_slope = 0
-
-if i5 is not None:
-    ema20 = i5.get("ema20")
-    if ema20 is not None and len(ema20.dropna()) >= 3:
-        ema20_slope = ema20.iloc[-1] - ema20.iloc[-3]
-
-# ================= MARKET ACTIVITY =================
-market_active = True
-activity_note = ""
-
-if i5:
-    recent_move = abs(i5["close"].iloc[-1] - i5["close"].iloc[-6])
-    avg_move = i5["close"].diff().abs().rolling(10).mean().iloc[-1]
-
-    if avg_move > 0 and recent_move < avg_move * 0.6:
-        market_active = False
-        activity_note = "Low momentum"
-
-# ================= SUPPORT / RESISTANCE (SIMPLE & SAFE) =================
-sr = {
-    "support": False,
-    "resistance": False
-}
-if i5:
-    recent_low  = i5["close"].rolling(20).min().iloc[-1]
-    recent_high = i5["close"].rolling(20).max().iloc[-1]
-    price = i5["close"].iloc[-1]
-
-    if abs(price - recent_low) / price < 0.002:
-        sr["support"] = True
-    if abs(price - recent_high) / price < 0.002:
-        sr["resistance"] = True
-
-# ================= CANDLE TYPE (M5) =================
-def candle_type(df):
-    if df is None or df.empty or len(df) < 2:
-        return "NEUTRAL"
-    try:
-        o = float(df["Open"].iloc[-1])
-        c = float(df["Close"].iloc[-1])
-        h = float(df["High"].iloc[-1])
-        l = float(df["Low"].iloc[-1])
-    except Exception:
-        return "NEUTRAL"
-
-    body = abs(c - o)
-    full = h - l
-
-    if full == 0:
-        return "NEUTRAL"
-
-    ratio = body / full
-    if ratio >= 0.6:
-        return "IMPULSE"
-    elif ratio <= 0.3:
-        return "NEUTRAL"
-    else:
-        return "REJECTION"
-
-candle = candle_type(data_5m.iloc[:-1])
-
-# ================= SIGNAL EVALUATION =================
-
-# ================= SIGNAL EVALUATION =================
-
-structure = detect_structure_from_price(data_5m, i5)
-phase = detect_phase_from_price(data_5m, structure)
-regime = detect_regime(data_5m, i5)
-personality = detect_market_personality(data_5m, i5, sr)
-
-if personality == "TREND_DOMINANT":
-    signal, reason, confidence = classify_market_state(structure, phase)
-
-elif personality == "MEAN_REVERTING":
-    if sr["support"]:
-        signal, reason, confidence = "BUY", "Mean reversion bounce", 70
-    elif sr["resistance"]:
-        signal, reason, confidence = "SELL", "Mean reversion rejection", 70
-    else:
-        signal, reason, confidence = "WAIT", "No reversal edge", 0
-
-elif personality == "RANGE_BOUND":
-    if sr["support"]:
-        signal, reason, confidence = "BUY", "Range support", 65
-    elif sr["resistance"]:
-        signal, reason, confidence = "SELL", "Range resistance", 65
-    else:
-        signal, reason, confidence = "WAIT", "No range edge", 0
-
 else:
-    signal, reason, confidence = classify_market_state(structure, phase)
-
-# ================= SIGNAL MEMORY =================
-if "last_signal" not in st.session_state:
-    st.session_state.last_signal = None
-
-if signal == st.session_state.last_signal and signal != "WAIT":
-    signal = "WAIT"
-    reason = "Awaiting confirmation"
-    confidence = max(60, confidence - 10)
-
-st.session_state.last_signal = signal
-
-# ================= NEWS FILTER (FOREX FACTORY) =================
-news_note = ""
-currencies = extract_currencies(asset)
-
-if market == "Currencies" and currencies:
-    if forex_factory_red_news(currencies):
-        confidence = max(60, confidence - 20)
-        news_note = "⚠️ High-impact news nearby"
-
-        if confidence < 65:
-            signal = "WAIT"
-if news_note:
-    reason = f"{reason} • {news_note}"
-
-if signal == "WAIT" and not market_active and activity_note:
-    reason = f"{reason} • {activity_note}"
-
-# ================= ENTRY & EXPIRY (✅ ADDED) =================
-entry_time = None
-expiry_time = None
-
-if signal in ["BUY","SELL"] and not data_5m.empty:
-    last_close = data_5m.index[-1].to_pydatetime()
-    minute = (last_close.minute // 5 + 1) * 5
-    entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
-    expiry_time = entry_time + timedelta(minutes=5)
-
-# ================= DISPLAY =================
-signal_class = {
-    "BUY": "signal-buy",
-    "SELL": "signal-sell",
-    "WAIT": "signal-wait"
-}[signal]
-
-signal_class = {
-    "BUY": "signal-buy",
-    "SELL": "signal-sell",
-    "WAIT": "signal-wait"
-}[signal]
-
-st.markdown(f"""
-<div class="block center">
-  <div class="{signal_class}">{signal}</div>
-  <div class="metric">{asset} · {market}</div>
-
-  {"<div class='metric'><b>Confidence:</b> " + str(confidence) + "%</div>" if signal != "WAIT" else ""}
-  {"<div class='metric'><b>Entry:</b> " + entry_time.strftime('%H:%M') + "</div>" if entry_time else ""}
-  {"<div class='metric'><b>Expiry:</b> " + expiry_time.strftime('%H:%M') + "</div>" if expiry_time else ""}
-
-  <div class="small">{reason}</div>
-  <div class="small">
-    Structure (M5): {structure} • Phase: {phase} • Regime: {regime} • Candle: {candle}
-  </div>
-""", unsafe_allow_html=True)
+    st.warning("No strong trade available right now.")
 
