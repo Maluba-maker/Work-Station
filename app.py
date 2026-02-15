@@ -116,6 +116,161 @@ def indicators(df):
         "adx": ta.trend.adx(high, low, close, 14)
     }
 
+# ================= PRICE STRUCTURE (LIVE DATA) =================
+
+def detect_structure_from_price(df, indicators):
+    """
+    Improved trend detection using:
+    - Higher High / Higher Low logic
+    - EMA alignment
+    - ADX strength filter
+    """
+
+    if df is None or df.empty or indicators is None:
+        return "RANGE"
+
+    closes = df["Close"]
+    highs = df["High"]
+    lows = df["Low"]
+
+    # 🔒 Ensure Series
+    if isinstance(closes, pd.DataFrame):
+        closes = closes.iloc[:, 0]
+    if isinstance(highs, pd.DataFrame):
+        highs = highs.iloc[:, 0]
+    if isinstance(lows, pd.DataFrame):
+        lows = lows.iloc[:, 0]
+
+    closes = closes.astype(float)
+    highs = highs.astype(float)
+    lows = lows.astype(float)
+
+    if len(closes) < 30:
+        return "RANGE"
+
+    # --- Structure (HH + HL) ---
+    recent_high = float(highs.iloc[-10:].max())
+    prior_high  = float(highs.iloc[-20:-10].max())
+
+    recent_low  = float(lows.iloc[-10:].min())
+    prior_low   = float(lows.iloc[-20:-10].min())
+
+    # --- EMA Alignment ---
+    ema20 = indicators["ema20"].iloc[-1]
+    ema50 = indicators["ema50"].iloc[-1]
+    price = closes.iloc[-1]
+
+    # --- Strength ---
+    adx = indicators["adx"].iloc[-1]
+
+    # --- Bullish Trend ---
+    if (recent_high > prior_high and
+        recent_low > prior_low and
+        ema20 > ema50 and
+        price > ema20 and
+        adx > 20):
+        return "BULLISH"
+
+    # --- Bearish Trend ---
+    if (recent_high < prior_high and
+        recent_low < prior_low and
+        ema20 < ema50 and
+        price < ema20 and
+        adx > 20):
+        return "BEARISH"
+
+    return "RANGE"
+
+def detect_phase_from_price(df, structure):
+    """
+    Continuation vs pullback using price direction.
+    """
+    if df is None or df.empty or len(df) < 6:
+        return "NO_TRADE"
+
+    closes = df["Close"]
+    if isinstance(closes, pd.DataFrame):
+        closes = closes.iloc[:, 0]
+
+    last = float(closes.iloc[-1])
+    prev = float(closes.iloc[-5])
+
+    if structure == "BULLISH":
+        return "CONTINUATION" if last >= prev else "PULLBACK"
+
+    if structure == "BEARISH":
+        return "CONTINUATION" if last <= prev else "PULLBACK"
+
+    return "NO_TRADE"
+
+def detect_regime(df, indicators):
+    if indicators is None:
+        return "UNKNOWN"
+
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+    adx = indicators["adx"].iloc[-1]
+
+    if adx > 25 and atr > atr_avg:
+        return "STRONG_TREND"
+
+    if adx > 20:
+        return "TREND"
+
+    if atr < atr_avg * 0.8:
+        return "LOW_VOLATILITY"
+
+    return "RANGE"
+
+def detect_market_personality(df, indicators, sr):
+    if indicators is None:
+        return "UNKNOWN"
+
+    adx = indicators["adx"].iloc[-1]
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+
+    # Count SR hits in last 30 candles
+    sr_hits = 0
+    closes = indicators["close"].iloc[-30:]
+
+    recent_low  = closes.min()
+    recent_high = closes.max()
+
+    for price in closes:
+        if abs(price - recent_low) / price < 0.002:
+            sr_hits += 1
+        if abs(price - recent_high) / price < 0.002:
+            sr_hits += 1
+
+    # --- TREND DOMINANT ---
+    if adx > 25 and atr > atr_avg:
+        return "TREND_DOMINANT"
+
+    # --- MEAN REVERTING ---
+    if adx < 20 and sr_hits >= 5:
+        return "MEAN_REVERTING"
+
+    # --- RANGE ---
+    if 15 <= adx <= 22:
+        return "RANGE_BOUND"
+
+    return "MIXED"
+
+def classify_market_state(structure, phase):
+
+    if structure == "BULLISH" and phase == "CONTINUATION":
+        return "BUY", "Uptrend continuation", 80
+
+    if structure == "BEARISH" and phase == "CONTINUATION":
+        return "SELL", "Downtrend continuation", 80
+
+    # Pullbacks are ignored for beginners
+    if phase == "PULLBACK":
+        return "WAIT", "Pullback ignored for safety", 0
+
+    return "WAIT", "No clear structure", 0
+
 def scan_all_markets():
 
     best_trade = None
@@ -275,158 +430,3 @@ def forex_factory_red_news(currencies, window_minutes=30):
         pass
 
     return False
-
-# ================= PRICE STRUCTURE (LIVE DATA) =================
-
-def detect_structure_from_price(df, indicators):
-    """
-    Improved trend detection using:
-    - Higher High / Higher Low logic
-    - EMA alignment
-    - ADX strength filter
-    """
-
-    if df is None or df.empty or indicators is None:
-        return "RANGE"
-
-    closes = df["Close"]
-    highs = df["High"]
-    lows = df["Low"]
-
-    # 🔒 Ensure Series
-    if isinstance(closes, pd.DataFrame):
-        closes = closes.iloc[:, 0]
-    if isinstance(highs, pd.DataFrame):
-        highs = highs.iloc[:, 0]
-    if isinstance(lows, pd.DataFrame):
-        lows = lows.iloc[:, 0]
-
-    closes = closes.astype(float)
-    highs = highs.astype(float)
-    lows = lows.astype(float)
-
-    if len(closes) < 30:
-        return "RANGE"
-
-    # --- Structure (HH + HL) ---
-    recent_high = float(highs.iloc[-10:].max())
-    prior_high  = float(highs.iloc[-20:-10].max())
-
-    recent_low  = float(lows.iloc[-10:].min())
-    prior_low   = float(lows.iloc[-20:-10].min())
-
-    # --- EMA Alignment ---
-    ema20 = indicators["ema20"].iloc[-1]
-    ema50 = indicators["ema50"].iloc[-1]
-    price = closes.iloc[-1]
-
-    # --- Strength ---
-    adx = indicators["adx"].iloc[-1]
-
-    # --- Bullish Trend ---
-    if (recent_high > prior_high and
-        recent_low > prior_low and
-        ema20 > ema50 and
-        price > ema20 and
-        adx > 20):
-        return "BULLISH"
-
-    # --- Bearish Trend ---
-    if (recent_high < prior_high and
-        recent_low < prior_low and
-        ema20 < ema50 and
-        price < ema20 and
-        adx > 20):
-        return "BEARISH"
-
-    return "RANGE"
-
-def detect_phase_from_price(df, structure):
-    """
-    Continuation vs pullback using price direction.
-    """
-    if df is None or df.empty or len(df) < 6:
-        return "NO_TRADE"
-
-    closes = df["Close"]
-    if isinstance(closes, pd.DataFrame):
-        closes = closes.iloc[:, 0]
-
-    last = float(closes.iloc[-1])
-    prev = float(closes.iloc[-5])
-
-    if structure == "BULLISH":
-        return "CONTINUATION" if last >= prev else "PULLBACK"
-
-    if structure == "BEARISH":
-        return "CONTINUATION" if last <= prev else "PULLBACK"
-
-    return "NO_TRADE"
-
-def detect_regime(df, indicators):
-    if indicators is None:
-        return "UNKNOWN"
-
-    atr = indicators["atr"].iloc[-1]
-    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
-    adx = indicators["adx"].iloc[-1]
-
-    if adx > 25 and atr > atr_avg:
-        return "STRONG_TREND"
-
-    if adx > 20:
-        return "TREND"
-
-    if atr < atr_avg * 0.8:
-        return "LOW_VOLATILITY"
-
-    return "RANGE"
-
-def detect_market_personality(df, indicators, sr):
-    if indicators is None:
-        return "UNKNOWN"
-
-    adx = indicators["adx"].iloc[-1]
-    atr = indicators["atr"].iloc[-1]
-    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
-
-    # Count SR hits in last 30 candles
-    sr_hits = 0
-    closes = indicators["close"].iloc[-30:]
-
-    recent_low  = closes.min()
-    recent_high = closes.max()
-
-    for price in closes:
-        if abs(price - recent_low) / price < 0.002:
-            sr_hits += 1
-        if abs(price - recent_high) / price < 0.002:
-            sr_hits += 1
-
-    # --- TREND DOMINANT ---
-    if adx > 25 and atr > atr_avg:
-        return "TREND_DOMINANT"
-
-    # --- MEAN REVERTING ---
-    if adx < 20 and sr_hits >= 5:
-        return "MEAN_REVERTING"
-
-    # --- RANGE ---
-    if 15 <= adx <= 22:
-        return "RANGE_BOUND"
-
-    return "MIXED"
-
-def classify_market_state(structure, phase):
-
-    if structure == "BULLISH" and phase == "CONTINUATION":
-        return "BUY", "Uptrend continuation", 80
-
-    if structure == "BEARISH" and phase == "CONTINUATION":
-        return "SELL", "Downtrend continuation", 80
-
-    # Pullbacks are ignored for beginners
-    if phase == "PULLBACK":
-        return "WAIT", "Pullback ignored for safety", 0
-
-    return "WAIT", "No clear structure", 0
