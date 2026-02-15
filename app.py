@@ -216,9 +216,6 @@ if st.button("Scan Market 🔍"):
         </div>
         """, unsafe_allow_html=True)
 
-    else:
-        st.warning("No strong trade available right now.")
-
 # ================= USER NOTE =================
 st.markdown("""
 <div class="block small">
