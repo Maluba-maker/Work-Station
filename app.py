@@ -361,6 +361,9 @@ def scan_all_markets():
             signal, reason, confidence = classify_market_state(structure, phase)
 
         if signal in ["BUY", "SELL"]:
+        
+            score = confidence   # 👈 MUST COME FIRST
+        
             # Reward clean build (simulates M3/M4 confirmation)
             if movement == "CLEAN":
                 score += 10
@@ -368,8 +371,6 @@ def scan_all_markets():
             # Penalize spike behaviour
             if movement == "CHAOTIC":
                 score -= 10
-
-            score = confidence
 
             adx = i["adx"].iloc[-1]
             atr = i["atr"].iloc[-1]
