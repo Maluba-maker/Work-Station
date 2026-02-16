@@ -257,6 +257,22 @@ def detect_market_personality(df, indicators, sr):
 
     return "MIXED"
 
+def is_range_market(indicators, sr_local):
+
+    if indicators is None:
+        return False
+
+    adx = indicators["adx"].iloc[-1]
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+
+    # Quiet + stable = range candidate
+    if adx < 22 and atr < atr_avg * 1.2:
+        if sr_local["support"] or sr_local["resistance"]:
+            return True
+
+    return False
+
 def classify_market_state(structure, phase):
 
     if structure == "BULLISH" and phase == "CONTINUATION":
@@ -300,6 +316,7 @@ def scan_all_markets():
             sr_local["resistance"] = True
 
         personality = detect_market_personality(df, i, sr_local)
+        range_mode = is_range_market(i, sr_local)
 
         if personality == "TREND_DOMINANT":
             signal, reason, confidence = classify_market_state(structure, phase)
@@ -311,6 +328,15 @@ def scan_all_markets():
                 signal, reason, confidence = "SELL", "Mean reversion rejection", 70
             else:
                 signal, reason, confidence = "WAIT", "", 0
+        
+        elif personality == "RANGE":
+            if sr_local["support"]:
+                signal, reason, confidence = "BUY", "Range support bounce", 75
+            elif sr_local["resistance"]:
+                signal, reason, confidence = "SELL", "Range resistance rejection", 75
+            else:
+                signal, reason, confidence = "WAIT", "", 0
+        
         else:
             signal, reason, confidence = classify_market_state(structure, phase)
 
@@ -345,6 +371,10 @@ def scan_all_markets():
             # 6. Penalize mean reversion markets
             if personality == "MEAN_REVERTING":
                 score -= 5
+            
+            # 🎯 Reward clean range bounce
+            if range_mode:
+                score += 10
 
             if score > best_score:
 
