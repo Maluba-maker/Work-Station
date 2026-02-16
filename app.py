@@ -20,6 +20,9 @@ if "trade_active" not in st.session_state:
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = None
 
+if "pair_cooldown" not in st.session_state:
+    st.session_state.pair_cooldown = {}
+
 if "result_checked" not in st.session_state:
     st.session_state.result_checked = False
 
@@ -359,12 +362,27 @@ def classify_market_state(structure, phase):
 
     return "WAIT", "No clear structure", 0
 
+def pair_is_on_cooldown(pair):
+
+    if pair not in st.session_state.pair_cooldown:
+        return False
+
+    last_time = st.session_state.pair_cooldown[pair]
+
+    # 15 minute cooldown
+    cooldown = timedelta(minutes=15)
+
+    return datetime.now() - last_time < cooldown
+
 def scan_all_markets():
 
     best_trade = None
     best_score = 0
 
     for asset, symbol in CURRENCIES.items():
+    
+    if pair_is_on_cooldown(asset):
+        continue
 
         df = fetch(symbol, "5m", "2d")
         i = indicators(df)
@@ -717,6 +735,10 @@ def check_result():
         # 🔒 Lock result
         st.session_state.result_checked = True
         st.session_state.trade_active = False
+        
+        st.session_state.pair_cooldown[
+            st.session_state.last_signal["asset"]
+        ] = datetime.now()
 
 auto_bot()
 check_result()
