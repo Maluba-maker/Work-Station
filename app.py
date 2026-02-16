@@ -14,8 +14,8 @@ CHAT_ID = "8516458781"
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Work-Station", layout="wide")
-if "trade_active" not in st.session_state:
-    st.session_state.trade_active = False
+if "active_trades" not in st.session_state:
+    st.session_state.active_trades = {}
 
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = None
@@ -378,9 +378,15 @@ def scan_all_markets():
     best_score = 0
     
     for asset, symbol in CURRENCIES.items():
-    
+
+    if asset in st.session_state.active_trades:
+        continue
+
         if pair_is_on_cooldown(asset):
             continue
+        
+        if pair_is_on_cooldown(asset):
+                continue
     
         df = fetch(symbol, "5m", "2d")
         i = indicators(df)
@@ -513,10 +519,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("Scan Market 🔍"):
-
-    if st.session_state.trade_active:
-        st.warning("Trade already active. Wait for result.")
-        st.stop()
 
     best = scan_all_markets()
 
@@ -655,8 +657,13 @@ Signal: {best['signal']}
 
             send_telegram(msg)
 
-            st.session_state.trade_active = True
-            st.session_state.result_checked = False
+            pair = best["asset"]
+
+            st.session_state.active_trades[pair] = {
+                "signal": best,
+                "result_checked": False
+            }
+            
             st.session_state.last_signal = best
             st.session_state.pair_cooldown[best["asset"]] = datetime.now()
 
@@ -692,9 +699,11 @@ def evaluate_trade(pair, signal, entry_time, expiry_time):
 
 def check_result():
 
-    if st.session_state.trade_active and not st.session_state.result_checked:
+    for pair in list(st.session_state.active_trades.keys()):
 
-        expiry_time = st.session_state.last_signal["expiry"]
+        trade = st.session_state.active_trades[pair]
+        expiry_time = trade["signal"]["expiry"]
+
 
         now = datetime.now()
         expiry = datetime.strptime(expiry_time, "%H:%M").replace(
@@ -737,7 +746,7 @@ def check_result():
 
         # 🔒 Lock result
         st.session_state.result_checked = True
-        st.session_state.trade_active = False
+        del st.session_state.active_trades[pair]
         
         st.session_state.pair_cooldown[
             st.session_state.last_signal["asset"]
