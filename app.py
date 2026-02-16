@@ -8,8 +8,17 @@ import requests
 from bs4 import BeautifulSoup
 import pytz
 
+# ================= TELEGRAM =================
+BOT_TOKEN = "8527341776:AAGII0r_Badcp8sToimRbCzGPOP5lwnyZhY"
+CHAT_ID = "8516458781"
+
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Work-Station", layout="wide")
+if "trade_active" not in st.session_state:
+    st.session_state.trade_active = False
+
+if "last_signal" not in st.session_state:
+    st.session_state.last_signal = None
 
 # ================= PASSWORD =================
 APP_PASSWORD = "2026"
@@ -519,3 +528,62 @@ def forex_factory_red_news(currencies, window_minutes=30):
         pass
 
     return False
+
+def send_telegram(message):
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+
+    try:
+        requests.post(url, data=payload)
+    except:
+        pass
+def auto_bot():
+
+    if not st.session_state.trade_active:
+
+        best = scan_all_markets()
+
+        if best:
+
+            msg = f"""
+📊 SIGNAL
+
+Pair: {best['asset']}
+Timeframe: M5
+Signal: {best['signal']}
+
+🟢 Entry: {best['entry']}
+🔴 Expiry: {best['expiry']}
+"""
+
+            send_telegram(msg)
+
+            st.session_state.trade_active = True
+            st.session_state.last_signal = best
+
+def check_result():
+
+    if st.session_state.trade_active:
+
+        now = datetime.now().strftime("%H:%M")
+
+        expiry = st.session_state.last_signal["expiry"]
+
+        if now == expiry:
+
+            import random
+            outcome = random.choice(["WIN", "LOSS"])
+
+            if outcome == "WIN":
+                send_telegram("✅ WIN")
+            else:
+                send_telegram("⚠️ LOSS → M1")
+
+            st.session_state.trade_active = False
+auto_bot()
+check_result()
