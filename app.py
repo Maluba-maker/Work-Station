@@ -642,32 +642,32 @@ Signal: {best['signal']}
 def evaluate_trade(pair, signal, entry_time, expiry_time):
 
     symbol = CURRENCIES.get(pair)
+
     df = fetch(symbol, "5m", "2d")
 
     if df is None or df.empty:
         return None
 
-    # Convert Zambia time → UTC
-    now = datetime.utcnow()
+    now = datetime.now()
 
-    entry = datetime.strptime(entry_time, "%H:%M").replace(
+    entry_dt = datetime.strptime(entry_time, "%H:%M").replace(
         year=now.year,
         month=now.month,
         day=now.day
-    ) - timedelta(hours=2)
+    )
 
-    expiry = datetime.strptime(expiry_time, "%H:%M").replace(
+    expiry_dt = datetime.strptime(expiry_time, "%H:%M").replace(
         year=now.year,
         month=now.month,
         day=now.day
-    ) - timedelta(hours=2)
+    )
 
-    # Find closest candles
-    entry_candle = df.iloc[(df.index - entry).abs().argmin()]
-    expiry_candle = df.iloc[(df.index - expiry).abs().argmin()]
+    # 🔹 Find closest candles
+    entry_idx = df.index.get_indexer([entry_dt], method="nearest")[0]
+    expiry_idx = df.index.get_indexer([expiry_dt], method="nearest")[0]
 
-    entry_price = float(entry_candle["Close"])
-    expiry_price = float(expiry_candle["Close"])
+    entry_price = float(df.iloc[entry_idx]["Close"])
+    expiry_price = float(df.iloc[expiry_idx]["Close"])
 
     if signal == "BUY":
         return "WIN" if expiry_price > entry_price else "LOSS"
