@@ -318,11 +318,33 @@ def scan_all_markets():
 
             score = confidence
 
-            if regime == "STRONG_TREND":
+            adx = i["adx"].iloc[-1]
+            atr = i["atr"].iloc[-1]
+            atr_avg = i["atr"].rolling(20).mean().iloc[-1]
+
+            # 1. Reward stable trend (not extreme)
+            if 22 <= adx <= 35:
+                score += 15
+
+            # 2. Penalize exhaustion
+            if adx > 40:
+                score -= 10
+
+            # 3. Reward controlled volatility
+            if atr < atr_avg * 1.2:
                 score += 10
 
+            # 4. Penalize chaos
+            if atr > atr_avg * 1.6:
+                score -= 10
+
+            # 5. Reward respectful trend behaviour
             if personality == "TREND_DOMINANT":
                 score += 5
+
+            # 6. Penalize mean reversion markets
+            if personality == "MEAN_REVERTING":
+                score -= 5
 
         if score > best_score:
 
