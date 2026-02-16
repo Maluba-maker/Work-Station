@@ -315,36 +315,34 @@ def detect_pullback_quality(df, indicators, structure):
     close = indicators["close"]
     ema20 = indicators["ema20"]
     ema50 = indicators["ema50"]
-    adx = indicators["adx"].iloc[-1]
+    adx = indicators["adx"]
 
     price = close.iloc[-1]
 
-    # Pullback must stay inside trend
-    if structure == "BULLISH":
+    # Near value zone
+    near_value = (
+        abs(price - ema20.iloc[-1]) / price < 0.004 or
+        abs(price - ema50.iloc[-1]) / price < 0.004
+    )
 
-        near_ema = (
-            abs(price - ema20.iloc[-1]) / price < 0.003 or
-            abs(price - ema50.iloc[-1]) / price < 0.003
-        )
+    # Momentum cooling
+    adx_now = adx.iloc[-1]
+    adx_prev = adx.iloc[-4]
 
-        if near_ema and adx > 18:
-            return "HEALTHY"
+    momentum_cooling = adx_now <= adx_prev
 
-        if adx < 15:
-            return "WEAK"
+    # Pullback should NOT be explosive
+    recent = close.iloc[-5:]
+    move = abs(recent.iloc[-1] - recent.iloc[0])
+    noise = recent.diff().abs().sum()
 
-    if structure == "BEARISH":
+    smooth = (move / noise) < 0.55 if noise != 0 else False
 
-        near_ema = (
-            abs(price - ema20.iloc[-1]) / price < 0.003 or
-            abs(price - ema50.iloc[-1]) / price < 0.003
-        )
+    if near_value and momentum_cooling and smooth:
+        return "HEALTHY"
 
-        if near_ema and adx > 18:
-            return "HEALTHY"
-
-        if adx < 15:
-            return "WEAK"
+    if near_value and not momentum_cooling:
+        return "WEAK"
 
     return "NONE"
 
