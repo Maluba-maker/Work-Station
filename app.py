@@ -648,21 +648,13 @@ def evaluate_trade(pair, signal, entry_time, expiry_time):
     if df is None or df.empty:
         return None
 
-    now = datetime.now()
+    # Convert entry/expiry into UTC timestamps
+    today = datetime.utcnow().date()
 
-    entry_dt = datetime.strptime(entry_time, "%H:%M").replace(
-        year=now.year,
-        month=now.month,
-        day=now.day
-    )
+    entry_dt = pd.Timestamp(f"{today} {entry_time}", tz="UTC")
+    expiry_dt = pd.Timestamp(f"{today} {expiry_time}", tz="UTC")
 
-    expiry_dt = datetime.strptime(expiry_time, "%H:%M").replace(
-        year=now.year,
-        month=now.month,
-        day=now.day
-    )
-
-    # 🔹 Find closest candles
+    # Find nearest candle
     entry_idx = df.index.get_indexer([entry_dt], method="nearest")[0]
     expiry_idx = df.index.get_indexer([expiry_dt], method="nearest")[0]
 
