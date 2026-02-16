@@ -346,27 +346,25 @@ def scan_all_markets():
             if personality == "MEAN_REVERTING":
                 score -= 5
 
-        if score > best_score:
+            if score > best_score:
 
-            # 🕒 Entry & Expiry Time
-            last_close = df.index[-1].to_pydatetime()
+                last_close = df.index[-1].to_pydatetime()
+                minute = (last_close.minute // 5 + 1) * 5
+                entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
+                expiry_time = entry_time + timedelta(minutes=5)
 
-            minute = (last_close.minute // 5 + 1) * 5
-            entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
-            expiry_time = entry_time + timedelta(minutes=5)
-
-            best_score = score
-            best_trade = {
-                "asset": asset,
-                "signal": signal,
-                "confidence": score,
-                "personality": personality,
-                "structure": structure,
-                "phase": phase,
-                "regime": regime,
-                "entry": entry_time.strftime("%H:%M"),
-                "expiry": expiry_time.strftime("%H:%M")
-            }
+                best_score = score
+                best_trade = {
+                    "asset": asset,
+                    "signal": signal,
+                    "confidence": score,
+                    "personality": personality,
+                    "structure": structure,
+                    "phase": phase,
+                    "regime": regime,
+                    "entry": entry_time.strftime("%H:%M"),
+                    "expiry": expiry_time.strftime("%H:%M")
+                }
 
     return best_trade
 
