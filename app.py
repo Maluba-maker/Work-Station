@@ -304,6 +304,47 @@ def is_range_market(indicators, sr_local):
 
     return False
 
+def detect_pullback_quality(df, indicators, structure):
+
+    if indicators is None:
+        return "NONE"
+
+    close = indicators["close"]
+    ema20 = indicators["ema20"]
+    ema50 = indicators["ema50"]
+    adx = indicators["adx"].iloc[-1]
+
+    price = close.iloc[-1]
+
+    # Pullback must stay inside trend
+    if structure == "BULLISH":
+
+        near_ema = (
+            abs(price - ema20.iloc[-1]) / price < 0.003 or
+            abs(price - ema50.iloc[-1]) / price < 0.003
+        )
+
+        if near_ema and adx > 18:
+            return "HEALTHY"
+
+        if adx < 15:
+            return "WEAK"
+
+    if structure == "BEARISH":
+
+        near_ema = (
+            abs(price - ema20.iloc[-1]) / price < 0.003 or
+            abs(price - ema50.iloc[-1]) / price < 0.003
+        )
+
+        if near_ema and adx > 18:
+            return "HEALTHY"
+
+        if adx < 15:
+            return "WEAK"
+
+    return "NONE"
+
 def classify_market_state(structure, phase):
 
     if structure == "BULLISH" and phase == "CONTINUATION":
@@ -349,6 +390,7 @@ def scan_all_markets():
         personality = detect_market_personality(df, i, sr_local)
         movement = movement_quality(i)
         range_mode = is_range_market(i, sr_local)
+        pullback = detect_pullback_quality(df, i, structure)
 
         if personality == "TREND_DOMINANT":
             signal, reason, confidence = classify_market_state(structure, phase)
@@ -375,7 +417,15 @@ def scan_all_markets():
         if signal in ["BUY", "SELL"]:
         
             score = confidence   # 👈 MUST COME FIRST
-        
+
+            # Reward healthy pullbacks
+            if pullback == "HEALTHY":
+                score += 10
+            
+            # Avoid weak pullbacks
+            if pullback == "WEAK":
+                score -= 15
+
             # Reward clean build (simulates M3/M4 confirmation)
             if movement == "CLEAN":
                 score += 10
