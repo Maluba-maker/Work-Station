@@ -542,6 +542,20 @@ def send_telegram(message):
         requests.post(url, data=payload)
     except:
         pass
+
+def time_until_entry(entry_time):
+
+    now = datetime.now()
+    entry = datetime.strptime(entry_time, "%H:%M")
+
+    entry = entry.replace(
+        year=now.year,
+        month=now.month,
+        day=now.day
+    )
+
+    return (entry - now).total_seconds()
+
 def auto_bot():
 
     if not st.session_state.trade_active:
@@ -549,6 +563,11 @@ def auto_bot():
         best = scan_all_markets()
 
         if best:
+
+            wait_seconds = time_until_entry(best["entry"]) - 120
+
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
 
             msg = f"""
 📊 SIGNAL
@@ -570,20 +589,41 @@ def check_result():
 
     if st.session_state.trade_active:
 
-        now = datetime.now().strftime("%H:%M")
+        expiry_time = st.session_state.last_signal["expiry"]
 
-        expiry = st.session_state.last_signal["expiry"]
+        now = datetime.now()
+        expiry = datetime.strptime(expiry_time, "%H:%M").replace(
+            year=now.year,
+            month=now.month,
+            day=now.day
+        )
 
-        if now == expiry:
+        wait_seconds = (expiry - now).total_seconds()
 
-            import random
-            outcome = random.choice(["WIN", "LOSS"])
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
 
-            if outcome == "WIN":
-                send_telegram("✅ WIN")
+        import random
+        outcome = random.choice(["WIN", "LOSS"])
+
+        if outcome == "WIN":
+            send_telegram("✅ WIN")
+            st.session_state.trade_active = False
+
+        else:
+            send_telegram("⚠️ LOSS → M1")
+
+            # M1 retry
+            time.sleep(300)
+
+            retry = random.choice(["WIN", "LOSS"])
+
+            if retry == "WIN":
+                send_telegram("✅ M1 WIN")
             else:
-                send_telegram("⚠️ LOSS → M1")
+                send_telegram("❌ M1 LOSS")
 
             st.session_state.trade_active = False
+
 auto_bot()
 check_result()
