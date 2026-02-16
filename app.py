@@ -378,12 +378,12 @@ def scan_all_markets():
 
     best_trade = None
     best_score = 0
-
+    
     for asset, symbol in CURRENCIES.items():
     
-    if pair_is_on_cooldown(asset):
-        continue
-
+        if pair_is_on_cooldown(asset):
+            continue
+    
         df = fetch(symbol, "5m", "2d")
         i = indicators(df)
 
