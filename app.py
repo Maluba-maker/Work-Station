@@ -257,6 +257,25 @@ def detect_market_personality(df, indicators, sr):
 
     return "MIXED"
 
+def movement_quality(indicators):
+
+    close = indicators["close"]
+
+    recent = close.iloc[-5:]
+
+    move = abs(recent.iloc[-1] - recent.iloc[0])
+    noise = recent.diff().abs().sum()
+
+    if noise == 0:
+        return "CHAOTIC"
+
+    smoothness = move / noise
+
+    if smoothness > 0.55:
+        return "CLEAN"
+
+    return "CHAOTIC"
+
 def is_range_market(indicators, sr_local):
 
     if indicators is None:
@@ -316,6 +335,7 @@ def scan_all_markets():
             sr_local["resistance"] = True
 
         personality = detect_market_personality(df, i, sr_local)
+        movement = movement_quality(i)
         range_mode = is_range_market(i, sr_local)
 
         if personality == "TREND_DOMINANT":
@@ -341,6 +361,13 @@ def scan_all_markets():
             signal, reason, confidence = classify_market_state(structure, phase)
 
         if signal in ["BUY", "SELL"]:
+        # Reward clean build (simulates M3/M4 confirmation)
+        if movement == "CLEAN":
+            score += 10
+        
+        # Penalize spike behaviour
+        if movement == "CHAOTIC":
+            score -= 10
 
             score = confidence
 
