@@ -307,6 +307,20 @@ def is_range_market(indicators, sr_local):
 
     return False
 
+def range_quality(indicators):
+
+    adx = indicators["adx"].iloc[-1]
+    rsi = indicators["rsi"].iloc[-1]
+
+    # Good range = weak trend + oscillation
+    if adx < 18 and (40 < rsi < 60):
+        return "IDEAL"
+
+    if adx < 22:
+        return "OK"
+
+    return "POOR"
+
 def detect_pullback_quality(df, indicators, structure):
 
     if indicators is None:
@@ -395,7 +409,7 @@ def scan_all_markets():
         phase = detect_phase_from_price(df, structure)
         regime = detect_regime(df, i)
 
-        # Support / Resistance
+        # ================= SUPPORT / RESISTANCE =================
         sr_local = {"support": False, "resistance": False}
         recent_low  = i["close"].rolling(20).min().iloc[-1]
         recent_high = i["close"].rolling(20).max().iloc[-1]
@@ -406,50 +420,60 @@ def scan_all_markets():
         if abs(price - recent_high) / price < 0.002:
             sr_local["resistance"] = True
 
+        # ================= MARKET STATE =================
         personality = detect_market_personality(df, i, sr_local)
         movement = movement_quality(i)
         range_mode = is_range_market(i, sr_local)
         pullback = detect_pullback_quality(df, i, structure)
 
+        # ================= SIGNAL DECISION =================
+
+        # TREND LOGIC
         if personality == "TREND_DOMINANT":
             signal, reason, confidence = classify_market_state(structure, phase)
 
-        elif personality == "MEAN_REVERTING":
-            if sr_local["support"]:
-                signal, reason, confidence = "BUY", "Mean reversion bounce", 70
-            elif sr_local["resistance"]:
-                signal, reason, confidence = "SELL", "Mean reversion rejection", 70
+        # RANGE + MEAN REVERSION (MERGED)
+        elif personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
+
+            rq = range_quality(i)
+
+            if rq == "POOR":
+                signal, reason, confidence = "WAIT", "Weak range", 0
+
             else:
-                signal, reason, confidence = "WAIT", "", 0
-        
-        elif personality == "RANGE":
-            if sr_local["support"]:
-                signal, reason, confidence = "BUY", "Range support bounce", 75
-            elif sr_local["resistance"]:
-                signal, reason, confidence = "SELL", "Range resistance rejection", 75
-            else:
-                signal, reason, confidence = "WAIT", "", 0
-        
+                rsi = i["rsi"].iloc[-1]
+
+                if sr_local["support"] and rsi < 40:
+                    signal, reason, confidence = "BUY", "Range rejection (support)", 80
+
+                elif sr_local["resistance"] and rsi > 60:
+                    signal, reason, confidence = "SELL", "Range rejection (resistance)", 80
+
+                else:
+                    signal, reason, confidence = "WAIT", "No extreme", 0
+
+        # FALLBACK
         else:
             signal, reason, confidence = classify_market_state(structure, phase)
 
-        if signal in ["BUY", "SELL"]:
-        
-            score = confidence   # 👈 MUST COME FIRST
+        # Disable pullback logic inside ranges
+        if personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
+            pullback = "NONE"
 
-            # Reward healthy pullbacks
+        # ================= SCORING =================
+        if signal in ["BUY", "SELL"]:
+
+            score = confidence
+
             if pullback == "HEALTHY":
                 score += 10
             
-            # Avoid weak pullbacks
             if pullback == "WEAK":
                 score -= 15
 
-            # Reward clean build (simulates M3/M4 confirmation)
             if movement == "CLEAN":
                 score += 10
         
-            # Penalize spike behaviour
             if movement == "CHAOTIC":
                 score -= 10
 
@@ -457,34 +481,33 @@ def scan_all_markets():
             atr = i["atr"].iloc[-1]
             atr_avg = i["atr"].rolling(20).mean().iloc[-1]
 
-            # 1. Reward stable trend (not extreme)
             if 22 <= adx <= 35:
                 score += 15
 
-            # 2. Penalize exhaustion
             if adx > 40:
                 score -= 10
 
-            # 3. Reward controlled volatility
             if atr < atr_avg * 1.2:
                 score += 10
 
-            # 4. Penalize chaos
             if atr > atr_avg * 1.6:
                 score -= 10
 
-            # 5. Reward respectful trend behaviour
             if personality == "TREND_DOMINANT":
                 score += 5
 
-            # 6. Penalize mean reversion markets
-            if personality == "MEAN_REVERTING":
-                score -= 5
-            
-            # 🎯 Reward clean range bounce
             if range_mode:
                 score += 10
 
+            # Range timing boost
+            if personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
+                rsi = i["rsi"].iloc[-1]
+                if signal == "BUY" and rsi < 35:
+                    score += 10
+                if signal == "SELL" and rsi > 65:
+                    score += 10
+
+            # ================= BEST TRADE =================
             if score > best_score:
 
                 last_close = df.index[-1].to_pydatetime()
