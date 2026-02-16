@@ -589,6 +589,32 @@ Signal: {best['signal']}
             st.session_state.result_checked = False
             st.session_state.last_signal = best
 
+def evaluate_trade(pair, signal, entry_time, expiry_time):
+
+    symbol = CURRENCIES.get(pair)
+
+    df = fetch(symbol, "5m", "2d")
+
+    if df is None or df.empty:
+        return None
+
+    entry = df[df.index.strftime("%H:%M") == entry_time]
+    expiry = df[df.index.strftime("%H:%M") == expiry_time]
+
+    if entry.empty or expiry.empty:
+        return None
+
+    entry_price = float(entry["Close"].iloc[0])
+    expiry_price = float(expiry["Close"].iloc[0])
+
+    if signal == "BUY":
+        return "WIN" if expiry_price > entry_price else "LOSS"
+
+    if signal == "SELL":
+        return "WIN" if expiry_price < entry_price else "LOSS"
+
+    return None
+
 def check_result():
 
     if st.session_state.trade_active and not st.session_state.result_checked:
@@ -607,8 +633,12 @@ def check_result():
         if wait_seconds > 0:
             time.sleep(wait_seconds)
 
-        import random
-        outcome = random.choice(["WIN", "LOSS"])
+        outcome = evaluate_trade(
+            st.session_state.last_signal["asset"],
+            st.session_state.last_signal["signal"],
+            st.session_state.last_signal["entry"],
+            st.session_state.last_signal["expiry"]
+        )
 
         if outcome == "WIN":
             send_telegram("✅ WIN")
@@ -618,7 +648,12 @@ def check_result():
 
             time.sleep(300)
 
-            retry = random.choice(["WIN", "LOSS"])
+            retry = evaluate_trade(
+                st.session_state.last_signal["asset"],
+                st.session_state.last_signal["signal"],
+                st.session_state.last_signal["entry"],
+                st.session_state.last_signal["expiry"]
+            )
 
             if retry == "WIN":
                 send_telegram("✅ M1 WIN")
