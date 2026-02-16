@@ -379,14 +379,11 @@ def scan_all_markets():
     
     for asset, symbol in CURRENCIES.items():
 
-    if asset in st.session_state.active_trades:
-        continue
+        if asset in st.session_state.active_trades:
+            continue
 
         if pair_is_on_cooldown(asset):
             continue
-        
-        if pair_is_on_cooldown(asset):
-                continue
     
         df = fetch(symbol, "5m", "2d")
         i = indicators(df)
