@@ -516,6 +516,10 @@ st.markdown("""
 
 if st.button("Scan Market 🔍"):
 
+    if st.session_state.trade_active:
+        st.warning("Trade already active. Wait for result.")
+        st.stop()
+
     best = scan_all_markets()
 
     if best:
@@ -656,6 +660,7 @@ Signal: {best['signal']}
             st.session_state.trade_active = True
             st.session_state.result_checked = False
             st.session_state.last_signal = best
+            st.session_state.pair_cooldown[best["asset"]] = datetime.now()
 
 def evaluate_trade(pair, signal, entry_time, expiry_time):
 
