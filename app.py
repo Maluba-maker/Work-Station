@@ -20,6 +20,9 @@ if "trade_active" not in st.session_state:
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = None
 
+if "result_checked" not in st.session_state:
+    st.session_state.result_checked = False
+
 # ================= PASSWORD =================
 APP_PASSWORD = "2026"
 
@@ -583,11 +586,12 @@ Signal: {best['signal']}
             send_telegram(msg)
 
             st.session_state.trade_active = True
+            st.session_state.result_checked = False
             st.session_state.last_signal = best
 
 def check_result():
 
-    if st.session_state.trade_active:
+    if st.session_state.trade_active and not st.session_state.result_checked:
 
         expiry_time = st.session_state.last_signal["expiry"]
 
@@ -608,12 +612,10 @@ def check_result():
 
         if outcome == "WIN":
             send_telegram("✅ WIN")
-            st.session_state.trade_active = False
 
         else:
             send_telegram("⚠️ LOSS → M1")
 
-            # M1 retry
             time.sleep(300)
 
             retry = random.choice(["WIN", "LOSS"])
@@ -623,7 +625,9 @@ def check_result():
             else:
                 send_telegram("❌ M1 LOSS")
 
-            st.session_state.trade_active = False
+        # 🔒 Lock result
+        st.session_state.result_checked = True
+        st.session_state.trade_active = False
 
 auto_bot()
 check_result()
