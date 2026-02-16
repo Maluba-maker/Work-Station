@@ -630,6 +630,9 @@ def time_until_entry(entry_time):
 
 def auto_bot():
 
+    if "trade_active" not in st.session_state:
+        st.session_state.trade_active = False
+
     if not st.session_state.trade_active:
 
         best = scan_all_markets()
