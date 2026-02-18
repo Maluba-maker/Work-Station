@@ -670,8 +670,9 @@ if st.button("Scan Market 🔍"):
             State: {best['state']} • 
             Direction: {best['direction']} • 
             Personality: {best['personality']}
-           🟢 Entry: {best['entry']}<br>
-           🔴 Expiry: {best['expiry']}
+           
+            🟢 Entry: {best['entry']}<br>
+            🔴 Expiry: {best['expiry']}
         </div>
         """, unsafe_allow_html=True)
 
