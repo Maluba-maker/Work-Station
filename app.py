@@ -346,7 +346,7 @@ def detect_pullback_quality(df, indicators, structure):
     momentum_cooling = adx_now <= adx_prev
 
     # Pullback should NOT be explosive
-    recent = close.iloc[-5:]
+    recent = close.iloc[-8:]
     move = abs(recent.iloc[-1] - recent.iloc[0])
     noise = recent.diff().abs().sum()
 
