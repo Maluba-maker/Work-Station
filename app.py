@@ -639,7 +639,7 @@ if st.button("Scan Market 🔍"):
 
     best = scan_all_markets()
    
-    if best:
+if best:
 
     st.session_state.pair_cooldown[best["asset"]] = datetime.now()
 
