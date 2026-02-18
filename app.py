@@ -477,9 +477,6 @@ def scan_all_markets():
     
     for asset, symbol in CURRENCIES.items():
 
-        if asset in st.session_state.active_trades:
-            continue
-
         if pair_is_on_cooldown(asset):
             continue
     
