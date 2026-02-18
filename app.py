@@ -386,6 +386,64 @@ def pair_is_on_cooldown(pair):
 
     return datetime.now() - last_time < cooldown
 
+def classify_market_environment(df, indicators):
+
+    if df is None or indicators is None or len(df) < 120:
+        return "TRANSITION"
+
+    close = indicators["close"]
+    ema20 = indicators["ema20"]
+    ema50 = indicators["ema50"]
+    ema100 = indicators["ema100"]
+    adx = indicators["adx"]
+    atr = indicators["atr"]
+
+    ema_bull = ema20.iloc[-1] > ema50.iloc[-1] > ema100.iloc[-1]
+    ema_bear = ema20.iloc[-1] < ema50.iloc[-1] < ema100.iloc[-1]
+
+    trend_strength = adx.iloc[-1]
+
+    atr_now = atr.iloc[-1]
+    atr_mean = atr.rolling(50).mean().iloc[-1]
+
+    expanding = atr_now > atr_mean * 1.3
+    contracting = atr_now < atr_mean * 0.85
+
+    closes = close.iloc[-60:]
+
+    move = abs(closes.iloc[-1] - closes.iloc[0])
+    noise = closes.diff().abs().sum()
+
+    smoothness = move / noise if noise != 0 else 0
+
+    directional = smoothness > 0.55
+    choppy = smoothness < 0.35
+
+    if (ema_bull or ema_bear) and trend_strength > 25 and directional:
+        return "TREND"
+
+    if trend_strength > 20 and expanding:
+        return "EXPANSION"
+
+    if trend_strength < 20 and contracting and choppy:
+        return "RANGE"
+
+    return "TRANSITION"
+
+def detect_direction(indicators):
+
+    ema20 = indicators["ema20"].iloc[-1]
+    ema50 = indicators["ema50"].iloc[-1]
+    ema100 = indicators["ema100"].iloc[-1]
+
+    if ema20 > ema50 > ema100:
+        return "BULLISH"
+
+    if ema20 < ema50 < ema100:
+        return "BEARISH"
+
+    return "NEUTRAL"
+
 def scan_all_markets():
 
     best_trade = None
@@ -399,15 +457,14 @@ def scan_all_markets():
         if pair_is_on_cooldown(asset):
             continue
     
-        df = fetch(symbol, "5m", "2d")
+        df = fetch(symbol, "5m", "7d")
         i = indicators(df)
 
         if df is None or i is None:
             continue
 
-        structure = detect_structure_from_price(df, i)
-        phase = detect_phase_from_price(df, structure)
-        regime = detect_regime(df, i)
+           state = classify_market_environment(df, i)
+           direction = detect_direction(i)
 
         # ================= SUPPORT / RESISTANCE =================
         sr_local = {"support": False, "resistance": False}
@@ -424,41 +481,55 @@ def scan_all_markets():
         personality = detect_market_personality(df, i, sr_local)
         movement = movement_quality(i)
         range_mode = is_range_market(i, sr_local)
-        pullback = detect_pullback_quality(df, i, structure)
+        pullback = "NONE"
 
         # ================= SIGNAL DECISION =================
-
-        # TREND LOGIC
-        if personality == "TREND_DOMINANT":
-            signal, reason, confidence = classify_market_state(structure, phase)
-
-        # RANGE + MEAN REVERSION (MERGED)
-        elif personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
-
-            rq = range_quality(i)
-
-            if rq == "POOR":
-                signal, reason, confidence = "WAIT", "Weak range", 0
-
+        
+        if state == "TREND":
+        
+            if direction == "BULLISH":
+                signal, reason, confidence = "BUY", "Trend continuation", 80
+            elif direction == "BEARISH":
+                signal, reason, confidence = "SELL", "Trend continuation", 80
             else:
-                rsi = i["rsi"].iloc[-1]
-
-                if sr_local["support"] and rsi < 40:
-                    signal, reason, confidence = "BUY", "Range rejection (support)", 80
-
-                elif sr_local["resistance"] and rsi > 60:
-                    signal, reason, confidence = "SELL", "Range rejection (resistance)", 80
-
-                else:
-                    signal, reason, confidence = "WAIT", "No extreme", 0
-
-        # FALLBACK
-        else:
-            signal, reason, confidence = classify_market_state(structure, phase)
-
-        # Disable pullback logic inside ranges
-        if personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
-            pullback = "NONE"
+                signal, reason, confidence = "WAIT", "No direction", 0
+        
+        elif state == "RANGE":
+        
+            rsi = i["rsi"].iloc[-1]
+        
+            if sr_local["support"] and rsi < 40:
+                signal, reason, confidence = "BUY", "Range bounce", 75
+        
+            elif sr_local["resistance"] and rsi > 60:
+                signal, reason, confidence = "SELL", "Range rejection", 75
+        
+            else:
+                signal, reason, confidence = "WAIT", "Range middle", 0
+        
+        elif state == "EXPANSION":
+        
+            if direction == "BULLISH":
+                signal, reason, confidence = "BUY", "Breakout momentum", 85
+        
+            elif direction == "BEARISH":
+                signal, reason, confidence = "SELL", "Breakout momentum", 85
+        
+            else:
+                signal, reason, confidence = "WAIT", "Weak expansion", 0
+    
+        elif state == "TRANSITION":
+        
+            rsi = i["rsi"].iloc[-1]
+        
+            if direction == "BULLISH" and rsi < 45:
+                signal, reason, confidence = "BUY", "Early reversal forming", 70
+        
+            elif direction == "BEARISH" and rsi > 55:
+                signal, reason, confidence = "SELL", "Early reversal forming", 70
+        
+            else:
+                signal, reason, confidence = "WAIT", "No structure shift", 0
 
         # ================= SCORING =================
         if signal in ["BUY", "SELL"]:
@@ -517,13 +588,12 @@ def scan_all_markets():
 
                 best_score = score
                 best_trade = {
+                    "state": state,
+                    "direction": direction,
                     "asset": asset,
                     "signal": signal,
                     "confidence": score,
                     "personality": personality,
-                    "structure": structure,
-                    "phase": phase,
-                    "regime": regime,
                     "entry": entry_time.strftime("%H:%M"),
                     "expiry": expiry_time.strftime("%H:%M")
                 }
