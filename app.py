@@ -8,23 +8,11 @@ import requests
 from bs4 import BeautifulSoup
 import pytz
 
-# ================= TELEGRAM =================
-BOT_TOKEN = "8527341776:AAGII0r_Badcp8sToimRbCzGPOP5lwnyZhY"
-CHAT_ID = "8516458781"
-
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Work-Station", layout="wide")
-if "active_trades" not in st.session_state:
-    st.session_state.active_trades = {}
-
-if "last_signal" not in st.session_state:
-    st.session_state.last_signal = None
 
 if "pair_cooldown" not in st.session_state:
     st.session_state.pair_cooldown = {}
-
-if "result_checked" not in st.session_state:
-    st.session_state.result_checked = False
 
 # ================= PASSWORD =================
 APP_PASSWORD = "2026"
@@ -653,6 +641,8 @@ st.markdown("""
 if st.button("Scan Market 🔍"):
 
     best = scan_all_markets()
+    if best:
+        st.session_state.pair_cooldown[best["asset"]] = datetime.now()
 
     if best:
 
@@ -735,156 +725,3 @@ def forex_factory_red_news(currencies, window_minutes=30):
 
     return False
 
-def send_telegram(message):
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
-
-    try:
-        requests.post(url, data=payload)
-    except:
-        pass
-
-def time_until_entry(entry_time):
-
-    now = datetime.now()
-    entry = datetime.strptime(entry_time, "%H:%M")
-
-    entry = entry.replace(
-        year=now.year,
-        month=now.month,
-        day=now.day
-    )
-
-    return (entry - now).total_seconds()
-
-def auto_bot():
-
-    if "trade_active" not in st.session_state:
-        st.session_state.trade_active = False
-
-    if not st.session_state.trade_active:
-
-        best = scan_all_markets()
-
-        if best:
-
-            wait_seconds = time_until_entry(best["entry"]) - 120
-
-            if wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-            msg = f"""
-📊 SIGNAL
-
-Pair: {best['asset']}
-Timeframe: M5
-Signal: {best['signal']}
-
-🟢 Entry: {best['entry']}
-🔴 Expiry: {best['expiry']}
-"""
-
-            send_telegram(msg)
-
-            pair = best["asset"]
-
-            st.session_state.active_trades[pair] = {
-                "signal": best,
-                "result_checked": False
-            }
-            
-            st.session_state.last_signal = best
-            st.session_state.pair_cooldown[best["asset"]] = datetime.now()
-
-def evaluate_trade(pair, signal, entry_time, expiry_time):
-
-    symbol = CURRENCIES.get(pair)
-
-    df = fetch(symbol, "5m", "2d")
-
-    if df is None or df.empty:
-        return None
-
-    # Convert entry/expiry into UTC timestamps
-    today = datetime.utcnow().date()
-
-    entry_dt = pd.Timestamp(f"{today} {entry_time}", tz="UTC")
-    expiry_dt = pd.Timestamp(f"{today} {expiry_time}", tz="UTC")
-
-    # Find nearest candle
-    entry_idx = df.index.get_indexer([entry_dt], method="nearest")[0]
-    expiry_idx = df.index.get_indexer([expiry_dt], method="nearest")[0]
-
-    entry_price = float(df.iloc[entry_idx]["Close"])
-    expiry_price = float(df.iloc[expiry_idx]["Close"])
-
-    if signal == "BUY":
-        return "WIN" if expiry_price > entry_price else "LOSS"
-
-    if signal == "SELL":
-        return "WIN" if expiry_price < entry_price else "LOSS"
-
-    return None
-
-def check_result():
-
-    for pair in list(st.session_state.active_trades.keys()):
-
-        trade = st.session_state.active_trades[pair]
-        expiry_time = trade["signal"]["expiry"]
-
-
-        now = datetime.now()
-        expiry = datetime.strptime(expiry_time, "%H:%M").replace(
-            year=now.year,
-            month=now.month,
-            day=now.day
-        )
-
-        wait_seconds = (expiry - now).total_seconds()
-
-        if wait_seconds > 0:
-            time.sleep(wait_seconds)
-
-        outcome = evaluate_trade(
-            st.session_state.last_signal["asset"],
-            st.session_state.last_signal["signal"],
-            st.session_state.last_signal["entry"],
-            st.session_state.last_signal["expiry"]
-        )
-
-        if outcome == "WIN":
-            send_telegram("✅ WIN")
-
-        else:
-            send_telegram("⚠️ LOSS → M1")
-
-            time.sleep(300)
-
-            retry = evaluate_trade(
-                st.session_state.last_signal["asset"],
-                st.session_state.last_signal["signal"],
-                st.session_state.last_signal["entry"],
-                st.session_state.last_signal["expiry"]
-            )
-
-            if retry == "WIN":
-                send_telegram("✅ M1 WIN")
-            else:
-                send_telegram("❌ M1 LOSS")
-
-        # 🔒 Lock result
-        st.session_state.result_checked = True
-        del st.session_state.active_trades[pair]
-        
-        st.session_state.pair_cooldown[
-            st.session_state.last_signal["asset"]
-        ] = datetime.now()
-
-auto_bot()
-check_result()
