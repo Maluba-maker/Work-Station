@@ -501,8 +501,8 @@ def scan_all_markets():
         if df is None or i is None:
             continue
 
-           state = classify_market_environment(df, i)
-           direction = detect_direction(i)
+            state = classify_market_environment(df, i)
+            direction = detect_direction(i)
 
         # ================= SUPPORT / RESISTANCE =================
         sr_local = {"support": False, "resistance": False}
