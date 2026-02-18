@@ -638,21 +638,21 @@ st.markdown("""
 if st.button("Scan Market 🔍"):
 
     best = scan_all_markets()
-    if best:
-        st.session_state.pair_cooldown[best["asset"]] = datetime.now()
-
+   
     if best:
 
-        signal_class = {
-            "BUY": "signal-buy",
-            "SELL": "signal-sell"
-        }[best["signal"]]
+    st.session_state.pair_cooldown[best["asset"]] = datetime.now()
 
-        st.markdown(f"""
-        <div class="block center">
-            <div class="{signal_class}">{best['signal']}</div>
-            <div class="metric">Best Opportunity: {best['asset']}</div>
-            <div class="metric"><b>Confidence:</b> {best['confidence']}%</div>
+    signal_class = {
+        "BUY": "signal-buy",
+        "SELL": "signal-sell"
+    }[best["signal"]]
+
+    st.markdown(f"""
+    <div class="block center">
+        <div class="{signal_class}">{best['signal']}</div>
+        <div class="metric">Best Opportunity: {best['asset']}</div>
+        <div class="metric"><b>Confidence:</b> {best['confidence']}%</div>
         <div class="small">
             State: {best['state']} • 
             Direction: {best['direction']} • 
@@ -660,7 +660,10 @@ if st.button("Scan Market 🔍"):
             🟢 Entry: {best['entry']}<br>
             🔴 Expiry: {best['expiry']}
         </div>
-        """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+else:
+    st.warning("No valid trade found right now. Market may be in cooldown or low quality.")
 
 # ================= USER NOTE =================
 st.markdown("""
