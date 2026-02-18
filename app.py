@@ -444,6 +444,44 @@ def detect_direction(indicators):
 
     return "NEUTRAL"
 
+def detect_trend_pullback(indicators, direction):
+
+    close = indicators["close"]
+    ema20 = indicators["ema20"]
+    ema50 = indicators["ema50"]
+    adx = indicators["adx"]
+
+    price = close.iloc[-1]
+
+    # --- VALUE ZONE ---
+    near_ema20 = abs(price - ema20.iloc[-1]) / price < 0.0035
+    near_ema50 = abs(price - ema50.iloc[-1]) / price < 0.0045
+
+    in_value = near_ema20 or near_ema50
+
+    # --- MOMENTUM COOLING ---
+    adx_now = adx.iloc[-1]
+    adx_prev = adx.iloc[-4]
+
+    cooling = adx_now <= adx_prev
+
+    # --- CONTROLLED MOVE ---
+    recent = close.iloc[-5:]
+    move = abs(recent.iloc[-1] - recent.iloc[0])
+    noise = recent.diff().abs().sum()
+
+    smooth = (move / noise) < 0.55 if noise != 0 else False
+
+    if direction == "BULLISH":
+        if price <= ema20.iloc[-1] and in_value and cooling and smooth:
+            return True
+
+    if direction == "BEARISH":
+        if price >= ema20.iloc[-1] and in_value and cooling and smooth:
+            return True
+
+    return False
+
 def scan_all_markets():
 
     best_trade = None
@@ -486,14 +524,18 @@ def scan_all_markets():
         # ================= SIGNAL DECISION =================
         
         if state == "TREND":
+
+            pullback_ready = detect_trend_pullback(i, direction)
         
-            if direction == "BULLISH":
-                signal, reason, confidence = "BUY", "Trend continuation", 80
-            elif direction == "BEARISH":
-                signal, reason, confidence = "SELL", "Trend continuation", 80
+            if direction == "BULLISH" and pullback_ready:
+                signal, reason, confidence = "BUY", "Trend pullback entry", 85
+        
+            elif direction == "BEARISH" and pullback_ready:
+                signal, reason, confidence = "SELL", "Trend pullback entry", 85
+        
             else:
-                signal, reason, confidence = "WAIT", "No direction", 0
-        
+                signal, reason, confidence = "WAIT", "Waiting for pullback", 0
+
         elif state == "RANGE":
         
             rsi = i["rsi"].iloc[-1]
