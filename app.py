@@ -501,8 +501,8 @@ def scan_all_markets():
         if df is None or i is None:
             continue
 
-            state = classify_market_environment(df, i)
-            direction = detect_direction(i)
+        state = classify_market_environment(df, i)
+        direction = detect_direction(i)
 
         # ================= SUPPORT / RESISTANCE =================
         sr_local = {"support": False, "resistance": False}
@@ -667,10 +667,9 @@ if st.button("Scan Market 🔍"):
             <div class="metric">Best Opportunity: {best['asset']}</div>
             <div class="metric"><b>Confidence:</b> {best['confidence']}%</div>
         <div class="small">
-            Structure: {best['structure']} • 
-            Phase: {best['phase']} • 
-            Regime: {best['regime']} • 
-            Personality: {best['personality']}<br><br>
+            State: {best['state']} • 
+            Direction: {best['direction']} • 
+            Personality: {best['personality']}
            🟢 Entry: {best['entry']}<br>
            🔴 Expiry: {best['expiry']}
         </div>
