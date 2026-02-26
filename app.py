@@ -570,6 +570,13 @@ def scan_all_markets():
         env = environment_strength(i)
         phase = phase_timing(i, bias)
         
+        # ====== COMPATIBILITY STATE ======
+        if env == "STRONG":
+            state = "TREND"
+        elif env == "MODERATE":
+            state = "EXPANSION"
+        else:
+            state = "TRANSITION"
         signal = "WAIT"
         confidence = 0
         reason = "No alignment"
