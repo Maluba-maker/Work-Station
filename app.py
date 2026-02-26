@@ -570,6 +570,9 @@ def scan_all_markets():
         env = environment_strength(i)
         phase = phase_timing(i, bias)
         
+        # Map new bias into old direction for compatibility
+        direction = bias
+        
         # ====== COMPATIBILITY STATE ======
         if env == "STRONG":
             state = "TREND"
