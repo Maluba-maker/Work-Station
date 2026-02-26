@@ -492,17 +492,28 @@ def movement_reality(indicators):
 
     return "CHAOTIC"
 
-
 def structural_bias(df):
 
-    highs = df["High"].iloc[-20:]
-    lows  = df["Low"].iloc[-20:]
+    highs = df["High"]
+    lows  = df["Low"]
 
-    recent_high = highs.iloc[-5:].max()
-    prior_high  = highs.iloc[:5].max()
+    # 🔒 Ensure Series
+    if isinstance(highs, pd.DataFrame):
+        highs = highs.iloc[:, 0]
+    if isinstance(lows, pd.DataFrame):
+        lows = lows.iloc[:, 0]
 
-    recent_low  = lows.iloc[-5:].min()
-    prior_low   = lows.iloc[:5].min()
+    highs = highs.astype(float)
+    lows  = lows.astype(float)
+
+    if len(highs) < 20:
+        return "NEUTRAL"
+
+    recent_high = float(highs.iloc[-5:].max())
+    prior_high  = float(highs.iloc[-20:-10].max())
+
+    recent_low  = float(lows.iloc[-5:].min())
+    prior_low   = float(lows.iloc[-20:-10].min())
 
     if recent_high > prior_high and recent_low > prior_low:
         return "BULLISH"
@@ -511,7 +522,6 @@ def structural_bias(df):
         return "BEARISH"
 
     return "NEUTRAL"
-
 
 def environment_strength(indicators):
 
