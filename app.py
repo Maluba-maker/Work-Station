@@ -470,6 +470,78 @@ def detect_trend_pullback(indicators, direction):
 
     return False
 
+# ================= NEW DECISION BRAIN =================
+
+def movement_reality(indicators):
+    close = indicators["close"]
+    recent = close.iloc[-6:]
+
+    move = abs(recent.iloc[-1] - recent.iloc[0])
+    noise = recent.diff().abs().sum()
+
+    if noise == 0:
+        return "CHAOTIC"
+
+    smoothness = move / noise
+
+    if smoothness > 0.6:
+        return "CLEAN"
+
+    if smoothness > 0.4:
+        return "MODERATE"
+
+    return "CHAOTIC"
+
+
+def structural_bias(df):
+
+    highs = df["High"].iloc[-20:]
+    lows  = df["Low"].iloc[-20:]
+
+    recent_high = highs.iloc[-5:].max()
+    prior_high  = highs.iloc[:5].max()
+
+    recent_low  = lows.iloc[-5:].min()
+    prior_low   = lows.iloc[:5].min()
+
+    if recent_high > prior_high and recent_low > prior_low:
+        return "BULLISH"
+
+    if recent_high < prior_high and recent_low < prior_low:
+        return "BEARISH"
+
+    return "NEUTRAL"
+
+
+def environment_strength(indicators):
+
+    adx = indicators["adx"].iloc[-1]
+    atr = indicators["atr"].iloc[-1]
+    atr_avg = indicators["atr"].rolling(20).mean().iloc[-1]
+
+    if adx > 25 and atr > atr_avg:
+        return "STRONG"
+
+    if adx > 18:
+        return "MODERATE"
+
+    return "WEAK"
+
+
+def phase_timing(indicators, bias):
+
+    close = indicators["close"]
+    last = close.iloc[-1]
+    prev = close.iloc[-4]
+
+    if bias == "BULLISH":
+        return "CONTINUATION" if last >= prev else "PULLBACK"
+
+    if bias == "BEARISH":
+        return "CONTINUATION" if last <= prev else "PULLBACK"
+
+    return "NONE"
+
 def scan_all_markets():
 
     best_trade = None
@@ -483,11 +555,49 @@ def scan_all_markets():
         df = fetch(symbol, "5m", "7d")
         i = indicators(df)
 
-        if df is None or i is None:
-            continue
-
-        state = classify_market_environment(df, i)
-        direction = detect_direction(i)
+        movement = movement_reality(i)
+        bias = structural_bias(df)
+        env = environment_strength(i)
+        phase = phase_timing(i, bias)
+        
+        signal = "WAIT"
+        confidence = 0
+        reason = "No alignment"
+        
+        # ================= DECISION STACK =================
+        
+        if bias != "NEUTRAL":
+        
+            # Clean movement allows full trading
+            if movement == "CLEAN":
+        
+                if env in ["STRONG", "MODERATE"]:
+        
+                    if phase == "CONTINUATION":
+                        signal = "BUY" if bias == "BULLISH" else "SELL"
+                        confidence = 85
+                        reason = "Clean continuation"
+        
+                    elif phase == "PULLBACK" and env == "STRONG":
+                        signal = "BUY" if bias == "BULLISH" else "SELL"
+                        confidence = 75
+                        reason = "Pullback in strong trend"
+        
+            # Moderate movement = safer trades
+            elif movement == "MODERATE":
+        
+                if env == "STRONG" and phase == "CONTINUATION":
+                    signal = "BUY" if bias == "BULLISH" else "SELL"
+                    confidence = 75
+                    reason = "Moderate but strong regime"
+        
+            # Chaotic = still allow strong trends
+            elif movement == "CHAOTIC":
+        
+                if env == "STRONG" and phase == "CONTINUATION":
+                    signal = "BUY" if bias == "BULLISH" else "SELL"
+                    confidence = 65
+                    reason = "Strong trend despite noise"
 
         # ================= SUPPORT / RESISTANCE =================
         sr_local = {"support": False, "resistance": False}
