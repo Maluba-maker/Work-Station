@@ -563,7 +563,7 @@ def scan_all_markets():
             continue
     
         df = fetch(symbol, "5m", "7d")
-       i = indicators(df)
+        i = indicators(df)
 
         # 🚨 Skip if no usable data
         if df is None or df.empty or i is None:
