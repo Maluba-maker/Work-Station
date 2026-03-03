@@ -582,6 +582,12 @@ def scan_all_markets():
         pullback_ready = detect_trend_pullback(i, direction)
         adx = i["adx"].iloc[-1]
 
+        st.write(asset, {
+            "HTF": htf_direction,
+            "M5": direction,
+            "ADX": round(adx,2),
+            "Pullback": pullback_ready
+        })
         signal = "WAIT"
         confidence = 0
         reason = "No alignment"
@@ -589,7 +595,7 @@ def scan_all_markets():
         # ===== CLEAN LOGIC =====
         if direction == htf_direction and direction != "NEUTRAL":
 
-            if 22 <= adx <= 35 and pullback_ready:
+            if adx >= 20 and pullback_ready:
 
                 signal = "BUY" if direction == "BULLISH" else "SELL"
                 confidence = 88
