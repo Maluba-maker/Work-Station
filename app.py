@@ -556,208 +556,63 @@ def scan_all_markets():
 
     best_trade = None
     best_score = 0
-    
+
     for asset, symbol in CURRENCIES.items():
 
         if pair_is_on_cooldown(asset):
             continue
-    
-        df = fetch(symbol, "5m", "7d")
+
+        # ===== HIGHER TIMEFRAME (H1) =====
+        df_h1 = fetch(symbol, "1h", "30d")
+        i_h1 = indicators(df_h1)
+
+        if df_h1 is None or df_h1.empty or i_h1 is None:
+            continue
+
+        htf_direction = detect_direction(i_h1)
+
+        # ===== M5 =====
+        df = fetch(symbol, "5m", "3d")
         i = indicators(df)
 
-        # 🚨 Skip if no usable data
         if df is None or df.empty or i is None:
             continue
-        
-        movement = movement_reality(i)
-        bias = structural_bias(df)
-        env = environment_strength(i)
-        phase = phase_timing(i, bias)
-        
-        # Map new bias into old direction for compatibility
-        direction = bias
-        
-        # ====== COMPATIBILITY STATE ======
-        if env == "STRONG":
-            state = "TREND"
-        elif env == "MODERATE":
-            state = "EXPANSION"
-        else:
-            state = "TRANSITION"
+
+        direction = detect_direction(i)
+        pullback_ready = detect_trend_pullback(i, direction)
+        adx = i["adx"].iloc[-1]
+
         signal = "WAIT"
         confidence = 0
         reason = "No alignment"
-        
-        # ================= DECISION STACK =================
-        
-        if bias != "NEUTRAL":
-        
-            # Clean movement allows full trading
-            if movement == "CLEAN":
-        
-                if env in ["STRONG", "MODERATE"]:
-        
-                    if phase == "CONTINUATION":
-                        signal = "BUY" if bias == "BULLISH" else "SELL"
-                        confidence = 85
-                        reason = "Clean continuation"
-        
-                    elif phase == "PULLBACK" and env == "STRONG":
-                        signal = "BUY" if bias == "BULLISH" else "SELL"
-                        confidence = 75
-                        reason = "Pullback in strong trend"
-        
-            # Moderate movement = safer trades
-            elif movement == "MODERATE":
-        
-                if env == "STRONG" and phase == "CONTINUATION":
-                    signal = "BUY" if bias == "BULLISH" else "SELL"
-                    confidence = 75
-                    reason = "Moderate but strong regime"
-        
-            # Chaotic = still allow strong trends
-            elif movement == "CHAOTIC":
-        
-                if env == "STRONG" and phase == "CONTINUATION":
-                    signal = "BUY" if bias == "BULLISH" else "SELL"
-                    confidence = 65
-                    reason = "Strong trend despite noise"
 
-        # ================= SUPPORT / RESISTANCE =================
-        sr_local = {"support": False, "resistance": False}
-        recent_low  = i["close"].rolling(20).min().iloc[-1]
-        recent_high = i["close"].rolling(20).max().iloc[-1]
-        price = i["close"].iloc[-1]
+        # ===== CLEAN LOGIC =====
+        if direction == htf_direction and direction != "NEUTRAL":
 
-        if abs(price - recent_low) / price < 0.002:
-            sr_local["support"] = True
-        if abs(price - recent_high) / price < 0.002:
-            sr_local["resistance"] = True
+            if 22 <= adx <= 35 and pullback_ready:
 
-        # ================= MARKET STATE =================
-        personality = detect_market_personality(df, i, sr_local)
-        movement = movement_quality(i)
-        range_mode = is_range_market(i, sr_local)
-        pullback = "NONE"
+                signal = "BUY" if direction == "BULLISH" else "SELL"
+                confidence = 88
+                reason = "HTF aligned pullback"
 
-        # ================= SIGNAL DECISION =================
-        
-        if state == "TREND":
+        if signal in ["BUY", "SELL"] and confidence > best_score:
 
-            pullback_ready = detect_trend_pullback(i, direction)
-        
-            if direction == "BULLISH" and pullback_ready:
-                signal, reason, confidence = "BUY", "Trend pullback entry", 85
-        
-            elif direction == "BEARISH" and pullback_ready:
-                signal, reason, confidence = "SELL", "Trend pullback entry", 85
-        
-            else:
-                signal, reason, confidence = "WAIT", "Waiting for pullback", 0
+            last_close = df.index[-1].to_pydatetime()
+            minute = (last_close.minute // 5 + 1) * 5
+            entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
+            expiry_time = entry_time + timedelta(minutes=5)
 
-        elif state == "RANGE":
-        
-            rsi = i["rsi"].iloc[-1]
-        
-            if sr_local["support"] and rsi < 40:
-                signal, reason, confidence = "BUY", "Range bounce", 75
-        
-            elif sr_local["resistance"] and rsi > 60:
-                signal, reason, confidence = "SELL", "Range rejection", 75
-        
-            else:
-                signal, reason, confidence = "WAIT", "Range middle", 0
-        
-        elif state == "EXPANSION":
-        
-            if direction == "BULLISH":
-                signal, reason, confidence = "BUY", "Breakout momentum", 85
-        
-            elif direction == "BEARISH":
-                signal, reason, confidence = "SELL", "Breakout momentum", 85
-        
-            else:
-                signal, reason, confidence = "WAIT", "Weak expansion", 0
-    
-        elif state == "TRANSITION":
-        
-            rsi = i["rsi"].iloc[-1]
-        
-            if direction == "BULLISH" and rsi < 45:
-                signal, reason, confidence = "BUY", "Early reversal forming", 70
-        
-            elif direction == "BEARISH" and rsi > 55:
-                signal, reason, confidence = "SELL", "Early reversal forming", 70
-        
-            else:
-                signal, reason, confidence = "WAIT", "No structure shift", 0
-
-        # ================= SCORING =================
-        if signal in ["BUY", "SELL"]:
-
-            score = confidence
-
-            if pullback == "HEALTHY":
-                score += 10
-            
-            if pullback == "WEAK":
-                score -= 15
-
-            if movement == "CLEAN":
-                score += 10
-        
-            if movement == "CHAOTIC":
-                score -= 10
-
-            adx = i["adx"].iloc[-1]
-            atr = i["atr"].iloc[-1]
-            atr_avg = i["atr"].rolling(20).mean().iloc[-1]
-
-            if 22 <= adx <= 35:
-                score += 15
-
-            if adx > 40:
-                score -= 10
-
-            if atr < atr_avg * 1.2:
-                score += 10
-
-            if atr > atr_avg * 1.6:
-                score -= 10
-
-            if personality == "TREND_DOMINANT":
-                score += 5
-
-            if range_mode:
-                score += 10
-
-            # Range timing boost
-            if personality in ["RANGE_BOUND", "MEAN_REVERTING"]:
-                rsi = i["rsi"].iloc[-1]
-                if signal == "BUY" and rsi < 35:
-                    score += 10
-                if signal == "SELL" and rsi > 65:
-                    score += 10
-
-            # ================= BEST TRADE =================
-            if score > best_score:
-
-                last_close = df.index[-1].to_pydatetime()
-                minute = (last_close.minute // 5 + 1) * 5
-                entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
-                expiry_time = entry_time + timedelta(minutes=5)
-
-                best_score = score
-                best_trade = {
-                    "state": state,
-                    "direction": direction,
-                    "asset": asset,
-                    "signal": signal,
-                    "confidence": score,
-                    "personality": personality,
-                    "entry": entry_time.strftime("%H:%M"),
-                    "expiry": expiry_time.strftime("%H:%M")
-                }
+            best_score = confidence
+            best_trade = {
+                "state": "TREND",
+                "direction": direction,
+                "asset": asset,
+                "signal": signal,
+                "confidence": confidence,
+                "personality": "HTF_ALIGNED",
+                "entry": entry_time.strftime("%H:%M"),
+                "expiry": expiry_time.strftime("%H:%M")
+            }
 
     return best_trade
 
