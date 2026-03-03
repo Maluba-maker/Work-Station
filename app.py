@@ -555,11 +555,15 @@ def phase_timing(indicators, bias):
 def scan_all_markets():
 
     best_trade = None
-    best_score = 0
 
     for asset, symbol in CURRENCIES.items():
 
         if pair_is_on_cooldown(asset):
+            continue
+
+        # ===== NEWS FILTER =====
+        base, quote = asset.split("/")
+        if forex_factory_red_news([base, quote]):
             continue
 
         # ===== HIGHER TIMEFRAME (H1) =====
@@ -571,6 +575,9 @@ def scan_all_markets():
 
         htf_direction = detect_direction(i_h1)
 
+        if htf_direction == "NEUTRAL":
+            continue
+
         # ===== M5 =====
         df = fetch(symbol, "5m", "3d")
         i = indicators(df)
@@ -578,47 +585,50 @@ def scan_all_markets():
         if df is None or df.empty or i is None:
             continue
 
-        direction = detect_direction(i)
-        pullback_ready = detect_trend_pullback(i, direction)
+        m5_direction = detect_direction(i)
+
+        if m5_direction != htf_direction:
+            continue
+
         adx = i["adx"].iloc[-1]
+        pullback_ready = detect_trend_pullback(i, m5_direction)
 
-        st.write(asset, {
-            "HTF": htf_direction,
-            "M5": direction,
-            "ADX": round(adx,2),
-            "Pullback": pullback_ready
-        })
-        signal = "WAIT"
+        signal = None
         confidence = 0
-        reason = "No alignment"
+        reason = ""
 
-        # ===== CLEAN LOGIC =====
-        if direction == htf_direction and direction != "NEUTRAL":
+        # ===== ENTRY LOGIC =====
+        if adx > 20:
 
-            if adx >= 20 and pullback_ready:
+            if pullback_ready:
+                signal = "BUY" if m5_direction == "BULLISH" else "SELL"
+                confidence = 90
+                reason = "Trend pullback entry"
 
-                signal = "BUY" if direction == "BULLISH" else "SELL"
-                confidence = 88
-                reason = "HTF aligned pullback"
+            elif adx > 30:
+                signal = "BUY" if m5_direction == "BULLISH" else "SELL"
+                confidence = 75
+                reason = "Strong trend continuation"
 
-        if signal in ["BUY", "SELL"] and confidence > best_score:
+        if signal:
 
             last_close = df.index[-1].to_pydatetime()
             minute = (last_close.minute // 5 + 1) * 5
             entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
             expiry_time = entry_time + timedelta(minutes=5)
 
-            best_score = confidence
             best_trade = {
                 "state": "TREND",
-                "direction": direction,
+                "direction": m5_direction,
                 "asset": asset,
                 "signal": signal,
                 "confidence": confidence,
-                "personality": "HTF_ALIGNED",
+                "personality": reason,
                 "entry": entry_time.strftime("%H:%M"),
                 "expiry": expiry_time.strftime("%H:%M")
             }
+
+            break  # First valid trade only
 
     return best_trade
 
