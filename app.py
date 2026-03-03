@@ -309,44 +309,29 @@ def range_quality(indicators):
 
     return "POOR"
 
-def detect_pullback_quality(df, indicators, structure):
-
-    if indicators is None:
-        return "NONE"
+def detect_trend_pullback(indicators, direction):
 
     close = indicators["close"]
     ema20 = indicators["ema20"]
-    ema50 = indicators["ema50"]
-    adx = indicators["adx"]
+    rsi = indicators["rsi"]
 
     price = close.iloc[-1]
+    ema = ema20.iloc[-1]
+    rsi_now = rsi.iloc[-1]
 
-    # Near value zone
-    near_value = (
-        abs(price - ema20.iloc[-1]) / price < 0.004 or
-        abs(price - ema50.iloc[-1]) / price < 0.004
-    )
+    # Distance to EMA
+    near_ema = abs(price - ema) / price < 0.005  # 0.5% tolerance
 
-    # Momentum cooling
-    adx_now = adx.iloc[-1]
-    adx_prev = adx.iloc[-4]
+    if direction == "BULLISH":
+        # Pullback = price near EMA and RSI cooled
+        if price <= ema and rsi_now < 55:
+            return True
 
-    momentum_cooling = adx_now <= adx_prev
+    if direction == "BEARISH":
+        if price >= ema and rsi_now > 45:
+            return True
 
-    # Pullback should NOT be explosive
-    recent = close.iloc[-8:]
-    move = abs(recent.iloc[-1] - recent.iloc[0])
-    noise = recent.diff().abs().sum()
-
-    smooth = (move / noise) < 0.55 if noise != 0 else False
-
-    if near_value and momentum_cooling and smooth:
-        return "HEALTHY"
-
-    if near_value and not momentum_cooling:
-        return "WEAK"
-
-    return "NONE"
+    return False
 
 def classify_market_state(structure, phase):
 
