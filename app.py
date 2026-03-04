@@ -622,7 +622,7 @@ def scan_all_markets():
 
         m5_direction = detect_direction(i)
 
-        if m5_direction != htf_direction:
+        if htf_direction == "NEUTRAL":
             continue
 
         adx = i["adx"].iloc[-1]
