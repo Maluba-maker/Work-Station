@@ -626,6 +626,11 @@ def scan_all_markets():
             continue
 
         adx = i["adx"].iloc[-1]
+        movement = movement_reality(i)
+
+        if movement == "CHAOTIC":
+            continue
+        
         pullback_ready = detect_trend_pullback(i, m5_direction)
 
         signal = None
