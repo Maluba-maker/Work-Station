@@ -537,6 +537,25 @@ def phase_timing(indicators, bias):
 
     return "NONE"
 
+def detect_breakout(df):
+
+    highs = df["High"]
+    lows = df["Low"]
+    close = df["Close"]
+
+    recent_high = highs.iloc[-10:-1].max()
+    recent_low = lows.iloc[-10:-1].min()
+
+    price = close.iloc[-1]
+
+    if price > recent_high:
+        return "BREAKOUT_UP"
+
+    if price < recent_low:
+        return "BREAKOUT_DOWN"
+
+    return None
+    
 # ================= DATA =================
 
 def forex_factory_red_news(currencies, window_minutes=30):
@@ -626,6 +645,7 @@ def scan_all_markets():
             continue
 
         adx = i["adx"].iloc[-1]
+        breakout = detect_breakout(df)
         movement = movement_reality(i)
 
         if movement == "CHAOTIC":
