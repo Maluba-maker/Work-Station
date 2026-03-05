@@ -543,10 +543,22 @@ def detect_breakout(df):
     lows = df["Low"]
     close = df["Close"]
 
-    recent_high = highs.iloc[-10:-1].max()
-    recent_low = lows.iloc[-10:-1].min()
+    # Ensure Series
+    if isinstance(highs, pd.DataFrame):
+        highs = highs.iloc[:,0]
+    if isinstance(lows, pd.DataFrame):
+        lows = lows.iloc[:,0]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:,0]
 
-    price = close.iloc[-1]
+    highs = highs.astype(float)
+    lows = lows.astype(float)
+    close = close.astype(float)
+
+    recent_high = float(highs.iloc[-15:-2].max())
+    recent_low = float(lows.iloc[-15:-2].min())
+
+    price = float(close.iloc[-1])
 
     if price > recent_high:
         return "BREAKOUT_UP"
