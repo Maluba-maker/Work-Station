@@ -1,5 +1,4 @@
 import streamlit as st 
-import yfinance as yf
 import ta
 import pandas as pd
 import time
@@ -7,6 +6,7 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 import pytz
+API_KEY = "7064eaebbf5f4add8be4568229c9c035"
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Work-Station", layout="wide")
@@ -49,26 +49,26 @@ body { background:#0b0f14; color:white; }
 
 # ================= MARKETS =================
 CURRENCIES = {
-    "EUR/JPY": "EURJPY=X",
-    "EUR/GBP": "EURGBP=X",
-    "USD/JPY": "JPY=X",
-    "GBP/USD": "GBPUSD=X",
-    "AUD/CAD": "AUDCAD=X",
-    "AUD/CHF": "AUDCHF=X",
-    "GBP/AUD": "GBPAUD=X",
-    "EUR/USD": "EURUSD=X",
-    "AUD/JPY": "AUDJPY=X",
-    "AUD/USD": "AUDUSD=X",
-    "EUR/CHF": "EURCHF=X",
-    "GBP/CHF": "GBPCHF=X",
-    "CHF/JPY": "CHFJPY=X",
-    "EUR/AUD": "EURAUD=X",
-    "GBP/JPY": "GBPJPY=X",
-    "EUR/CAD": "EURCAD=X",
-    "USD/CAD": "CAD=X",
-    "GBP/CAD": "GBPCAD=X",
-    "USD/CHF": "CHF=X",
-    "CAD/JPY": "CADJPY=X"
+    "EUR/JPY": "EURJPY",
+    "EUR/GBP": "EURGBP",
+    "USD/JPY": "USDJPY",
+    "GBP/USD": "GBPUSD",
+    "AUD/CAD": "AUDCAD",
+    "AUD/CHF": "AUDCHF",
+    "GBP/AUD": "GBPAUD",
+    "EUR/USD": "EURUSD",
+    "AUD/JPY": "AUDJPY",
+    "AUD/USD": "AUDUSD",
+    "EUR/CHF": "EURCHF",
+    "GBP/CHF": "GBPCHF",
+    "CHF/JPY": "CHFJPY",
+    "EUR/AUD": "EURAUD",
+    "GBP/JPY": "GBPJPY",
+    "EUR/CAD": "EURCAD",
+    "USD/CAD": "USDCAD",
+    "GBP/CAD": "GBPCAD",
+    "USD/CHF": "USDCHF",
+    "CAD/JPY": "CADJPY"
 }
 
 CRYPTO = {
@@ -85,8 +85,45 @@ COMMODITIES = {
 }
 
 @st.cache_data(ttl=60)
-def fetch(symbol, interval, period):
-    return yf.download(symbol, interval=interval, period=period, progress=False)
+def fetch(symbol, interval, period=None):
+
+    interval_map = {
+        "5m": "5min",
+        "1h": "1h"
+    }
+
+    url = "https://api.twelvedata.com/time_series"
+
+    params = {
+        "symbol": symbol,
+        "interval": interval_map.get(interval, interval),
+        "outputsize": 200,
+        "apikey": API_KEY
+    }
+
+    r = requests.get(url, params=params).json()
+
+    if "values" not in r:
+        return None
+
+    df = pd.DataFrame(r["values"])
+
+    df = df.rename(columns={
+        "datetime": "Datetime",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close"
+    })
+
+    df["Datetime"] = pd.to_datetime(df["Datetime"])
+    df = df.set_index("Datetime")
+
+    df = df.astype(float)
+
+    df = df.iloc[::-1]
+
+    return df
 
 def indicators(df):
     if df is None or df.empty or "Close" not in df.columns:
@@ -427,7 +464,7 @@ def detect_trend_pullback(indicators, direction):
     price = close.iloc[-1]
 
     # --- VALUE ZONE ---
-    near_ema20 = abs(price - ema20.iloc[-1]) / price < 0.0035
+    near_ema20 = abs(price - ema20.iloc[-1]) / price < 0.0006
     near_ema50 = abs(price - ema50.iloc[-1]) / price < 0.0045
 
     in_value = near_ema20 or near_ema50
@@ -543,7 +580,6 @@ def detect_breakout(df):
     lows = df["Low"]
     close = df["Close"]
 
-    # Ensure Series
     if isinstance(highs, pd.DataFrame):
         highs = highs.iloc[:,0]
     if isinstance(lows, pd.DataFrame):
@@ -555,15 +591,17 @@ def detect_breakout(df):
     lows = lows.astype(float)
     close = close.astype(float)
 
-    recent_high = float(highs.iloc[-15:-2].max())
-    recent_low = float(lows.iloc[-15:-2].min())
+    resistance = float(highs.iloc[-20:-3].max())
+    support = float(lows.iloc[-20:-3].min())
 
-    price = float(close.iloc[-1])
+    last = float(close.iloc[-1])
+    prev = float(close.iloc[-2])
 
-    if price > recent_high:
+    # breakout must CLOSE above level
+    if prev <= resistance and last > resistance:
         return "BREAKOUT_UP"
 
-    if price < recent_low:
+    if prev >= support and last < support:
         return "BREAKOUT_DOWN"
 
     return None
@@ -670,7 +708,7 @@ def scan_all_markets():
         reason = ""
 
         # ===== ENTRY LOGIC =====
-        if 28 <= adx <= 40:
+        if 20 <= adx <= 40:
         
             if pullback_ready:
                 signal = "BUY" if m5_direction == "BULLISH" else "SELL"
