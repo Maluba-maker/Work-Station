@@ -708,13 +708,23 @@ def scan_all_markets():
         reason = ""
 
         # ===== ENTRY LOGIC =====
-        if 20 <= adx <= 40:
+        if 20 <= adx <= 45:
         
             if pullback_ready:
                 signal = "BUY" if m5_direction == "BULLISH" else "SELL"
                 confidence = 90
                 reason = "Trend pullback entry"
-        
+
+            elif m5_direction == "BULLISH":
+                signal = "BUY"
+                confidence = 70
+                reason = "Trend continuation"
+            
+            elif m5_direction == "BEARISH":
+                signal = "SELL"
+                confidence = 70
+                reason = "Trend continuation"
+            
             elif breakout == "BREAKOUT_UP":
                 signal = "BUY"
                 confidence = 80
