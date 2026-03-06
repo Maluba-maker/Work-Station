@@ -1,12 +1,12 @@
 import streamlit as st 
 import ta
+import yfinance as yf
 import pandas as pd
 import time
 from datetime import datetime, timedelta 
 import requests
 from bs4 import BeautifulSoup
 import pytz
-API_KEY = "7064eaebbf5f4add8be4568229c9c035"
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Work-Station", layout="wide")
@@ -49,26 +49,26 @@ body { background:#0b0f14; color:white; }
 
 # ================= MARKETS =================
 CURRENCIES = {
-    "EUR/JPY": "EURJPY",
-    "EUR/GBP": "EURGBP",
-    "USD/JPY": "USDJPY",
-    "GBP/USD": "GBPUSD",
-    "AUD/CAD": "AUDCAD",
-    "AUD/CHF": "AUDCHF",
-    "GBP/AUD": "GBPAUD",
-    "EUR/USD": "EURUSD",
-    "AUD/JPY": "AUDJPY",
-    "AUD/USD": "AUDUSD",
-    "EUR/CHF": "EURCHF",
-    "GBP/CHF": "GBPCHF",
-    "CHF/JPY": "CHFJPY",
-    "EUR/AUD": "EURAUD",
-    "GBP/JPY": "GBPJPY",
-    "EUR/CAD": "EURCAD",
-    "USD/CAD": "USDCAD",
-    "GBP/CAD": "GBPCAD",
-    "USD/CHF": "USDCHF",
-    "CAD/JPY": "CADJPY"
+    "EUR/JPY": "EURJPY=X",
+    "EUR/GBP": "EURGBP=X",
+    "USD/JPY": "JPY=X",
+    "GBP/USD": "GBPUSD=X",
+    "AUD/CAD": "AUDCAD=X",
+    "AUD/CHF": "AUDCHF=X",
+    "GBP/AUD": "GBPAUD=X",
+    "EUR/USD": "EURUSD=X",
+    "AUD/JPY": "AUDJPY=X",
+    "AUD/USD": "AUDUSD=X",
+    "EUR/CHF": "EURCHF=X",
+    "GBP/CHF": "GBPCHF=X",
+    "CHF/JPY": "CHFJPY=X",
+    "EUR/AUD": "EURAUD=X",
+    "GBP/JPY": "GBPJPY=X",
+    "EUR/CAD": "EURCAD=X",
+    "USD/CAD": "CAD=X",
+    "GBP/CAD": "GBPCAD=X",
+    "USD/CHF": "CHF=X",
+    "CAD/JPY": "CADJPY=X"
 }
 
 CRYPTO = {
@@ -84,46 +84,9 @@ COMMODITIES = {
     "Copper":"HG=F","Corn":"ZC=F","Wheat":"ZW=F"
 }
 
-@st.cache_data(ttl=300)
-def fetch(symbol, interval, period=None):
-
-    interval_map = {
-        "5m": "5min",
-        "1h": "1h"
-    }
-
-    url = "https://api.twelvedata.com/time_series"
-
-    params = {
-        "symbol": symbol,
-        "interval": interval_map.get(interval, interval),
-        "outputsize": 200,
-        "apikey": API_KEY
-    }
-
-    r = requests.get(url, params=params).json()
-
-    if "values" not in r:
-        return None
-
-    df = pd.DataFrame(r["values"])
-
-    df = df.rename(columns={
-        "datetime": "Datetime",
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close"
-    })
-
-    df["Datetime"] = pd.to_datetime(df["Datetime"])
-    df = df.set_index("Datetime")
-
-    df = df.astype(float)
-
-    df = df.iloc[::-1]
-
-    return df
+@st.cache_data(ttl=60)
+def fetch(symbol, interval, period):
+    return yf.download(symbol, interval=interval, period=period, progress=False)
 
 def indicators(df):
     if df is None or df.empty or "Close" not in df.columns:
