@@ -84,7 +84,7 @@ COMMODITIES = {
     "Copper":"HG=F","Corn":"ZC=F","Wheat":"ZW=F"
 }
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def fetch(symbol, interval, period=None):
 
     interval_map = {
