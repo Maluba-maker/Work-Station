@@ -701,15 +701,8 @@ def scan_all_markets():
 
         if df is None or df.empty or i is None:
             continue
-
-        df = fetch(symbol, "5m", "3d")
-        i = indicators(df)
-        
-        if df is None or df.empty or i is None:
-            continue
-        
+      
         cycle = detect_market_cycle(df, i)
-
         m5_direction = detect_direction(i)
 
         if htf_direction == "NEUTRAL":
@@ -729,7 +722,7 @@ def scan_all_markets():
         reason = ""
 
         # ===== ENTRY LOGIC =====
-
+        
         if cycle == "TREND":
         
             if pullback_ready:
@@ -746,8 +739,7 @@ def scan_all_markets():
                 signal = "SELL"
                 confidence = 70
                 reason = "Trend continuation"
-        
-        
+    
         elif cycle == "CONSOLIDATION":
         
             highs = df["High"].iloc[-20:]
@@ -768,7 +760,6 @@ def scan_all_markets():
                 confidence = 75
                 reason = "Range resistance bounce"
         
-        
         elif cycle == "EXPANSION":
         
             if breakout == "BREAKOUT_UP":
@@ -781,10 +772,22 @@ def scan_all_markets():
                 confidence = 85
                 reason = "Range breakout"
         
-        
         elif cycle == "PRE_BREAKOUT":
         
             continue
+
+       # ===== HTF CONTEXT ADJUSTMENT =====
+
+        if signal:
+        
+            if signal == "BUY" and htf_direction == "BULLISH":
+                confidence += 10
+        
+            elif signal == "SELL" and htf_direction == "BEARISH":
+                confidence += 10
+        
+            else:
+                confidence -= 10
 
         if signal:
 
@@ -794,7 +797,7 @@ def scan_all_markets():
             expiry_time = entry_time + timedelta(minutes=5)
 
             best_trade = {
-                "state": "TREND",
+                "state": cycle,
                 "direction": m5_direction,
                 "asset": asset,
                 "signal": signal,
