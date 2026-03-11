@@ -86,7 +86,14 @@ COMMODITIES = {
 
 @st.cache_data(ttl=60)
 def fetch(symbol, interval, period):
-    return yf.download(symbol, interval=interval, period=period, progress=False)
+    df = yf.download(symbol, interval=interval, period=period, progress=False)
+
+    if df is None or df.empty:
+        return None
+    
+    df = df.dropna()
+    
+    return df
 
 def indicators(df):
     if df is None or df.empty or "Close" not in df.columns:
@@ -744,12 +751,21 @@ def scan_all_markets():
         
             highs = df["High"].iloc[-20:]
             lows = df["Low"].iloc[-20:]
-        
-            resistance = highs.max()
-            support = lows.min()
-        
-            price = i["close"].iloc[-1]
-        
+            
+            # Ensure Series
+            if isinstance(highs, pd.DataFrame):
+                highs = highs.iloc[:, 0]
+            if isinstance(lows, pd.DataFrame):
+                lows = lows.iloc[:, 0]
+            
+            highs = highs.astype(float)
+            lows = lows.astype(float)
+            
+            resistance = float(highs.max())
+            support = float(lows.min())
+            
+            price = float(i["close"].iloc[-1])
+            
             if price <= support * 1.002:
                 signal = "BUY"
                 confidence = 75
