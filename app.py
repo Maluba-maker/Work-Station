@@ -712,7 +712,7 @@ def scan_all_markets():
         breakout = detect_breakout(df)
         movement = movement_reality(i)
 
-        if movement == "CHAOTIC":
+        if movement not in ["CLEAN", "MODERATE"]:
             continue
         
         pullback_ready = detect_trend_pullback(i, m5_direction)
@@ -783,6 +783,18 @@ def scan_all_markets():
                 signal = "SELL"
                 confidence = 80
                 reason = "Pre-breakout expansion"
+
+        elif cycle == "TRANSITION":
+
+            if breakout == "BREAKOUT_UP":
+                signal = "BUY"
+                confidence = 70
+                reason = "Transition breakout"
+        
+            elif breakout == "BREAKOUT_DOWN":
+                signal = "SELL"
+                confidence = 70
+                reason = "Transition breakout"
 
        # ===== HTF CONTEXT ADJUSTMENT =====
 
