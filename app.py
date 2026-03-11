@@ -86,14 +86,19 @@ COMMODITIES = {
 
 @st.cache_data(ttl=60)
 def fetch(symbol, interval, period):
-    df = yf.download(symbol, interval=interval, period=period, progress=False)
 
-    if df is None or df.empty:
+    try:
+        df = yf.download(symbol, interval=interval, period=period, progress=False)
+
+        if df is None or df.empty:
+            return None
+
+        df = df.dropna()
+
+        return df
+
+    except:
         return None
-    
-    df = df.dropna()
-    
-    return df
 
 def indicators(df):
     if df is None or df.empty or "Close" not in df.columns:
@@ -749,18 +754,18 @@ def scan_all_markets():
     
         elif cycle == "CONSOLIDATION":
         
-            highs = df["High"].iloc[-20:]
-            lows = df["Low"].iloc[-20:]
+            highs = df["High"]
+            lows = df["Low"]
             
-            # Ensure Series
+            # Fix yfinance multi-column issue
             if isinstance(highs, pd.DataFrame):
-                highs = highs.iloc[:, 0]
+                highs = highs.iloc[:,0]
+            
             if isinstance(lows, pd.DataFrame):
-                lows = lows.iloc[:, 0]
+                lows = lows.iloc[:,0]
             
-            highs = highs.astype(float)
-            lows = lows.astype(float)
-            
+            highs = highs.astype(float).iloc[-20:]
+            lows = lows.astype(float).iloc[-20:]
             resistance = float(highs.max())
             support = float(lows.min())
             
