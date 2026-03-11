@@ -773,8 +773,16 @@ def scan_all_markets():
                 reason = "Range breakout"
         
         elif cycle == "PRE_BREAKOUT":
-        
-            continue
+
+        if breakout == "BREAKOUT_UP":
+            signal = "BUY"
+            confidence = 80
+            reason = "Pre-breakout expansion"
+    
+        elif breakout == "BREAKOUT_DOWN":
+            signal = "SELL"
+            confidence = 80
+            reason = "Pre-breakout expansion"
 
        # ===== HTF CONTEXT ADJUSTMENT =====
 
