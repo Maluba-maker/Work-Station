@@ -671,7 +671,7 @@ def scan_all_markets():
         reason = ""
 
         # ===== ENTRY LOGIC =====
-        if 23 <= adx <= 48:
+        if 23 <= adx <= 53:
         
             if pullback_ready:
                 signal = "BUY" if m5_direction == "BULLISH" else "SELL"
