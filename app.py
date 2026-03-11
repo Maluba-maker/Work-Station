@@ -568,6 +568,56 @@ def detect_breakout(df):
         return "BREAKOUT_DOWN"
 
     return None
+
+# ===== ADD THIS FUNCTION HERE =====
+
+def detect_market_cycle(df, indicators):
+
+    if df is None or indicators is None or len(df) < 60:
+        return "UNKNOWN"
+
+    close = indicators["close"]
+    adx = indicators["adx"]
+    atr = indicators["atr"]
+
+    adx_now = adx.iloc[-1]
+    adx_prev = adx.iloc[-5]
+
+    atr_now = atr.iloc[-1]
+    atr_avg = atr.rolling(30).mean().iloc[-1]
+
+    highs = df["High"].iloc[-20:]
+    lows = df["Low"].iloc[-20:]
+
+    if isinstance(highs, pd.DataFrame):
+        highs = highs.iloc[:,0]
+    if isinstance(lows, pd.DataFrame):
+        lows = lows.iloc[:,0]
+
+    highs = highs.astype(float)
+    lows = lows.astype(float)
+
+    range_size = highs.max() - lows.min()
+    price = close.iloc[-1]
+
+    tight_range = (range_size / price) < 0.003
+
+    atr_contracting = atr_now < atr_avg * 0.85
+    atr_expanding = atr_now > atr_avg * 1.15
+
+    if adx_now > 25 and not tight_range:
+        return "TREND"
+
+    if adx_now < 20 and atr_contracting and tight_range:
+        return "CONSOLIDATION"
+
+    if adx_now > adx_prev and adx_now < 25 and tight_range:
+        return "PRE_BREAKOUT"
+
+    if atr_expanding and adx_now > 20 and not tight_range:
+        return "EXPANSION"
+
+    return "TRANSITION"
     
 # ================= DATA =================
 
@@ -652,6 +702,14 @@ def scan_all_markets():
         if df is None or df.empty or i is None:
             continue
 
+        df = fetch(symbol, "5m", "3d")
+        i = indicators(df)
+        
+        if df is None or df.empty or i is None:
+            continue
+        
+        cycle = detect_market_cycle(df, i)
+
         m5_direction = detect_direction(i)
 
         if htf_direction == "NEUTRAL":
@@ -671,32 +729,62 @@ def scan_all_markets():
         reason = ""
 
         # ===== ENTRY LOGIC =====
-        if 23 <= adx <= 53:
+
+        if cycle == "TREND":
         
             if pullback_ready:
                 signal = "BUY" if m5_direction == "BULLISH" else "SELL"
                 confidence = 90
                 reason = "Trend pullback entry"
-
+        
             elif m5_direction == "BULLISH":
                 signal = "BUY"
                 confidence = 70
                 reason = "Trend continuation"
-            
+        
             elif m5_direction == "BEARISH":
                 signal = "SELL"
                 confidence = 70
                 reason = "Trend continuation"
-            
-            elif breakout == "BREAKOUT_UP":
+        
+        
+        elif cycle == "CONSOLIDATION":
+        
+            highs = df["High"].iloc[-20:]
+            lows = df["Low"].iloc[-20:]
+        
+            resistance = highs.max()
+            support = lows.min()
+        
+            price = i["close"].iloc[-1]
+        
+            if price <= support * 1.001:
                 signal = "BUY"
-                confidence = 80
-                reason = "Consolidation breakout"
+                confidence = 75
+                reason = "Range support bounce"
+        
+            elif price >= resistance * 0.999:
+                signal = "SELL"
+                confidence = 75
+                reason = "Range resistance bounce"
+        
+        
+        elif cycle == "EXPANSION":
+        
+            if breakout == "BREAKOUT_UP":
+                signal = "BUY"
+                confidence = 85
+                reason = "Range breakout"
         
             elif breakout == "BREAKOUT_DOWN":
                 signal = "SELL"
-                confidence = 80
-                reason = "Consolidation breakout"
+                confidence = 85
+                reason = "Range breakout"
+        
+        
+        elif cycle == "PRE_BREAKOUT":
+        
+            continue
 
         if signal:
 
