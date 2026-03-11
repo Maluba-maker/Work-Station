@@ -750,12 +750,12 @@ def scan_all_markets():
         
             price = i["close"].iloc[-1]
         
-            if price <= support * 1.001:
+            if price <= support * 1.002:
                 signal = "BUY"
                 confidence = 75
                 reason = "Range support bounce"
         
-            elif price >= resistance * 0.999:
+            elif price >= resistance * 0.998:
                 signal = "SELL"
                 confidence = 75
                 reason = "Range resistance bounce"
