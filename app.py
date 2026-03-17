@@ -880,6 +880,8 @@ def scan_all_markets():
                     "entry": entry_time.strftime("%H:%M"),
                     "expiry": expiry_time.strftime("%H:%M")
                 }
+            
+        return best_trade
 
 # ================= HEADER =================
 st.markdown("""
