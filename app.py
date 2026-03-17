@@ -735,7 +735,7 @@ def scan_all_markets():
         breakout = detect_breakout(df)
         movement = movement_reality(i)
 
-        if movement == "CHAOTIC" and cycle != "EXPANSION":
+        if movement == "CHAOTIC" and adx < 20:
             continue
         
         pullback_ready = detect_trend_pullback(i, m5_direction)
@@ -852,10 +852,11 @@ def scan_all_markets():
         if signal:
         
             # ===== M1 CONFIRMATION =====
-            if signal == "BUY" and m1_direction != "BULLISH":
+            # Relax M1 direction filter (for testing)
+            if signal == "BUY" and m1_direction == "BEARISH":
                 continue
-        
-            if signal == "SELL" and m1_direction != "BEARISH":
+            
+            if signal == "SELL" and m1_direction == "BULLISH":
                 continue
         
             if m1_movement == "CHAOTIC":
