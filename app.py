@@ -684,6 +684,7 @@ def forex_factory_red_news(currencies, window_minutes=30):
 def scan_all_markets():
 
     best_trade = None
+    best_score = 0
 
     for asset, symbol in CURRENCIES.items():
 
@@ -734,7 +735,7 @@ def scan_all_markets():
         breakout = detect_breakout(df)
         movement = movement_reality(i)
 
-        if movement not in ["CLEAN", "MODERATE"]:
+        if movement == "CHAOTIC" and cycle != "EXPANSION":
             continue
         
         pullback_ready = detect_trend_pullback(i, m5_direction)
@@ -745,22 +746,28 @@ def scan_all_markets():
 
         # ===== ENTRY LOGIC =====
         
-        if cycle == "TREND":
+       if cycle == "TREND":
+
+           if pullback_ready:
+               signal = "BUY" if m5_direction == "BULLISH" else "SELL"
+               confidence = 90
+               reason = "Trend pullback entry"
         
-            if pullback_ready:
-                signal = "BUY" if m5_direction == "BULLISH" else "SELL"
-                confidence = 90
-                reason = "Trend pullback entry"
+           elif m5_direction == "BULLISH" and adx > 18:
+               signal = "BUY"
+               confidence = 75
+               reason = "Early trend continuation"
         
-            elif m5_direction == "BULLISH":
-                signal = "BUY"
-                confidence = 70
-                reason = "Trend continuation"
+           elif m5_direction == "BEARISH" and adx > 18:
+               signal = "SELL"
+               confidence = 75
+               reason = "Early trend continuation"
         
-            elif m5_direction == "BEARISH":
-                signal = "SELL"
-                confidence = 70
-                reason = "Trend continuation"
+           # 🔥 NEW: SECOND-CHANCE ENTRY
+           elif movement in ["CLEAN", "MODERATE"] and adx > 22:
+               signal = "BUY" if m5_direction == "BULLISH" else "SELL"
+               confidence = 72
+               reason = "Momentum continuation"
     
         elif cycle == "CONSOLIDATION":
         
@@ -852,7 +859,7 @@ def scan_all_markets():
                 continue
         
             # Avoid noisy entries
-            if m1_movement not in ["CLEAN", "MODERATE"]:
+            if m1_movement == "CHAOTIC":
                 continue
         
         if signal:
@@ -865,18 +872,18 @@ def scan_all_markets():
             # 1-minute expiry
             expiry_time = entry_time + timedelta(minutes=1)
 
-            best_trade = {
-                "state": cycle,
-                "direction": m5_direction,
-                "asset": asset,
-                "signal": signal,
-                "confidence": confidence,
-                "personality": reason,
-                "entry": entry_time.strftime("%H:%M"),
-                "expiry": expiry_time.strftime("%H:%M")
-            }
-
-            break  # First valid trade only
+            if confidence > best_score:
+                best_score = confidence
+                best_trade = {
+                    "state": cycle,
+                    "direction": m5_direction,
+                    "asset": asset,
+                    "signal": signal,
+                    "confidence": confidence,
+                    "personality": reason,
+                    "entry": entry_time.strftime("%H:%M"),
+                    "expiry": expiry_time.strftime("%H:%M")
+                }
 
     return best_trade
 
