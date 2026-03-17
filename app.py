@@ -728,7 +728,8 @@ def scan_all_markets():
         cycle = detect_market_cycle(df, i)
         m5_direction = detect_direction(i)
 
-        if htf_direction == "NEUTRAL":
+        # Only skip if completely unclear
+        if htf_direction == "NEUTRAL" and adx < 15:
             continue
 
         adx = i["adx"].iloc[-1]
@@ -859,7 +860,8 @@ def scan_all_markets():
             if signal == "SELL" and m1_direction == "BULLISH":
                 continue
         
-            if m1_movement == "CHAOTIC":
+            # Allow more entries on M1
+            if m1_movement == "CHAOTIC" and adx < 18:
                 continue
         
             # ===== ENTRY TIMING =====
