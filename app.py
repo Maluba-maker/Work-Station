@@ -713,7 +713,17 @@ def scan_all_markets():
 
         if df is None or df.empty or i is None:
             continue
-      
+
+        # ===== M1 (ENTRY CONFIRMATION) =====
+        df_m1 = fetch(symbol, "1m", "1d")
+        i_m1 = indicators(df_m1)
+        
+        if df_m1 is None or df_m1.empty or i_m1 is None:
+            continue
+        
+        m1_direction = detect_direction(i_m1)
+        m1_movement = movement_reality(i_m1)
+        
         cycle = detect_market_cycle(df, i)
         m5_direction = detect_direction(i)
 
@@ -830,12 +840,30 @@ def scan_all_markets():
             else:
                 confidence -= 10
 
+        # ===== M1 ENTRY CONFIRMATION =====
+
+        if signal:
+        
+            # Direction must match
+            if signal == "BUY" and m1_direction != "BULLISH":
+                continue
+        
+            if signal == "SELL" and m1_direction != "BEARISH":
+                continue
+        
+            # Avoid noisy entries
+            if m1_movement not in ["CLEAN", "MODERATE"]:
+                continue
+        
         if signal:
 
-            last_close = df.index[-1].to_pydatetime()
-            minute = (last_close.minute // 5 + 1) * 5
-            entry_time = last_close.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
-            expiry_time = entry_time + timedelta(minutes=5)
+            last_close = df_m1.index[-1].to_pydatetime()
+
+            # Next 1-minute candle
+            entry_time = last_close.replace(second=0, microsecond=0) + timedelta(minutes=1)
+            
+            # 1-minute expiry
+            expiry_time = entry_time + timedelta(minutes=1)
 
             best_trade = {
                 "state": cycle,
