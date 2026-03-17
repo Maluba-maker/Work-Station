@@ -754,7 +754,7 @@ def scan_all_markets():
                confidence = 90
                reason = "Trend pullback entry"
         
-           elif m5_direction == "BULLISH" and adx > 18:
+           elif m5_direction == "BULLISH" and adx > 15:
                signal = "BUY"
                confidence = 75
                reason = "Early trend continuation"
@@ -823,6 +823,12 @@ def scan_all_markets():
                 confidence = 80
                 reason = "Pre-breakout expansion"
 
+        # 🔥 FALLBACK SIGNAL (prevents dead engine)
+        if not signal and m5_direction in ["BULLISH", "BEARISH"]:
+            signal = "BUY" if m5_direction == "BULLISH" else "SELL"
+            confidence = 60
+            reason = "Fallback trend entry"
+            
         elif cycle == "TRANSITION":
 
             if breakout == "BREAKOUT_UP":
