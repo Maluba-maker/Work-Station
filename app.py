@@ -367,7 +367,7 @@ def pair_is_on_cooldown(pair):
     last_time = st.session_state.pair_cooldown[pair]
 
     # 15 minute cooldown
-    cooldown = timedelta(minutes=15)
+    cooldown = timedelta(minutes=5)
 
     return datetime.now() - last_time < cooldown
 
@@ -847,31 +847,27 @@ def scan_all_markets():
             else:
                 confidence -= 10
 
-        # ===== M1 ENTRY CONFIRMATION =====
+        # ===== FINAL ENTRY + CONFIRMATION =====
 
         if signal:
         
-            # Direction must match
+            # ===== M1 CONFIRMATION =====
             if signal == "BUY" and m1_direction != "BULLISH":
                 continue
         
             if signal == "SELL" and m1_direction != "BEARISH":
                 continue
         
-            # Avoid noisy entries
             if m1_movement == "CHAOTIC":
                 continue
         
-        if signal:
-
+            # ===== ENTRY TIMING =====
             last_close = df_m1.index[-1].to_pydatetime()
-
-            # Next 1-minute candle
+        
             entry_time = last_close.replace(second=0, microsecond=0) + timedelta(minutes=1)
-            
-            # 1-minute expiry
             expiry_time = entry_time + timedelta(minutes=1)
-
+        
+            # ===== BEST TRADE SELECTION =====
             if confidence > best_score:
                 best_score = confidence
                 best_trade = {
@@ -884,8 +880,6 @@ def scan_all_markets():
                     "entry": entry_time.strftime("%H:%M"),
                     "expiry": expiry_time.strftime("%H:%M")
                 }
-
-    return best_trade
 
 # ================= HEADER =================
 st.markdown("""
