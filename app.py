@@ -746,7 +746,7 @@ def scan_all_markets():
 
         # ===== ENTRY LOGIC =====
         
-       if cycle == "TREND":
+        if cycle == "TREND":
 
            if pullback_ready:
                signal = "BUY" if m5_direction == "BULLISH" else "SELL"
