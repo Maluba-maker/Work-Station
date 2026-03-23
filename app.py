@@ -717,13 +717,20 @@ def scan_all_markets():
 
         # ===== M1 (ENTRY CONFIRMATION) =====
         df_m1 = fetch(symbol, "1m", "1d")
-        i_m1 = indicators(df_m1)
+
+        # 🔥 Create M2 candles manually
+        df_m2 = df_m1.resample("2T").agg({
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum"
+        }).dropna()
         
-        if df_m1 is None or df_m1.empty or i_m1 is None:
-            continue
+        i_m2 = indicators(df_m2)
         
-        m1_direction = detect_direction(i_m1)
-        m1_movement = movement_reality(i_m1)
+        m2_direction = detect_direction(i_m2)
+        m2_movement = movement_reality(i_m2)
         
         cycle = detect_market_cycle(df, i)
         m5_direction = detect_direction(i)
@@ -872,9 +879,19 @@ def scan_all_markets():
         
             # ===== ENTRY TIMING =====
             last_close = df_m1.index[-1].to_pydatetime()
-        
-            entry_time = last_close.replace(second=0, microsecond=0) + timedelta(minutes=1)
-            expiry_time = entry_time + timedelta(minutes=1)
+
+            minute = last_close.minute
+            
+            # 🔥 Align to next 2-minute candle (even minute: 00, 02, 04...)
+            next_minute = minute + (2 - minute % 2)
+            
+            # Handle edge case (e.g., 59 → 60)
+            if next_minute >= 60:
+                entry_time = last_close.replace(second=0, microsecond=0) + timedelta(minutes=(2 - minute % 2))
+            else:
+                entry_time = last_close.replace(minute=next_minute, second=0, microsecond=0)
+            
+            expiry_time = entry_time + timedelta(minutes=2)
         
             # ===== BEST TRADE SELECTION =====
             if confidence > best_score:
