@@ -718,6 +718,33 @@ def scan_all_markets():
         # ===== M1 (ENTRY CONFIRMATION) =====
         df_m1 = fetch(symbol, "1m", "1d")
 
+        if df_m1 is None or df_m1.empty:
+            continue
+        
+        # 🔥 FIX: Flatten columns (yfinance issue)
+        if isinstance(df_m1.columns, pd.MultiIndex):
+            df_m1.columns = df_m1.columns.get_level_values(0)
+        
+        # 🔥 Ensure correct column names
+        df_m1 = df_m1.rename(columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume"
+        })
+        
+        # 🔥 Keep only required columns
+        required_cols = ["Open", "High", "Low", "Close"]
+        
+        for col in required_cols:
+            if col not in df_m1.columns:
+                continue
+        
+        # Volume is optional
+        if "Volume" not in df_m1.columns:
+            df_m1["Volume"] = 0
+
         # 🔥 Create M2 candles manually
         df_m2 = df_m1.resample("2T").agg({
             "Open": "first",
@@ -864,17 +891,14 @@ def scan_all_markets():
         # ===== FINAL ENTRY + CONFIRMATION =====
 
         if signal:
-        
-            # ===== M1 CONFIRMATION =====
-            # Relax M1 direction filter (for testing)
-            if signal == "BUY" and m1_direction == "BEARISH":
+            # ===== M2 CONFIRMATION =====
+            if signal == "BUY" and m2_direction == "BEARISH":
                 continue
             
-            if signal == "SELL" and m1_direction == "BULLISH":
+            if signal == "SELL" and m2_direction == "BULLISH":
                 continue
-        
-            # Allow more entries on M1
-            if m1_movement == "CHAOTIC" and adx < 18:
+            
+            if m2_movement == "CHAOTIC" and adx < 20:
                 continue
         
             # ===== ENTRY TIMING (FIXED CLEAN VERSION) =====
