@@ -877,18 +877,16 @@ def scan_all_markets():
             if m1_movement == "CHAOTIC" and adx < 18:
                 continue
         
-            # ===== ENTRY TIMING =====
+            # ===== ENTRY TIMING (FIXED CLEAN VERSION) =====
             last_close = df_m1.index[-1].to_pydatetime()
             
-            minute = last_close.minute
+            # 🔥 Always move to NEXT 2-minute candle
+            entry_time = last_close + timedelta(minutes=(2 - last_close.minute % 2))
             
-            next_minute = minute + (2 - minute % 2)
+            # Clean seconds
+            entry_time = entry_time.replace(second=0, microsecond=0)
             
-            if next_minute >= 60:
-                entry_time = last_close.replace(second=0, microsecond=0) + timedelta(minutes=(2 - minute % 2))
-            else:
-                entry_time = last_close.replace(minute=next_minute, second=0, microsecond=0)
-            
+            # ✅ 2-minute expiry
             expiry_time = entry_time + timedelta(minutes=2)
         
             # ===== BEST TRADE SELECTION =====
