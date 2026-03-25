@@ -878,7 +878,7 @@ def scan_all_markets():
             if confidence > best_score:
                 best_score = confidence
                 best_trade = {
-                    "state": momentum,
+                    "state": "MOMENTUM",
                     "direction": m5_direction,
                     "asset": asset,
                     "signal": signal,
