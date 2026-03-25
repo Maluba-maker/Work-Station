@@ -681,6 +681,53 @@ def forex_factory_red_news(currencies, window_minutes=30):
 
     return False
 
+def detect_momentum_and_breakout(df_m1, df_m2, i_m1, i_m2):
+    
+    signal = None
+    confidence = 0
+    reason = ""
+
+    # ===== MOMENTUM BURST (PRIMARY) =====
+    closes = i_m1["close"].iloc[-4:]
+    
+    diffs = closes.diff().dropna()
+    
+    bullish = all(diffs > 0)
+    bearish = all(diffs < 0)
+    
+    body_strength = abs(closes.iloc[-1] - closes.iloc[0])
+    
+    if bullish and body_strength > closes.std() * 0.5:
+        signal = "BUY"
+        confidence = 85
+        reason = "Momentum burst (M1)"
+    
+    elif bearish and body_strength > closes.std() * 0.5:
+        signal = "SELL"
+        confidence = 85
+        reason = "Momentum burst (M1)"
+
+    # ===== BREAKOUT SCALP (STRONGER PRIORITY) =====
+    highs = df_m2["High"].iloc[-15:]
+    lows = df_m2["Low"].iloc[-15:]
+    
+    resistance = highs.max()
+    support = lows.min()
+    
+    price = df_m2["Close"].iloc[-1]
+
+    if price > resistance:
+        signal = "BUY"
+        confidence = 90
+        reason = "Breakout (M2)"
+    
+    elif price < support:
+        signal = "SELL"
+        confidence = 90
+        reason = "Breakout (M2)"
+
+    return signal, confidence, reason
+
 def scan_all_markets():
 
     best_trade = None
@@ -720,7 +767,7 @@ def scan_all_markets():
 
         if df_m1 is None or df_m1.empty:
             continue
-        
+        i_m1 = indicators(df_m1)
         # 🔥 FIX: Flatten columns (yfinance issue)
         if isinstance(df_m1.columns, pd.MultiIndex):
             df_m1.columns = df_m1.columns.get_level_values(0)
@@ -759,121 +806,37 @@ def scan_all_markets():
         m2_direction = detect_direction(i_m2)
         m2_movement = movement_reality(i_m2)
         
-        cycle = detect_market_cycle(df, i)
         m5_direction = detect_direction(i)
 
         # Only skip if completely unclear
+        adx = i["adx"].iloc[-1]
         if htf_direction == "NEUTRAL" and adx < 15:
             continue
-
-        adx = i["adx"].iloc[-1]
+            
         breakout = detect_breakout(df)
         movement = movement_reality(i)
 
         if movement == "CHAOTIC" and adx < 20:
             continue
-        
-        pullback_ready = detect_trend_pullback(i, m5_direction)
 
         signal = None
         confidence = 0
         reason = ""
 
-        # ===== ENTRY LOGIC =====
-        
-        if cycle == "TREND":
+        # ===== NEW 2-MIN ENTRY ENGINE =====
 
-           if pullback_ready:
-               signal = "BUY" if m5_direction == "BULLISH" else "SELL"
-               confidence = 90
-               reason = "Trend pullback entry"
+        signal, confidence, reason = detect_momentum_and_breakout(df_m1, df_m2, i_m1, i_m2)
         
-           elif m5_direction == "BULLISH" and adx > 15:
-               signal = "BUY"
-               confidence = 75
-               reason = "Early trend continuation"
+        # ===== OPTIONAL HTF FILTER (LIGHT FILTER ONLY) =====
         
-           elif m5_direction == "BEARISH" and adx > 18:
-               signal = "SELL"
-               confidence = 75
-               reason = "Early trend continuation"
-        
-           # 🔥 NEW: SECOND-CHANCE ENTRY
-           elif movement in ["CLEAN", "MODERATE"] and adx > 22:
-               signal = "BUY" if m5_direction == "BULLISH" else "SELL"
-               confidence = 72
-               reason = "Momentum continuation"
-    
-        elif cycle == "CONSOLIDATION":
-        
-            highs = df["High"]
-            lows = df["Low"]
+        if signal:
             
-            # Fix yfinance multi-column issue
-            if isinstance(highs, pd.DataFrame):
-                highs = highs.iloc[:,0]
+            # Only reduce bad trades, don’t block everything
+            if signal == "BUY" and htf_direction == "BEARISH":
+                confidence -= 10
             
-            if isinstance(lows, pd.DataFrame):
-                lows = lows.iloc[:,0]
-            
-            highs = highs.astype(float).iloc[-20:]
-            lows = lows.astype(float).iloc[-20:]
-            resistance = float(highs.max())
-            support = float(lows.min())
-            
-            price = float(i["close"].iloc[-1])
-            
-            if price <= support * 1.002:
-                signal = "BUY"
-                confidence = 75
-                reason = "Range support bounce"
-        
-            elif price >= resistance * 0.998:
-                signal = "SELL"
-                confidence = 75
-                reason = "Range resistance bounce"
-        
-        elif cycle == "EXPANSION":
-        
-            if breakout == "BREAKOUT_UP":
-                signal = "BUY"
-                confidence = 85
-                reason = "Range breakout"
-        
-            elif breakout == "BREAKOUT_DOWN":
-                signal = "SELL"
-                confidence = 85
-                reason = "Range breakout"
-        
-        elif cycle == "PRE_BREAKOUT":
-
-            if breakout == "BREAKOUT_UP":
-                signal = "BUY"
-                confidence = 80
-                reason = "Pre-breakout expansion"
-        
-            elif breakout == "BREAKOUT_DOWN":
-                signal = "SELL"
-                confidence = 80
-                reason = "Pre-breakout expansion"
-
-        # 🔥 FALLBACK SIGNAL (prevents dead engine)
-        if not signal and m5_direction in ["BULLISH", "BEARISH"]:
-            signal = "BUY" if m5_direction == "BULLISH" else "SELL"
-            confidence = 60
-            reason = "Fallback trend entry"
-            
-        elif cycle == "TRANSITION":
-
-            if breakout == "BREAKOUT_UP":
-                signal = "BUY"
-                confidence = 70
-                reason = "Transition breakout"
-        
-            elif breakout == "BREAKOUT_DOWN":
-                signal = "SELL"
-                confidence = 70
-                reason = "Transition breakout"
+            elif signal == "SELL" and htf_direction == "BULLISH":
+                confidence -= 10
 
        # ===== HTF CONTEXT ADJUSTMENT =====
 
@@ -891,21 +854,19 @@ def scan_all_markets():
         # ===== FINAL ENTRY + CONFIRMATION =====
 
         if signal:
-            # ===== M2 CONFIRMATION =====
-            if signal == "BUY" and m2_direction == "BEARISH":
-                continue
+            # ===== LIGHT CONFIRMATION (DON’T KILL SIGNALS) =====
+
+            if m2_movement == "CHAOTIC":
+                confidence -= 10
             
-            if signal == "SELL" and m2_direction == "BULLISH":
-                continue
-            
-            if m2_movement == "CHAOTIC" and adx < 20:
-                continue
-        
             # ===== ENTRY TIMING (FIXED CLEAN VERSION) =====
             last_close = df_m1.index[-1].to_pydatetime()
             
             # 🔥 Always move to NEXT 2-minute candle
-            entry_time = last_close + timedelta(minutes=(2 - last_close.minute % 2))
+            entry_time = last_close + timedelta(seconds=5)
+            entry_time = entry_time.replace(microsecond=0)
+            
+            expiry_time = entry_time + timedelta(minutes=2)
             
             # Clean seconds
             entry_time = entry_time.replace(second=0, microsecond=0)
@@ -917,7 +878,7 @@ def scan_all_markets():
             if confidence > best_score:
                 best_score = confidence
                 best_trade = {
-                    "state": cycle,
+                    "state": momentum,
                     "direction": m5_direction,
                     "asset": asset,
                     "signal": signal,
