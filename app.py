@@ -51,7 +51,7 @@ body { background:#0b0f14; color:white; }
 CURRENCIES = {
     "EUR/JPY": "EURJPY=X",
     "EUR/GBP": "EURGBP=X",
-    "USD/JPY": "JPY=X",
+    "USD/JPY": "USDJPY=X",
     "GBP/USD": "GBPUSD=X",
     "AUD/CAD": "AUDCAD=X",
     "AUD/CHF": "AUDCHF=X",
@@ -65,10 +65,21 @@ CURRENCIES = {
     "EUR/AUD": "EURAUD=X",
     "GBP/JPY": "GBPJPY=X",
     "EUR/CAD": "EURCAD=X",
-    "USD/CAD": "CAD=X",
+    "USD/CAD": "USDCAD=X",
     "GBP/CAD": "GBPCAD=X",
-    "USD/CHF": "CHF=X",
-    "CAD/JPY": "CADJPY=X"
+    "USD/CHF": "USDCHF=X",
+    "CAD/JPY": "CADJPY=X",
+    "NZD/USD": "NZDUSD=X",
+    "EUR/NZD": "EURNZD=X",
+    "GBP/NZD": "GBPNZD=X",
+    "AUD/NZD": "AUDNZD=X",
+    "EUR/SGD": "EURSGD=X",
+    "GBP/SGD": "GBPSGD=X",
+    "USD/SGD": "USDSGD=X",
+    "USD/NOK": "USDNOK=X",
+    "USD/SEK": "USDSEK=X",
+    "EUR/NOK": "EURNOK=X",
+    "EUR/SEK": "EURSEK=X"
 }
 
 CRYPTO = {
@@ -859,19 +870,19 @@ def scan_all_markets():
             if m2_movement == "CHAOTIC":
                 confidence -= 10
             
-            # ===== ENTRY TIMING (FIXED CLEAN VERSION) =====
-            last_close = df_m1.index[-1].to_pydatetime()
+            # ===== ENTRY TIMING (CORRECT NEXT 2-MIN CANDLE) =====
+
+            now = datetime.now().replace(second=0, microsecond=0)
             
-            # 🔥 Always move to NEXT 2-minute candle
-            entry_time = last_close + timedelta(seconds=5)
-            entry_time = entry_time.replace(microsecond=0)
+            minute = now.minute
             
-            expiry_time = entry_time + timedelta(minutes=2)
+            # Find next 2-minute candle
+            if minute % 2 == 0:
+                entry_time = now + timedelta(minutes=2)
+            else:
+                entry_time = now + timedelta(minutes=1)
             
-            # Clean seconds
-            entry_time = entry_time.replace(second=0, microsecond=0)
-            
-            # ✅ 2-minute expiry
+            # Expiry = 2 minutes after entry
             expiry_time = entry_time + timedelta(minutes=2)
         
             # ===== BEST TRADE SELECTION =====
