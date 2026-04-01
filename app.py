@@ -803,8 +803,10 @@ def scan_all_markets():
         if "Volume" not in df_m1.columns:
             df_m1["Volume"] = 0
 
+        df_m1.index = pd.to_datetime(df_m1.index)
+        
         # 🔥 Create M2 candles manually
-        df_m2 = df_m1.resample("2T").agg({
+        df_m2 = df_m1.resample("2min").agg({
             "Open": "first",
             "High": "max",
             "Low": "min",
