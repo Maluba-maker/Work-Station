@@ -38,9 +38,22 @@ def fetch_data(interval, period):
 
 # ================= INDICATORS =================
 def indicators(df):
+
     close = df["Close"]
     high = df["High"]
     low = df["Low"]
+
+    # 🔥 FORCE SERIES (CRITICAL FIX)
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    if isinstance(high, pd.DataFrame):
+        high = high.iloc[:, 0]
+    if isinstance(low, pd.DataFrame):
+        low = low.iloc[:, 0]
+
+    close = close.astype(float)
+    high = high.astype(float)
+    low = low.astype(float)
 
     return {
         "close": close,
