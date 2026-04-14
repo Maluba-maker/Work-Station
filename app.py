@@ -81,13 +81,17 @@ def get_signal(df_h1, df_m5, df_m1):
     if i_m5["adx"].iloc[-1] < 20:
         return None, "WEAK MARKET"
 
-    # PULLBACK
-    price = df_m5["Close"].iloc[-1]
-    ema20 = i_m5["ema20"].iloc[-1]
-    ema50 = i_m5["ema50"].iloc[-1]
-    rsi = i_m5["rsi"].iloc[-1]
-
-    in_zone = abs(price - ema20)/price < 0.002 or abs(price - ema50)/price < 0.002
+    # ===== PULLBACK =====
+    price = float(df_m5["Close"].iloc[-1])
+    ema20 = float(i_m5["ema20"].iloc[-1])
+    ema50 = float(i_m5["ema50"].iloc[-1])
+    rsi = float(i_m5["rsi"].iloc[-1])
+    
+    in_zone = (
+        abs(price - ema20)/price < 0.002
+        or
+        abs(price - ema50)/price < 0.002
+    )
 
     if trend == "BUY" and not (in_zone and rsi < 55):
         return None, "NO PULLBACK"
