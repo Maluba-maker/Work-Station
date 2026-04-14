@@ -33,7 +33,24 @@ PAIR = "EURUSD=X"
 @st.cache_data(ttl=60)
 def fetch_data(interval, period):
     df = yf.download(PAIR, interval=interval, period=period, progress=False)
+
+    if df is None or df.empty:
+        return None
+
+    # 🔥 FIX: flatten multi-index columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    df = df.rename(columns={
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume"
+    })
+
     df = df.dropna()
+
     return df
 
 # ================= INDICATORS =================
