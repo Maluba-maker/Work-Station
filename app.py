@@ -105,12 +105,10 @@ def get_signal(df_h1, df_m5, df_m1):
     rsi = float(i_m5["rsi"].iloc[-1])
     
     in_zone = (
-        abs(price - ema20)/price < 0.002
+        abs(price - ema20)/price < 0.003
         or
-        abs(price - ema50)/price < 0.002
+        abs(price - ema50)/price < 0.003
     )
-
-    in_zone = abs(price - ema20)/price < 0.003 or abs(price - ema50)/price < 0.003
     
     st.write("Trend:", trend)
     st.write("ADX:", i_m5["adx"].iloc[-1])
@@ -130,13 +128,19 @@ def get_signal(df_h1, df_m5, df_m1):
     last = df_m1.iloc[-1]
     prev = df_m1.iloc[-2]
 
-    if trend == "BUY":
-        if last["Close"] > last["Open"]:
-            return "BUY", "VALID"
+    if (
+        last["Close"] > last["Open"] and
+        prev["Close"] < prev["Open"] and   # previous candle was bearish (pullback)
+        last["Close"] > prev["Close"]      # reversal confirmation
+    ):
+        return "BUY", "REVERSAL ENTRY"
 
-    if trend == "SELL":
-        if last["Close"] < last["Open"] and last["Close"] < prev["Low"]:
-            return "SELL", "VALID"
+    if (
+        last["Close"] < last["Open"] and
+        prev["Close"] > prev["Open"] and
+        last["Close"] < prev["Close"]
+    ):
+        return "SELL", "REVERSAL ENTRY"
 
     return None, "WAIT ENTRY"
 
