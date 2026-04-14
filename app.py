@@ -110,6 +110,16 @@ def get_signal(df_h1, df_m5, df_m1):
         abs(price - ema50)/price < 0.002
     )
 
+    in_zone = abs(price - ema20)/price < 0.003 or abs(price - ema50)/price < 0.003
+    
+    st.write("Trend:", trend)
+    st.write("ADX:", i_m5["adx"].iloc[-1])
+    st.write("RSI:", i_m5["rsi"].iloc[-1])
+    st.write("Price:", price)
+    st.write("EMA20:", ema20)
+    st.write("EMA50:", ema50)
+    st.write("In Pullback Zone:", in_zone)
+    
     if trend == "BUY" and not (in_zone and rsi < 55):
         return None, "NO PULLBACK"
 
@@ -121,7 +131,7 @@ def get_signal(df_h1, df_m5, df_m1):
     prev = df_m1.iloc[-2]
 
     if trend == "BUY":
-        if last["Close"] > last["Open"] and last["Close"] > prev["High"]:
+        if last["Close"] > last["Open"]:
             return "BUY", "VALID"
 
     if trend == "SELL":
