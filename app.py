@@ -4,6 +4,27 @@ import pandas as pd
 import ta
 from datetime import datetime, timedelta
 
+# ================= PASSWORD =================
+APP_PASSWORD = "2301"
+
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.markdown("## 🔐 Secure Access")
+        pwd = st.text_input("Enter Password", type="password")
+
+        if pwd == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        elif pwd:
+            st.error("Incorrect password")
+
+        st.stop()
+
+check_password()
+
 st.set_page_config(page_title="EURUSD Engine", layout="wide")
 
 PAIR = "EURUSD=X"
