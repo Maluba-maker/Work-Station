@@ -177,6 +177,14 @@ if st.button("Scan Market"):
 
     else:
         st.warning(status)
+    now = datetime.now().replace(second=0, microsecond=0)
+
+    if now.minute % 2 == 0:
+        next_entry = now + timedelta(minutes=2)
+    else:
+        next_entry = now + timedelta(minutes=1)
+    
+    st.write("Next Possible Entry Time:", next_entry.strftime("%H:%M"))
 
 # ================= TRADE LOG =================
 st.subheader("Trade Journal")
