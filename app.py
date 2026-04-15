@@ -101,28 +101,40 @@ def get_signal(df_h1, df_m5, df_m1):
     # ===== PULLBACK =====
     price = float(df_m5["Close"].iloc[-1])
     ema20 = float(i_m5["ema20"].iloc[-1])
-    ema50 = float(i_m5["ema50"].iloc[-1])
     rsi = float(i_m5["rsi"].iloc[-1])
     
-    in_zone = (
-        abs(price - ema20)/price < 0.003
-        or
-        abs(price - ema50)/price < 0.003
-    )
+    # ===== PULLBACK (UPGRADED) =====
+    price = float(df_m5["Close"].iloc[-1])
+    ema20 = float(i_m5["ema20"].iloc[-1])
+    rsi = float(i_m5["rsi"].iloc[-1])
     
     st.write("Trend:", trend)
     st.write("ADX:", i_m5["adx"].iloc[-1])
-    st.write("RSI:", i_m5["rsi"].iloc[-1])
+    st.write("RSI:", rsi)
     st.write("Price:", price)
     st.write("EMA20:", ema20)
-    st.write("EMA50:", ema50)
-    st.write("In Pullback Zone:", in_zone)
     
-    if trend == "BUY" and not (in_zone and rsi < 55):
-        return None, "NO PULLBACK"
-
-    if trend == "SELL" and not (in_zone and rsi > 45):
-        return None, "NO PULLBACK"
+    # BUY pullback must dip + show weakness
+    if trend == "BUY":
+        pullback_valid = (
+            price <= ema20 and
+            rsi < 50
+        )
+        st.write("Pullback Valid:", pullback_valid)
+    
+        if not pullback_valid:
+            return None, "NO VALID PULLBACK"
+    
+    # SELL pullback must rise + show weakness
+    if trend == "SELL":
+        pullback_valid = (
+            price >= ema20 and
+            rsi > 50
+        )
+        st.write("Pullback Valid:", pullback_valid)
+    
+        if not pullback_valid:
+            return None, "NO VALID PULLBACK"
 
     # ENTRY
     last = df_m1.iloc[-1]
