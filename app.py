@@ -95,8 +95,11 @@ def get_signal(df_h1, df_m5, df_m1):
         return None, "NO TREND"
 
     # FILTER
-    if i_m5["adx"].iloc[-1] < 20:
-        return None, "WEAK MARKET"
+    adx = i_m5["adx"].iloc[-1]
+
+    # stronger trend filter
+    if adx < 25:
+        return None, "NO TREND (CONSOLIDATION)"
 
     # ===== PULLBACK =====
     price = float(df_m5["Close"].iloc[-1])
@@ -136,6 +139,20 @@ def get_signal(df_h1, df_m5, df_m1):
         if not pullback_valid:
             return None, "NO VALID PULLBACK"
 
+    recent = df_m5["Close"].iloc[-5:]
+
+    move = abs(recent.iloc[-1] - recent.iloc[0])
+    noise = recent.diff().abs().sum()
+    
+    if noise == 0 or (move / noise) < 0.5:
+        return None, "CHOPPY MARKET"
+    
+    # ===== FINAL TREND CONFIRMATION =====
+    m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
+    
+    if m5_trend != trend:
+        return None, "TREND MISALIGNMENT"
+    
     # ENTRY
     last = df_m1.iloc[-1]
     prev = df_m1.iloc[-2]
