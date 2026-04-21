@@ -62,13 +62,7 @@ def indicators(df):
     close = df["Close"]
     high = df["High"]
     low = df["Low"]
-    i_h1 = indicators(df_h1)
-    i_m5 = indicators(df_m5)
 
-    if i_h1 is None or i_m5 is None:
-        return None, "INDICATOR ERROR"
-
-    # 🔥 FORCE SERIES (CRITICAL FIX)
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
     if isinstance(high, pd.DataFrame):
