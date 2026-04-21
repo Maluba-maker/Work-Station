@@ -56,9 +56,17 @@ def fetch_data(interval, period):
 # ================= INDICATORS =================
 def indicators(df):
 
+    if df is None or df.empty:
+        return None
+
     close = df["Close"]
     high = df["High"]
     low = df["Low"]
+    i_h1 = indicators(df_h1)
+    i_m5 = indicators(df_m5)
+
+    if i_h1 is None or i_m5 is None:
+        return None, "INDICATOR ERROR"
 
     # 🔥 FORCE SERIES (CRITICAL FIX)
     if isinstance(close, pd.DataFrame):
@@ -83,8 +91,18 @@ def indicators(df):
 
 # ================= STRATEGY =================
 def get_signal(df_h1, df_m5, df_m1):
+
+    # 🔥 STEP 1: validate data FIRST
+    if df_h1 is None or df_m5 is None or df_m1 is None:
+        return None, "DATA ERROR"
+
+    # 🔥 STEP 2: THEN calculate indicators
     i_h1 = indicators(df_h1)
     i_m5 = indicators(df_m5)
+
+    # 🔥 STEP 3: validate indicators
+    if i_h1 is None or i_m5 is None:
+        return None, "INDICATOR ERROR"
 
     # TREND
     if i_h1["ema20"].iloc[-1] > i_h1["ema50"].iloc[-1] > i_h1["ema100"].iloc[-1]:
