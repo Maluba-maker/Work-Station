@@ -87,8 +87,8 @@ def indicators(df):
 def get_signal(df_h1, df_m5, df_m1):
 
     # 🔥 STEP 1: validate data FIRST
-    if df_h1 is None or df_m5 is None or df_m1 is None:
-        return None, "DATA ERROR"
+    if len(df_h1) < 100 or len(df_m5) < 100 or len(df_m1) < 50:
+        return None, "INSUFFICIENT DATA"
 
     # 🔥 STEP 2: THEN calculate indicators
     i_h1 = indicators(df_h1)
@@ -110,8 +110,8 @@ def get_signal(df_h1, df_m5, df_m1):
     adx = i_m5["adx"].iloc[-1]
 
     # stronger trend filter
-    if adx < 25:
-        return None, "NO TREND (CONSOLIDATION)"
+    if adx < 18:
+        return None, "WEAK TREND"
 
     # ===== PULLBACK =====
     price = float(df_m5["Close"].iloc[-1])
@@ -123,17 +123,18 @@ def get_signal(df_h1, df_m5, df_m1):
     ema20 = float(i_m5["ema20"].iloc[-1])
     rsi = float(i_m5["rsi"].iloc[-1])
     
-    st.write("Trend:", trend)
-    st.write("ADX:", i_m5["adx"].iloc[-1])
-    st.write("RSI:", rsi)
-    st.write("Price:", price)
-    st.write("EMA20:", ema20)
+    st.write({
+        "trend": trend,
+        "adx": float(i_m5["adx"].iloc[-1]),
+        "price": price,
+        "ema20": ema20,
+        "rsi": rsi
+    })
     
     # BUY pullback must dip + show weakness
     if trend == "BUY":
         pullback_valid = (
-            price <= ema20 and
-            rsi < 50
+            pullback_valid = abs(price - ema20) / ema20 < 0.002
         )
         st.write("Pullback Valid:", pullback_valid)
     
@@ -143,22 +144,13 @@ def get_signal(df_h1, df_m5, df_m1):
     # SELL pullback must rise + show weakness
     if trend == "SELL":
         pullback_valid = (
-            price >= ema20 and
-            rsi > 50
+            pullback_valid = abs(price - ema20) / ema20 < 0.002
         )
         st.write("Pullback Valid:", pullback_valid)
     
         if not pullback_valid:
             return None, "NO VALID PULLBACK"
-
-    recent = df_m5["Close"].iloc[-5:]
-
-    move = abs(recent.iloc[-1] - recent.iloc[0])
-    noise = recent.diff().abs().sum()
-    
-    if noise == 0 or (move / noise) < 0.5:
-        return None, "CHOPPY MARKET"
-    
+  
     # ===== FINAL TREND CONFIRMATION =====
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
     
@@ -167,14 +159,12 @@ def get_signal(df_h1, df_m5, df_m1):
     
     # ENTRY
     last = df_m1.iloc[-1]
-    prev = df_m1.iloc[-2]
-
-    if (
-        last["Close"] > last["Open"] and
-        prev["Close"] < prev["Open"] and   # previous candle was bearish (pullback)
-        last["Close"] > prev["Close"]      # reversal confirmation
-    ):
-        return "BUY", "REVERSAL ENTRY"
+    
+    if trend == "BUY" and last["Close"] > last["Open"]:
+        return "BUY", "MOMENTUM ENTRY"
+    
+    if trend == "SELL" and last["Close"] < last["Open"]:
+        return "SELL", "MOMENTUM ENTRY"
 
     if (
         last["Close"] < last["Open"] and
