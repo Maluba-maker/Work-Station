@@ -86,19 +86,20 @@ def indicators(df):
 # ================= STRATEGY =================
 def get_signal(df_h1, df_m5, df_m1):
 
-    # 🔥 STEP 1: validate data FIRST
+    # VALIDATION
+    if df_h1 is None or df_m5 is None or df_m1 is None:
+        return None, "DATA ERROR"
+
     if len(df_h1) < 100 or len(df_m5) < 100 or len(df_m1) < 50:
         return None, "INSUFFICIENT DATA"
 
-    # 🔥 STEP 2: THEN calculate indicators
     i_h1 = indicators(df_h1)
     i_m5 = indicators(df_m5)
 
-    # 🔥 STEP 3: validate indicators
     if i_h1 is None or i_m5 is None:
         return None, "INDICATOR ERROR"
 
-    # TREND
+    # TREND (H1)
     if i_h1["ema20"].iloc[-1] > i_h1["ema50"].iloc[-1] > i_h1["ema100"].iloc[-1]:
         trend = "BUY"
     elif i_h1["ema20"].iloc[-1] < i_h1["ema50"].iloc[-1] < i_h1["ema100"].iloc[-1]:
@@ -106,68 +107,47 @@ def get_signal(df_h1, df_m5, df_m1):
     else:
         return None, "NO TREND"
 
-    # FILTER
+    # ADX FILTER (RELAXED)
     adx = i_m5["adx"].iloc[-1]
-
-    # stronger trend filter
-    if adx < 18:
+    if adx < 15:
         return None, "WEAK TREND"
 
-    # ===== PULLBACK =====
+    # PULLBACK
     price = float(df_m5["Close"].iloc[-1])
     ema20 = float(i_m5["ema20"].iloc[-1])
     rsi = float(i_m5["rsi"].iloc[-1])
-    
-    # ===== PULLBACK (UPGRADED) =====
-    price = float(df_m5["Close"].iloc[-1])
-    ema20 = float(i_m5["ema20"].iloc[-1])
-    rsi = float(i_m5["rsi"].iloc[-1])
-    
+
     st.write({
         "trend": trend,
-        "adx": float(i_m5["adx"].iloc[-1]),
+        "adx": float(adx),
         "price": price,
         "ema20": ema20,
         "rsi": rsi
     })
-    
-    # BUY pullback must dip + show weakness
-    if trend == "BUY":
-        pullback_valid = abs(price - ema20) / ema20 < 0.002
-        
-        st.write("Pullback Valid:", pullback_valid)
-    
-        if not pullback_valid:
-            return None, "NO VALID PULLBACK"
-    
-    # SELL pullback must rise + show weakness
-    if trend == "SELL":
-        pullback_valid = abs(price - ema20) / ema20 < 0.002
-        
-        st.write("Pullback Valid:", pullback_valid)
-    
-        if not pullback_valid:
-            return None, "NO VALID PULLBACK"
-  
-    # ===== FINAL TREND CONFIRMATION =====
+
+    pullback_valid = abs(price - ema20) / ema20 < 0.004
+
+    if not pullback_valid:
+        return None, "NO VALID PULLBACK"
+
+    # SOFT TREND CHECK
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
-    
-    # SOFT CHECK (do NOT block trades)
+
     if m5_trend != trend:
-        st.write("⚠️ M5 counter-trend (pullback phase)")
-    
-    # ENTRY (IMPROVED)
+        st.write("⚠️ M5 counter-trend")
+
+    # ENTRY
     last3 = df_m1.iloc[-3:]
-    
+
     bullish = (last3["Close"] > last3["Open"]).sum()
     bearish = (last3["Close"] < last3["Open"]).sum()
-    
+
     if trend == "BUY" and bullish >= 2:
         return "BUY", "MOMENTUM BUILDING"
-    
+
     if trend == "SELL" and bearish >= 2:
         return "SELL", "MOMENTUM BUILDING"
-    
+
     return None, "WAIT ENTRY"
 
 # ================= LOGGER =================
