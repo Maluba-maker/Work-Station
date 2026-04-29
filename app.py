@@ -152,8 +152,9 @@ def get_signal(df_h1, df_m5, df_m1):
     # ===== FINAL TREND CONFIRMATION =====
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
     
+    # SOFT CHECK (do NOT block trades)
     if m5_trend != trend:
-        return None, "TREND MISALIGNMENT"
+        st.write("⚠️ M5 counter-trend (pullback phase)")
     
     # ENTRY (IMPROVED)
     last3 = df_m1.iloc[-3:]
@@ -166,7 +167,7 @@ def get_signal(df_h1, df_m5, df_m1):
     
     if trend == "SELL" and bearish >= 2:
         return "SELL", "MOMENTUM BUILDING"
-
+    
     return None, "WAIT ENTRY"
 
 # ================= LOGGER =================
