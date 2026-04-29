@@ -155,21 +155,17 @@ def get_signal(df_h1, df_m5, df_m1):
     if m5_trend != trend:
         return None, "TREND MISALIGNMENT"
     
-    # ENTRY
-    last = df_m1.iloc[-1]
+    # ENTRY (IMPROVED)
+    last3 = df_m1.iloc[-3:]
     
-    if trend == "BUY" and last["Close"] > last["Open"]:
-        return "BUY", "MOMENTUM ENTRY"
+    bullish = (last3["Close"] > last3["Open"]).sum()
+    bearish = (last3["Close"] < last3["Open"]).sum()
     
-    if trend == "SELL" and last["Close"] < last["Open"]:
-        return "SELL", "MOMENTUM ENTRY"
-
-    if (
-        last["Close"] < last["Open"] and
-        prev["Close"] > prev["Open"] and
-        last["Close"] < prev["Close"]
-    ):
-        return "SELL", "REVERSAL ENTRY"
+    if trend == "BUY" and bullish >= 2:
+        return "BUY", "MOMENTUM BUILDING"
+    
+    if trend == "SELL" and bearish >= 2:
+        return "SELL", "MOMENTUM BUILDING"
 
     return None, "WAIT ENTRY"
 
