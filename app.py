@@ -133,9 +133,8 @@ def get_signal(df_h1, df_m5, df_m1):
     
     # BUY pullback must dip + show weakness
     if trend == "BUY":
-        pullback_valid = (
-            pullback_valid = abs(price - ema20) / ema20 < 0.002
-        )
+        pullback_valid = abs(price - ema20) / ema20 < 0.002
+        
         st.write("Pullback Valid:", pullback_valid)
     
         if not pullback_valid:
@@ -143,9 +142,8 @@ def get_signal(df_h1, df_m5, df_m1):
     
     # SELL pullback must rise + show weakness
     if trend == "SELL":
-        pullback_valid = (
-            pullback_valid = abs(price - ema20) / ema20 < 0.002
-        )
+        pullback_valid = abs(price - ema20) / ema20 < 0.002
+        
         st.write("Pullback Valid:", pullback_valid)
     
         if not pullback_valid:
