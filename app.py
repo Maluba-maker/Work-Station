@@ -124,7 +124,7 @@ def get_signal(df_h1, df_m5, df_m1):
         "rsi": rsi
     })
 
-    pullback_valid = abs(price - ema20) / ema20 < 0.004
+    pullback_valid = abs(price - ema20) / ema20 < 0.006
 
     if not pullback_valid:
         return None, "NO VALID PULLBACK"
@@ -135,19 +135,19 @@ def get_signal(df_h1, df_m5, df_m1):
     if m5_trend != trend:
         st.write("⚠️ M5 counter-trend")
 
-    # ENTRY (REVERSAL SHIFT)
+    # ENTRY (EMA REACTION)
     last = df_m1.iloc[-1]
     prev = df_m1.iloc[-2]
     
-    # SELL: detect rejection from pullback
-    if trend == "SELL":
-        if prev["Close"] > prev["Open"] and last["Close"] < last["Open"]:
-            return "SELL", "REVERSAL SHIFT"
-    
-    # BUY: detect rejection from pullback
+    # BUY: price rejecting EMA upward
     if trend == "BUY":
-        if prev["Close"] < prev["Open"] and last["Close"] > last["Open"]:
-            return "BUY", "REVERSAL SHIFT"
+        if prev["Low"] <= ema20 and last["Close"] > prev["Close"]:
+            return "BUY", "EMA REJECTION"
+    
+    # SELL: price rejecting EMA downward
+    if trend == "SELL":
+        if prev["High"] >= ema20 and last["Close"] < prev["Close"]:
+            return "SELL", "EMA REJECTION"
     
     return None, "WAIT ENTRY"
 
