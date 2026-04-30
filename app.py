@@ -133,21 +133,23 @@ def get_signal(df_h1, df_m5, df_m1):
     # SOFT TREND CHECK
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
 
-    if m5_trend != trend:
-        st.write("⚠️ M5 counter-trend")
+    if m2_trend != trend:
+        st.write("⚠️ M2 counter-trend")
 
-    # ENTRY
-    last3 = df_m1.iloc[-3:]
-
-    bullish = (last3["Close"] > last3["Open"]).sum()
-    bearish = (last3["Close"] < last3["Open"]).sum()
-
-    if trend == "BUY" and bullish >= 2:
-        return "BUY", "MOMENTUM BUILDING"
-
-    if trend == "SELL" and bearish >= 2:
-        return "SELL", "MOMENTUM BUILDING"
-
+    # ENTRY (REVERSAL SHIFT)
+    last = df_m1.iloc[-1]
+    prev = df_m1.iloc[-2]
+    
+    # SELL: detect rejection from pullback
+    if trend == "SELL":
+        if prev["Close"] > prev["Open"] and last["Close"] < last["Open"]:
+            return "SELL", "REVERSAL SHIFT"
+    
+    # BUY: detect rejection from pullback
+    if trend == "BUY":
+        if prev["Close"] < prev["Open"] and last["Close"] > last["Open"]:
+            return "BUY", "REVERSAL SHIFT"
+    
     return None, "WAIT ENTRY"
 
 # ================= LOGGER =================
