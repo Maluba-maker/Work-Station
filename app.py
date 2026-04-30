@@ -133,8 +133,8 @@ def get_signal(df_h1, df_m5, df_m1):
     # SOFT TREND CHECK
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
 
-    if m2_trend != trend:
-        st.write("⚠️ M2 counter-trend")
+    if m5_trend != trend:
+        st.write("⚠️ M5 counter-trend")
 
     # ENTRY (REVERSAL SHIFT)
     last = df_m1.iloc[-1]
