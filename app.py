@@ -100,12 +100,11 @@ def get_signal(df_h1, df_m5, df_m1):
         return None, "INDICATOR ERROR"
 
     # TREND (H1)
-    if i_h1["ema20"].iloc[-1] > i_h1["ema50"].iloc[-1] > i_h1["ema100"].iloc[-1]:
+    # replace H1 trend with M5 trend
+    if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1]:
         trend = "BUY"
-    elif i_h1["ema20"].iloc[-1] < i_h1["ema50"].iloc[-1] < i_h1["ema100"].iloc[-1]:
-        trend = "SELL"
     else:
-        return None, "NO TREND"
+        trend = "SELL"
 
     # ADX FILTER (RELAXED)
     adx = i_m5["adx"].iloc[-1]
