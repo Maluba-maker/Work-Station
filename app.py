@@ -125,14 +125,6 @@ def get_signal(df_h1, df_m5, df_m1):
     ema20 = float(i_m5["ema20"].iloc[-1])
     rsi = float(i_m5["rsi"].iloc[-1])
 
-    st.write({
-        "trend": trend,
-        "adx": float(adx),
-        "price": price,
-        "ema20": ema20,
-        "rsi": rsi
-    })
-
     distance = abs(price - ema20) / ema20
 
     pullback_valid = distance < 0.006
@@ -198,21 +190,26 @@ if st.button("Scan Market"):
 
         signal, status = get_signal(df_h1, df_m5, df_m1)
 
+        st.subheader(f"📊 {pair}")
+
         if signal:
             now = datetime.now().replace(second=0, microsecond=0)
-
+        
             if now.minute % 2 == 0:
                 entry = now + timedelta(minutes=2)
             else:
                 entry = now + timedelta(minutes=1)
-
+        
             expiry = entry + timedelta(minutes=2)
-
-            st.subheader(pair)
-            st.success(f"{pair} → {signal}")
+        
+            st.success(f"Signal: {signal} ({status})")
             st.write(f"Entry: {entry.strftime('%H:%M')}")
             st.write(f"Expiry: {expiry.strftime('%H:%M')}")
+        else:
+            st.warning(status)
 
+        st.markdown("---")
+            
             if st.button(f"Log Trade {pair}"):
                 st.session_state.trades.append({
                     "time": entry.strftime('%H:%M'),
