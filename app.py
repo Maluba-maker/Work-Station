@@ -99,12 +99,16 @@ def get_signal(df_h1, df_m5, df_m1):
     if i_h1 is None or i_m5 is None:
         return None, "INDICATOR ERROR"
 
-    # TREND (H1)
-    # replace H1 trend with M5 trend
-    if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1]:
+    ema20_m5 = i_m5["ema20"].iloc[-1]
+    ema50_m5 = i_m5["ema50"].iloc[-1]
+    price_m5 = df_m5["Close"].iloc[-1]
+    
+    if ema20_m5 > ema50_m5 and price_m5 > ema20_m5:
         trend = "BUY"
-    else:
+    elif ema20_m5 < ema50_m5 and price_m5 < ema20_m5:
         trend = "SELL"
+    else:
+        return None, "NO CLEAR TREND"
 
     # ADX FILTER (RELAXED)
     adx = i_m5["adx"].iloc[-1]
@@ -124,10 +128,14 @@ def get_signal(df_h1, df_m5, df_m1):
         "rsi": rsi
     })
 
-    pullback_valid = abs(price - ema20) / ema20 < 0.006
+    distance = abs(price - ema20) / ema20
 
-    if not pullback_valid:
-        return None, "NO VALID PULLBACK"
+    pullback_valid = distance < 0.006
+    momentum_move = distance >= 0.006  # NEW
+    
+    # Allow either pullback OR strong momentum
+    if not (pullback_valid or momentum_move):
+        return None, "NO SETUP"
 
     # SOFT TREND CHECK
     m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
@@ -135,19 +143,36 @@ def get_signal(df_h1, df_m5, df_m1):
     if m5_trend != trend:
         st.write("⚠️ M5 counter-trend")
 
+    i_m1 = indicators(df_m1)
+    if i_m1 is None:
+        return None, "M1 INDICATOR ERROR"
+    
+    ema20_m1 = float(i_m1["ema20"].iloc[-1])
+    
     # ENTRY (EMA REACTION)
     last = df_m1.iloc[-1]
     prev = df_m1.iloc[-2]
     
-    # BUY: price rejecting EMA upward
     if trend == "BUY":
-        if prev["Low"] <= ema20 and last["Close"] > prev["Close"]:
+        if prev["Low"] <= ema20_m1 and last["Close"] > prev["Close"]:
             return "BUY", "EMA REJECTION"
+        
+        body = abs(last["Close"] - last["Open"])
+        prev_body = abs(prev["Close"] - prev["Open"])
     
-    # SELL: price rejecting EMA downward
+        if last["Close"] > last["Open"] and body > prev_body:
+            return "BUY", "MOMENTUM"
+    
     if trend == "SELL":
-        if prev["High"] >= ema20 and last["Close"] < prev["Close"]:
+        if prev["High"] >= ema20_m1 and last["Close"] < prev["Close"]:
             return "SELL", "EMA REJECTION"
+    
+        # 2. NEW: Momentum continuation
+        body = abs(last["Close"] - last["Open"])
+        prev_body = abs(prev["Close"] - prev["Open"])
+    
+        if last["Close"] < last["Open"] and body > prev_body:
+            return "SELL", "MOMENTUM"
     
     return None, "WAIT ENTRY"
 
