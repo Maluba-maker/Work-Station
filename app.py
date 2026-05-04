@@ -210,13 +210,13 @@ if st.button("Scan Market"):
 
         st.markdown("---")
             
-            if st.button(f"Log Trade {pair}"):
-                st.session_state.trades.append({
-                    "time": entry.strftime('%H:%M'),
-                    "signal": signal,
-                    "pair": pair,
-                    "result": None
-                })
+        if st.button(f"Log Trade {pair}"):
+            st.session_state.trades.append({
+                "time": entry.strftime('%H:%M'),
+                "signal": signal,
+                "pair": pair,
+                "result": None
+            })
 
         else:
             # OPTIONAL: comment this out if too noisy
