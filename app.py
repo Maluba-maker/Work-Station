@@ -27,12 +27,17 @@ check_password()
 
 st.set_page_config(page_title="EURUSD Engine", layout="wide")
 
-PAIR = "EURUSD=X"
+PAIRS = [
+    "EURUSD=X",
+    "GBPUSD=X",
+    "USDJPY=X",
+    "AUDUSD=X"
+]
 
 # ================= DATA =================
 @st.cache_data(ttl=60)
-def fetch_data(interval, period):
-    df = yf.download(PAIR, interval=interval, period=period, progress=False)
+def fetch_data(pair, interval, period):
+    df = yf.download(pair, interval=interval, period=period, progress=False)
 
     if df is None or df.empty:
         return None
@@ -184,42 +189,50 @@ if "trades" not in st.session_state:
 st.title("EUR/USD Precision Engine")
 
 if st.button("Scan Market"):
-    df_h1 = fetch_data("1h", "30d")
-    df_m5 = fetch_data("5m", "5d")
-    df_m1 = fetch_data("1m", "1d")
 
-    signal, status = get_signal(df_h1, df_m5, df_m1)
+    for pair in PAIRS:
 
-    if signal:
-        now = datetime.now().replace(second=0, microsecond=0)
+        df_h1 = fetch_data(pair, "1h", "30d")
+        df_m5 = fetch_data(pair, "5m", "5d")
+        df_m1 = fetch_data(pair, "1m", "1d")
 
-        if now.minute % 2 == 0:
-            entry = now + timedelta(minutes=2)
+        signal, status = get_signal(df_h1, df_m5, df_m1)
+
+        if signal:
+            now = datetime.now().replace(second=0, microsecond=0)
+
+            if now.minute % 2 == 0:
+                entry = now + timedelta(minutes=2)
+            else:
+                entry = now + timedelta(minutes=1)
+
+            expiry = entry + timedelta(minutes=2)
+
+            st.subheader(pair)
+            st.success(f"{pair} → {signal}")
+            st.write(f"Entry: {entry.strftime('%H:%M')}")
+            st.write(f"Expiry: {expiry.strftime('%H:%M')}")
+
+            if st.button(f"Log Trade {pair}"):
+                st.session_state.trades.append({
+                    "time": entry.strftime('%H:%M'),
+                    "signal": signal,
+                    "pair": pair,
+                    "result": None
+                })
+
         else:
-            entry = now + timedelta(minutes=1)
+            # OPTIONAL: comment this out if too noisy
+            # st.warning(f"{pair}: {status}")
+            pass
 
-        expiry = entry + timedelta(minutes=2)
-
-        st.success(f"Signal: {signal}")
-        st.write(f"Entry: {entry.strftime('%H:%M')}")
-        st.write(f"Expiry: {expiry.strftime('%H:%M')}")
-
-        if st.button("Log Trade"):
-            st.session_state.trades.append({
-                "time": entry.strftime('%H:%M'),
-                "signal": signal,
-                "result": None
-            })
-
-    else:
-        st.warning(status)
     now = datetime.now().replace(second=0, microsecond=0)
 
     if now.minute % 2 == 0:
         next_entry = now + timedelta(minutes=2)
     else:
         next_entry = now + timedelta(minutes=1)
-    
+
     st.write("Next Possible Entry Time:", next_entry.strftime("%H:%M"))
 
 # ================= TRADE LOG =================
