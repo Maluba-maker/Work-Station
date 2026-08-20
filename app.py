@@ -25,15 +25,16 @@ st.caption(
 # CONFIGURATION
 # ============================================================
 
-MIN_COMPONENT_AREA = 15
-MIN_COMPONENT_WIDTH = 2
-MIN_COMPONENT_HEIGHT = 5
+MIN_COMPONENT_AREA = 8
+MIN_COMPONENT_WIDTH = 1
+MIN_COMPONENT_HEIGHT = 4
 
-MIN_CANDLE_WIDTH = 3
-MAX_CANDLE_WIDTH = 30
-MIN_CANDLE_HEIGHT = 10
+MIN_CANDLE_WIDTH = 2
+MAX_CANDLE_WIDTH = 35
+MIN_CANDLE_HEIGHT = 7
 
-MIN_CONFIDENCE_ACCEPT = 50
+# Detection stage should be permissive.
+MIN_CONFIDENCE_ACCEPT = 35
 
 # ============================================================
 # MISSING-CANDLE DETECTION
@@ -176,27 +177,44 @@ def create_color_masks(image):
         red_mask2
     )
 
-    # --------------------------------------------------------
-    # Remove tiny isolated noise
-    # --------------------------------------------------------
-
-    kernel = np.ones(
-        (2, 2),
-        np.uint8
-    )
-
+    # ------------------------------------------------------------
+    # CLEAN / RECONNECT CANDLE COLOUR STRUCTURES
+    # ------------------------------------------------------------
+    
+    kernel = np.ones((2, 2), np.uint8)
+    
+    # IMPORTANT:
+    # Do NOT use MORPH_OPEN here.
+    # Opening can destroy thin candle wicks and narrow bodies.
+    
     green_mask = cv2.morphologyEx(
         green_mask,
-        cv2.MORPH_OPEN,
+        cv2.MORPH_CLOSE,
         kernel
     )
-
+    
     red_mask = cv2.morphologyEx(
         red_mask,
-        cv2.MORPH_OPEN,
+        cv2.MORPH_CLOSE,
         kernel
     )
-
+    
+    # Small dilation helps reconnect anti-aliased candle edges
+    # without aggressively expanding the candles.
+    small_kernel = np.ones((2, 1), np.uint8)
+    
+    green_mask = cv2.dilate(
+        green_mask,
+        small_kernel,
+        iterations=1
+    )
+    
+    red_mask = cv2.dilate(
+        red_mask,
+        small_kernel,
+        iterations=1
+    )
+    
     return green_mask, red_mask
 
 
@@ -262,21 +280,13 @@ def find_components(mask, color_name):
 # COMPONENT GROUPING
 # ============================================================
 
-def group_components(
-    components,
-    x_tolerance=5
-):
-
+def group_components(components, x_tolerance=7):
     """
-    A candle can consist of several connected components:
+    Group colour components that belong to the same candle.
 
-          |
-        ███
-        ███
-          |
-
-    Components occupying approximately the same X position
-    are grouped together.
+    Components are grouped primarily by X-centre.
+    The grouping is deliberately permissive because a candle
+    may have separate body and wick components.
     """
 
     if not components:
@@ -284,7 +294,7 @@ def group_components(
 
     components = sorted(
         components,
-        key=lambda c: c["x"]
+        key=lambda c: c["x"] + c["width"] / 2
     )
 
     groups = []
@@ -296,7 +306,8 @@ def group_components(
             + component["width"] / 2
         )
 
-        placed = False
+        best_group = None
+        best_distance = float("inf")
 
         for group in groups:
 
@@ -305,22 +316,23 @@ def group_components(
                 for c in group
             ])
 
-            if abs(
+            distance = abs(
                 center_x - group_center
-            ) <= x_tolerance:
-
-                group.append(component)
-                placed = True
-                break
-
-        if not placed:
-
-            groups.append(
-                [component]
             )
 
-    return groups
+            if distance <= x_tolerance and distance < best_distance:
+                best_group = group
+                best_distance = distance
 
+        if best_group is not None:
+
+            best_group.append(component)
+
+        else:
+
+            groups.append([component])
+
+    return groups
 
 # ============================================================
 # BASIC CANDLE RECONSTRUCTION
@@ -786,7 +798,6 @@ def validate_candle(candle):
     if candle is None:
         return False
 
-    # Hard failures
     if candle["width"] < MIN_CANDLE_WIDTH:
         return False
 
@@ -796,12 +807,10 @@ def validate_candle(candle):
     if candle["width"] > MAX_CANDLE_WIDTH:
         return False
 
-    # Confidence is now a composite score.
     if candle["confidence"] < MIN_CONFIDENCE_ACCEPT:
         return False
 
     return True
-
 
 # ============================================================
 # DETECT CANDLES
@@ -809,9 +818,7 @@ def validate_candle(candle):
 
 def detect_candles(image):
 
-    green_mask, red_mask = create_color_masks(
-        image
-    )
+    green_mask, red_mask = create_color_masks(image)
 
     green_components = find_components(
         green_mask,
@@ -824,68 +831,68 @@ def detect_candles(image):
     )
 
     all_components = (
-        green_components
-        + red_components
+        green_components +
+        red_components
     )
 
     groups = group_components(
         all_components,
-        x_tolerance=5
+        x_tolerance=7
     )
 
-    candles = []
+    candidates = []
 
     for group in groups:
 
-        candle = reconstruct_candle(
-            group
-        )
+        candle = reconstruct_candle(group)
 
         if candle is None:
             continue
 
-        # First pass only.
-        # Structural scores are applied after
-        # all candidates have been reconstructed.
-        candles.append(candle)
+        candidates.append(candle)
 
-    candles = sorted(
-        candles,
+    # --------------------------------------------------------
+    # SORT BY X POSITION
+    # --------------------------------------------------------
+
+    candidates = sorted(
+        candidates,
         key=lambda c: c["x"]
     )
 
-    candles = apply_structural_scores(
-        candles
+    # --------------------------------------------------------
+    # STRUCTURAL SCORING
+    # --------------------------------------------------------
+
+    candidates = apply_structural_scores(
+        candidates
     )
 
-    validated = []
+    # --------------------------------------------------------
+    # DO NOT DELETE WEAK CANDIDATES
+    # --------------------------------------------------------
 
-    for candle in candles:
+    accepted = []
+
+    for candle in candidates:
 
         if validate_candle(candle):
 
-            candle["validation"] = (
-                "Accepted"
-            )
-
-            validated.append(
-                candle
-            )
+            candle["validation"] = "Accepted"
 
         else:
 
-            candle["validation"] = (
-                "Rejected"
-            )
+            candle["validation"] = "Review"
+
+        accepted.append(candle)
 
     return (
-        validated,
+        accepted,
         green_mask,
         red_mask,
         all_components,
-        candles
+        candidates
     )
-
 
 # ============================================================
 # ROBUST MISSING-CANDLE ANALYSIS
