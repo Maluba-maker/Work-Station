@@ -1,6 +1,6 @@
 streamlit
-pillow
-opencv-python
-numpy
+yfinance
+ta
 pandas
-scipy
+numpy
+opencv-python-headless
