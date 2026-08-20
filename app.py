@@ -35,14 +35,33 @@ MIN_CANDLE_HEIGHT = 10
 
 MIN_CONFIDENCE_ACCEPT = 50
 
-# Missing-candle detection
+# ============================================================
+# MISSING-CANDLE DETECTION
+# ============================================================
+
+# Gaps below this are considered normal.
 SUSPICIOUS_GAP_RATIO = 1.35
-POSSIBLE_MISSING_RATIO = 1.65
+
+# A candidate must be reasonably close to TWO normal
+# candle intervals to represent one missing candle.
+MISSING_TARGET_RATIO = 2.00
+
+# Allowed deviation around the 2x target.
+MISSING_RATIO_TOLERANCE = 0.22
+
+# Maximum ratio we will still consider for ONE missing candle.
 MAX_MISSING_RATIO = 2.35
 
-# Local spacing consistency
-LOCAL_SPACING_TOLERANCE = 0.25
+# Neighboring spacing must remain close to the local baseline.
+LOCAL_SPACING_TOLERANCE = 0.20
 
+# Candle widths on both sides of a suspected gap should
+# be reasonably similar.
+MISSING_WIDTH_TOLERANCE = 0.35
+
+# Minimum final confidence required before drawing
+# a yellow missing-candle marker.
+MIN_MISSING_CONFIDENCE = 78.0
 
 # ============================================================
 # HELPER FUNCTIONS
@@ -869,7 +888,7 @@ def detect_candles(image):
 
 
 # ============================================================
-# SPACING ANALYSIS
+# ROBUST MISSING-CANDLE ANALYSIS
 # ============================================================
 
 def analyze_spacing(candles):
@@ -884,188 +903,383 @@ def analyze_spacing(candles):
             "possible_missing": []
         }
 
+    # --------------------------------------------------------
+    # Candle centres
+    # --------------------------------------------------------
+
     centers = np.array([
         c["x"] + c["width"] / 2
         for c in candles
-    ])
+    ], dtype=float)
 
-    spacing = np.diff(
-        centers
-    )
+    spacing = np.diff(centers)
 
-    baseline = float(
-        np.median(spacing)
-    )
+    # --------------------------------------------------------
+    # Robust global baseline
+    #
+    # Median is resistant to a few abnormal gaps.
+    # --------------------------------------------------------
 
-    minimum = float(
-        np.min(spacing)
-    )
+    baseline = float(np.median(spacing))
 
-    maximum = float(
-        np.max(spacing)
-    )
+    minimum = float(np.min(spacing))
+    maximum = float(np.max(spacing))
 
     rows = []
-
     possible_missing = []
 
-    for i, gap in enumerate(
-        spacing
-    ):
+    # --------------------------------------------------------
+    # Analyse every gap
+    # --------------------------------------------------------
 
-        ratio = (
-            gap / baseline
-            if baseline > 0
-            else 1
-        )
+    for i, gap in enumerate(spacing):
+
+        if baseline <= 0:
+            continue
+
+        ratio = float(gap / baseline)
 
         status = "Normal"
         status_score = 100.0
 
-        # ----------------------------------------------------
-        # Normal
-        # ----------------------------------------------------
+        # ====================================================
+        # NORMAL GAP
+        # ====================================================
 
         if ratio < SUSPICIOUS_GAP_RATIO:
 
             status = "Normal"
+            status_score = 100.0
 
-        # ----------------------------------------------------
-        # Suspicious
-        # ----------------------------------------------------
+        # ====================================================
+        # SUSPICIOUS BUT NOT MISSING
+        # ====================================================
 
-        elif ratio < POSSIBLE_MISSING_RATIO:
+        elif ratio < MISSING_TARGET_RATIO - MISSING_RATIO_TOLERANCE:
 
-            status = "Suspicious"
-            status_score = 60.0
+            status = "Suspicious Gap"
+            status_score = 55.0
 
-        # ----------------------------------------------------
-        # Possible missing
-        # ----------------------------------------------------
+        # ====================================================
+        # POSSIBLE MISSING CANDLE
+        # ====================================================
 
         else:
 
-            # We need surrounding evidence.
-            left_support = False
-            right_support = False
+            # ------------------------------------------------
+            # We need a candle on both sides.
+            #
+            # This prevents the first/last candle from
+            # generating unreliable missing-candle claims.
+            # ------------------------------------------------
 
-            if i > 0:
+            has_left = i > 0
+            has_right = i < len(spacing) - 1
 
-                previous_gap = (
-                    spacing[i - 1]
-                )
+            if not (has_left and has_right):
 
-                previous_ratio = (
-                    previous_gap
-                    / baseline
-                )
-
-                left_support = (
-                    abs(
-                        previous_ratio - 1.0
-                    ) <= LOCAL_SPACING_TOLERANCE
-                )
-
-            if i < len(spacing) - 1:
-
-                next_gap = (
-                    spacing[i + 1]
-                )
-
-                next_ratio = (
-                    next_gap
-                    / baseline
-                )
-
-                right_support = (
-                    abs(
-                        next_ratio - 1.0
-                    ) <= LOCAL_SPACING_TOLERANCE
-                )
-
-            # Strong evidence:
-            # large gap + normal neighbours
-            if (
-                left_support
-                and right_support
-                and ratio <= MAX_MISSING_RATIO
-            ):
-
-                status = (
-                    "Possible Missing Candle"
-                )
-
-                # Confidence increases as the gap
-                # approaches approximately 2 intervals.
-                distance_from_two = abs(
-                    ratio - 2.0
-                )
-
-                gap_score = max(
-                    0,
-                    100
-                    - distance_from_two * 80
-                )
-
-                status_score = clamp_score(
-                    gap_score
-                )
-
-                possible_missing.append({
-                    "from": i + 1,
-                    "to": i + 2,
-                    "spacing": round(
-                        float(gap),
-                        2
-                    ),
-                    "ratio": round(
-                        float(ratio),
-                        2
-                    ),
-                    "confidence": round(
-                        status_score,
-                        1
-                    )
-                })
+                status = "Edge Gap"
+                status_score = 40.0
 
             else:
 
-                status = (
-                    "Suspicious Gap"
+                previous_gap = float(spacing[i - 1])
+                next_gap = float(spacing[i + 1])
+
+                # ------------------------------------------------
+                # Local baseline
+                #
+                # Rather than trusting the entire chart,
+                # estimate normal spacing from the immediate
+                # neighbors.
+                # ------------------------------------------------
+
+                local_baseline = float(
+                    np.median([
+                        previous_gap,
+                        next_gap
+                    ])
                 )
 
-                status_score = 55.0
+                if local_baseline <= 0:
+
+                    status = "Unreliable Gap"
+                    status_score = 40.0
+
+                else:
+
+                    previous_ratio = (
+                        previous_gap / local_baseline
+                    )
+
+                    next_ratio = (
+                        next_gap / local_baseline
+                    )
+
+                    # ------------------------------------------------
+                    # Neighbor spacing scores
+                    # ------------------------------------------------
+
+                    left_spacing_score = clamp_score(
+                        100.0
+                        - (
+                            abs(previous_ratio - 1.0)
+                            / LOCAL_SPACING_TOLERANCE
+                            * 100.0
+                        )
+                    )
+
+                    right_spacing_score = clamp_score(
+                        100.0
+                        - (
+                            abs(next_ratio - 1.0)
+                            / LOCAL_SPACING_TOLERANCE
+                            * 100.0
+                        )
+                    )
+
+                    neighbor_score = (
+                        left_spacing_score
+                        + right_spacing_score
+                    ) / 2.0
+
+                    # ------------------------------------------------
+                    # Gap-to-2x score
+                    #
+                    # Perfect missing candle:
+                    #
+                    # normal gap
+                    #      +
+                    # missing candle interval
+                    #
+                    # therefore approximately 2x.
+                    # ------------------------------------------------
+
+                    gap_deviation = abs(
+                        ratio - MISSING_TARGET_RATIO
+                    )
+
+                    gap_score = clamp_score(
+                        100.0
+                        - (
+                            gap_deviation
+                            / MISSING_RATIO_TOLERANCE
+                            * 100.0
+                        )
+                    )
+
+                    # ------------------------------------------------
+                    # Width consistency
+                    # ------------------------------------------------
+
+                    left_candle = candles[i]
+                    right_candle = candles[i + 1]
+
+                    left_width = float(
+                        left_candle["width"]
+                    )
+
+                    right_width = float(
+                        right_candle["width"]
+                    )
+
+                    average_width = (
+                        left_width + right_width
+                    ) / 2.0
+
+                    if average_width > 0:
+
+                        width_difference = (
+                            abs(
+                                left_width
+                                - right_width
+                            )
+                            / average_width
+                        )
+
+                        width_score = clamp_score(
+                            100.0
+                            - (
+                                width_difference
+                                / MISSING_WIDTH_TOLERANCE
+                                * 100.0
+                            )
+                        )
+
+                    else:
+
+                        width_score = 0.0
+
+                    # ------------------------------------------------
+                    # Final missing-candle confidence
+                    #
+                    # Gap alignment       = 45%
+                    # Neighbor spacing    = 35%
+                    # Width consistency   = 20%
+                    # ------------------------------------------------
+
+                    missing_confidence = (
+                        gap_score * 0.45
+                        + neighbor_score * 0.35
+                        + width_score * 0.20
+                    )
+
+                    missing_confidence = round(
+                        clamp_score(
+                            missing_confidence
+                        ),
+                        1
+                    )
+
+                    # ------------------------------------------------
+                    # Decision
+                    # ------------------------------------------------
+
+                    if (
+                        MISSING_TARGET_RATIO
+                        - MISSING_RATIO_TOLERANCE
+                        <= ratio
+                        <=
+                        MISSING_TARGET_RATIO
+                        + MISSING_RATIO_TOLERANCE
+                        and
+                        missing_confidence
+                        >= MIN_MISSING_CONFIDENCE
+                    ):
+
+                        status = (
+                            "Possible Missing Candle"
+                        )
+
+                        status_score = (
+                            missing_confidence
+                        )
+
+                        # --------------------------------------------
+                        # Estimated position of missing candle
+                        # --------------------------------------------
+
+                        estimated_x = (
+                            centers[i]
+                            + local_baseline
+                        )
+
+                        possible_missing.append({
+
+                            "from": i + 1,
+
+                            "to": i + 2,
+
+                            "spacing": round(
+                                float(gap),
+                                2
+                            ),
+
+                            "baseline": round(
+                                float(local_baseline),
+                                2
+                            ),
+
+                            "ratio": round(
+                                float(ratio),
+                                2
+                            ),
+
+                            "gap_score": round(
+                                float(gap_score),
+                                1
+                            ),
+
+                            "neighbor_score": round(
+                                float(neighbor_score),
+                                1
+                            ),
+
+                            "width_score": round(
+                                float(width_score),
+                                1
+                            ),
+
+                            "confidence": round(
+                                float(missing_confidence),
+                                1
+                            ),
+
+                            "estimated_x": round(
+                                float(estimated_x),
+                                1
+                            )
+                        })
+
+                    else:
+
+                        # --------------------------------------------
+                        # It may be a large gap, but not enough
+                        # evidence to call it missing.
+                        # --------------------------------------------
+
+                        if ratio <= MAX_MISSING_RATIO:
+
+                            status = (
+                                "Suspicious Gap"
+                            )
+
+                        else:
+
+                            status = (
+                                "Large / Unreliable Gap"
+                            )
+
+                        status_score = round(
+                            missing_confidence,
+                            1
+                        )
+
+        # ----------------------------------------------------
+        # Store every gap in the diagnostic table
+        # ----------------------------------------------------
 
         rows.append({
+
             "From Candle": i + 1,
+
             "To Candle": i + 2,
+
             "Spacing (px)": round(
                 float(gap),
                 2
             ),
+
             "Baseline (px)": round(
-                baseline,
+                float(baseline),
                 2
             ),
+
             "Ratio": round(
                 float(ratio),
                 2
             ),
+
             "Status": status,
+
             "Gap Score": round(
-                status_score,
+                float(status_score),
                 1
             )
         })
 
     return {
+
         "median": baseline,
+
         "minimum": minimum,
+
         "maximum": maximum,
+
         "rows": rows,
+
         "possible_missing": possible_missing
     }
-
 
 # ============================================================
 # ANNOTATION
@@ -1118,7 +1332,7 @@ def annotate_candles(
             2
         )
 
-        # Number
+        # Candle number
         cv2.putText(
             annotated,
             str(index),
@@ -1158,101 +1372,73 @@ def annotate_candles(
             cv2.LINE_AA
         )
 
-    # --------------------------------------------------------
-    # Missing candle markers
+    # ========================================================
+    # MISSING-CANDLE MARKERS
     #
-    # IMPORTANT:
-    # Yellow lines are drawn ONLY for strong
-    # "Possible Missing Candle" candidates.
-    # --------------------------------------------------------
+    # Draw ONLY after all candle boxes are complete.
+    # ========================================================
 
     if spacing_analysis:
 
-        for candidate in spacing_analysis[
-            "possible_missing"
-        ]:
+        for candidate in spacing_analysis.get(
+            "possible_missing",
+            []
+        ):
 
-            from_index = candidate[
-                "from"
+            estimated_x = int(
+                candidate["estimated_x"]
+            )
+
+            confidence = candidate[
+                "confidence"
             ]
 
-            to_index = candidate[
-                "to"
-            ]
+            # Yellow
+            marker_color = (
+                255,
+                255,
+                0
+            )
 
-            if (
-                from_index <= len(candles)
-                and to_index <= len(candles)
-            ):
-
-                left_candle = candles[
-                    from_index - 1
-                ]
-
-                right_candle = candles[
-                    to_index - 1
-                ]
-
-                left_center = (
-                    left_candle["x"]
-                    + left_candle["width"] / 2
-                )
-
-                right_center = (
-                    right_candle["x"]
-                    + right_candle["width"] / 2
-                )
-
-                estimated_x = int(
-                    (
-                        left_center
-                        + right_center
-                    ) / 2
-                )
-
-                # Yellow marker
-                marker_color = (
-                    255,
-                    255,
+            # Vertical marker
+            cv2.line(
+                annotated,
+                (
+                    estimated_x,
                     0
-                )
+                ),
+                (
+                    estimated_x,
+                    image.shape[0]
+                ),
+                marker_color,
+                1
+            )
 
-                cv2.line(
-                    annotated,
-                    (
-                        estimated_x,
-                        0
-                    ),
-                    (
-                        estimated_x,
-                        image.shape[0]
-                    ),
-                    marker_color,
-                    1
-                )
+            # Label
+            label = (
+                "POSSIBLE MISSING "
+                f"{confidence:.0f}%"
+            )
 
-                cv2.putText(
-                    annotated,
-                    (
-                        "POSSIBLE MISSING "
-                        f"{candidate['confidence']:.0f}%"
+            cv2.putText(
+                annotated,
+                label,
+                (
+                    max(
+                        5,
+                        estimated_x - 80
                     ),
-                    (
-                        max(
-                            5,
-                            estimated_x - 80
-                        ),
-                        18
-                    ),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.45,
-                    marker_color,
-                    1,
-                    cv2.LINE_AA
-                )
+                    18
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                marker_color,
+                1,
+                cv2.LINE_AA
+            )
 
     return annotated
-
 
 # ============================================================
 # MAIN UI
@@ -1525,10 +1711,10 @@ if "candles" in st.session_state:
     st.caption(
         "Green/red boxes are detected candles. "
         "Confidence is shown below each candle. "
-        "Yellow lines appear only when spacing evidence "
-        "supports a possible missing candle."
+        "Yellow lines indicate high-confidence possible "
+        "missing candles based on gap periodicity, "
+        "neighbor spacing, and candle-width consistency."
     )
-
 
     # ========================================================
     # MASKS
