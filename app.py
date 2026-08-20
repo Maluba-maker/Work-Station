@@ -1,263 +1,864 @@
 import streamlit as st
-import yfinance as yf
+import hashlib
+import cv2
+import numpy as np
+from PIL import Image
 import pandas as pd
-import ta
-from datetime import datetime, timedelta
 
-# ================= PASSWORD =================
-APP_PASSWORD = "2301"
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
+st.set_page_config(
+    page_title="Maluz Signal Engine V2",
+    layout="wide"
+)
+
+st.title("🔹 Maluz Signal Engine V2")
+st.caption("Vision Diagnostic • Candle Detection • NO TRADING SIGNALS YET")
+
+
+# ============================================================
+# PASSWORD
+# ============================================================
+
+PASSWORD = "maluz123"
+PASSWORD_HASH = hashlib.sha256(PASSWORD.encode()).hexdigest()
+
 
 def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
 
-    if not st.session_state.authenticated:
-        st.markdown("## 🔐 Secure Access")
-        pwd = st.text_input("Enter Password", type="password")
+    def entered():
 
-        if pwd == APP_PASSWORD:
-            st.session_state.authenticated = True
-            st.rerun()
-        elif pwd:
+        entered_password = st.session_state["pw"]
+
+        if hashlib.sha256(
+            entered_password.encode()
+        ).hexdigest() == PASSWORD_HASH:
+
+            st.session_state.auth = True
+
+        else:
+
+            st.session_state.auth = False
+
+    if "auth" not in st.session_state:
+        st.session_state.auth = False
+
+    if not st.session_state.auth:
+
+        st.text_input(
+            "🔐 Password",
+            type="password",
+            key="pw",
+            on_change=entered
+        )
+
+        if "auth" in st.session_state and st.session_state.auth:
+            pass
+
+        elif st.session_state.get("pw"):
             st.error("Incorrect password")
 
         st.stop()
 
+
 check_password()
 
-st.set_page_config(page_title="EURUSD Engine", layout="wide")
 
-PAIRS = [
-    "EURUSD=X",
-    "GBPUSD=X",
-    "USDJPY=X",
-    "AUDUSD=X"
-]
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
 
-# ================= DATA =================
-@st.cache_data(ttl=60)
-def fetch_data(pair, interval, period):
-    df = yf.download(pair, interval=interval, period=period, progress=False)
+def crop_chart(image, x1, y1, x2, y2):
 
-    if df is None or df.empty:
-        return None
+    h, w = image.shape[:2]
 
-    # 🔥 FIX: flatten multi-index columns
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    x1 = max(0, min(x1, w - 1))
+    x2 = max(x1 + 1, min(x2, w))
 
-    df = df.rename(columns={
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "Volume"
-    })
+    y1 = max(0, min(y1, h - 1))
+    y2 = max(y1 + 1, min(y2, h))
 
-    df = df.dropna()
+    return image[y1:y2, x1:x2]
 
-    return df
 
-# ================= INDICATORS =================
-def indicators(df):
+def create_color_masks(image):
 
-    if df is None or df.empty:
-        return None
+    """
+    Detect strongly colored pixels.
 
-    close = df["Close"]
-    high = df["High"]
-    low = df["Low"]
+    Green:
+        Used for bullish candles.
 
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    if isinstance(high, pd.DataFrame):
-        high = high.iloc[:, 0]
-    if isinstance(low, pd.DataFrame):
-        low = low.iloc[:, 0]
+    Red:
+        Used for bearish candles.
 
-    close = close.astype(float)
-    high = high.astype(float)
-    low = low.astype(float)
+    We deliberately use HSV rather than RGB because
+    HSV makes color segmentation more stable.
+    """
 
-    return {
-        "close": close,
-        "ema20": ta.trend.ema_indicator(close, 20),
-        "ema50": ta.trend.ema_indicator(close, 50),
-        "ema100": ta.trend.ema_indicator(close, 100),
-        "rsi": ta.momentum.rsi(close, 14),
-        "adx": ta.trend.adx(high, low, close, 14)
-    }
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
-# ================= STRATEGY =================
-def get_signal(df_h1, df_m5, df_m1):
+    H, S, V = cv2.split(hsv)
 
-    # VALIDATION
-    if df_h1 is None or df_m5 is None or df_m1 is None:
-        return None, "DATA ERROR"
+    # Green
+    green_mask = (
+        (H >= 35) &
+        (H <= 90) &
+        (S >= 100) &
+        (V >= 70)
+    ).astype(np.uint8) * 255
 
-    if len(df_h1) < 100 or len(df_m5) < 100 or len(df_m1) < 50:
-        return None, "INSUFFICIENT DATA"
+    # Red wraps around the HSV hue scale
+    red_mask = (
+        ((H <= 10) | (H >= 170)) &
+        (S >= 100) &
+        (V >= 70)
+    ).astype(np.uint8) * 255
 
-    i_h1 = indicators(df_h1)
-    i_m5 = indicators(df_m5)
+    return green_mask, red_mask
 
-    if i_h1 is None or i_m5 is None:
-        return None, "INDICATOR ERROR"
 
-    ema20_m5 = i_m5["ema20"].iloc[-1]
-    ema50_m5 = i_m5["ema50"].iloc[-1]
-    price_m5 = df_m5["Close"].iloc[-1]
-    
-    if ema20_m5 > ema50_m5 and price_m5 > ema20_m5:
-        trend = "BUY"
-    elif ema20_m5 < ema50_m5 and price_m5 < ema20_m5:
-        trend = "SELL"
-    else:
-        return None, "NO CLEAR TREND"
+def find_candidates(mask, color_name):
 
-    # ADX FILTER (RELAXED)
-    adx = i_m5["adx"].iloc[-1]
-    if adx < 15:
-        return None, "WEAK TREND"
+    """
+    Find narrow vertical colored objects.
 
-    # PULLBACK
-    price = float(df_m5["Close"].iloc[-1])
-    ema20 = float(i_m5["ema20"].iloc[-1])
-    rsi = float(i_m5["rsi"].iloc[-1])
+    Candle bodies/wicks tend to be:
+        - narrow
+        - vertical
+        - relatively tall
 
-    distance = abs(price - ema20) / ema20
+    Moving averages tend to be:
+        - long
+        - thin
+        - horizontally connected
 
-    pullback_valid = distance < 0.006
-    momentum_move = distance >= 0.006  # NEW
-    
-    # Allow either pullback OR strong momentum
-    if not (pullback_valid or momentum_move):
-        return None, "NO SETUP"
+    Therefore we reject very wide objects.
+    """
 
-    # SOFT TREND CHECK
-    m5_trend = "BUY" if i_m5["ema20"].iloc[-1] > i_m5["ema50"].iloc[-1] else "SELL"
-
-    if m5_trend != trend:
-        st.write("⚠️ M5 counter-trend")
-
-    i_m1 = indicators(df_m1)
-    if i_m1 is None:
-        return None, "M1 INDICATOR ERROR"
-    
-    ema20_m1 = float(i_m1["ema20"].iloc[-1])
-    
-    # ENTRY (EMA REACTION)
-    last = df_m1.iloc[-1]
-    prev = df_m1.iloc[-2]
-    
-    if trend == "BUY":
-        if prev["Low"] <= ema20_m1 and last["Close"] > prev["Close"]:
-            return "BUY", "EMA REJECTION"
-        
-        body = abs(last["Close"] - last["Open"])
-        prev_body = abs(prev["Close"] - prev["Open"])
-    
-        if last["Close"] > last["Open"] and body > prev_body:
-            return "BUY", "MOMENTUM"
-    
-    if trend == "SELL":
-        if prev["High"] >= ema20_m1 and last["Close"] < prev["Close"]:
-            return "SELL", "EMA REJECTION"
-    
-        # 2. NEW: Momentum continuation
-        body = abs(last["Close"] - last["Open"])
-        prev_body = abs(prev["Close"] - prev["Open"])
-    
-        if last["Close"] < last["Open"] and body > prev_body:
-            return "SELL", "MOMENTUM"
-    
-    return None, "WAIT ENTRY"
-
-# ================= LOGGER =================
-if "trades" not in st.session_state:
-    st.session_state.trades = []
-
-# ================= UI =================
-st.title("EUR/USD Precision Engine")
-
-if st.button("Scan Market"):
-
-    for pair in PAIRS:
-
-        df_h1 = fetch_data(pair, "1h", "30d")
-        df_m5 = fetch_data(pair, "5m", "5d")
-        df_m1 = fetch_data(pair, "1m", "1d")
-
-        signal, status = get_signal(df_h1, df_m5, df_m1)
-
-        st.subheader(f"📊 {pair}")
-
-        if signal:
-            now = datetime.now().replace(second=0, microsecond=0)
-        
-            if now.minute % 2 == 0:
-                entry = now + timedelta(minutes=2)
-            else:
-                entry = now + timedelta(minutes=1)
-        
-            expiry = entry + timedelta(minutes=2)
-        
-            st.success(f"Signal: {signal} ({status})")
-            st.write(f"Entry: {entry.strftime('%H:%M')}")
-            st.write(f"Expiry: {expiry.strftime('%H:%M')}")
-        else:
-            st.warning(status)
-
-        st.markdown("---")
-            
-        if st.button(f"Log Trade {pair}"):
-            st.session_state.trades.append({
-                "time": entry.strftime('%H:%M'),
-                "signal": signal,
-                "pair": pair,
-                "result": None
-            })
-
-        else:
-            # OPTIONAL: comment this out if too noisy
-            # st.warning(f"{pair}: {status}")
-            pass
-
-    now = datetime.now().replace(second=0, microsecond=0)
-
-    if now.minute % 2 == 0:
-        next_entry = now + timedelta(minutes=2)
-    else:
-        next_entry = now + timedelta(minutes=1)
-
-    st.write("Next Possible Entry Time:", next_entry.strftime("%H:%M"))
-
-# ================= TRADE LOG =================
-st.subheader("Trade Journal")
-
-for i, trade in enumerate(st.session_state.trades):
-    col1, col2, col3 = st.columns(3)
-
-    col1.write(trade["time"])
-    col2.write(trade["signal"])
-
-    result = col3.selectbox(
-        "Result",
-        ["Pending", "Win", "Loss"],
-        key=f"result_{i}"
+    contours, _ = cv2.findContours(
+        mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
     )
 
-    st.session_state.trades[i]["result"] = result
+    candidates = []
 
-# ================= STATS =================
-wins = sum(1 for t in st.session_state.trades if t["result"] == "Win")
-losses = sum(1 for t in st.session_state.trades if t["result"] == "Loss")
-total = wins + losses
+    for contour in contours:
 
-win_rate = (wins / total * 100) if total > 0 else 0
+        x, y, w, h = cv2.boundingRect(contour)
 
-st.subheader("Performance")
-st.write(f"Trades: {total}")
-st.write(f"Wins: {wins}")
-st.write(f"Losses: {losses}")
-st.write(f"Win Rate: {win_rate:.2f}%")
+        area = cv2.contourArea(contour)
+
+        # Candle candidate filters
+        if w < 3:
+            continue
+
+        if w > 15:
+            continue
+
+        if h < 15:
+            continue
+
+        if h > 125:
+            continue
+
+        if area < 15:
+            continue
+
+        if area > 1000:
+            continue
+
+        candidates.append({
+            "x": int(x),
+            "y": int(y),
+            "w": int(w),
+            "h": int(h),
+            "area": float(area),
+            "color": color_name
+        })
+
+    return candidates
+
+
+def merge_candle_fragments(candidates):
+
+    """
+    Sometimes a candle is split into several colored pieces.
+
+    For example:
+
+          wick
+           |
+        ┌──┐
+        │  │
+        └──┘
+           |
+          wick
+
+    Other chart elements can interrupt the colored pixels.
+
+    We therefore group candidates that occupy almost
+    the same X position.
+    """
+
+    if not candidates:
+        return []
+
+    candidates = sorted(
+        candidates,
+        key=lambda c: c["x"] + c["w"] / 2
+    )
+
+    groups = []
+
+    for candidate in candidates:
+
+        center_x = candidate["x"] + candidate["w"] / 2
+
+        if not groups:
+
+            groups.append([candidate])
+
+            continue
+
+        previous_group = groups[-1]
+
+        previous_centers = [
+            c["x"] + c["w"] / 2
+            for c in previous_group
+        ]
+
+        previous_center = np.mean(previous_centers)
+
+        # Same candle if centers are close
+        if abs(center_x - previous_center) <= 4:
+
+            previous_group.append(candidate)
+
+        else:
+
+            groups.append([candidate])
+
+    merged = []
+
+    for group in groups:
+
+        # Keep dominant color
+        colors = [c["color"] for c in group]
+
+        if colors.count("GREEN") >= colors.count("RED"):
+            color = "GREEN"
+        else:
+            color = "RED"
+
+        x1 = min(c["x"] for c in group)
+        y1 = min(c["y"] for c in group)
+
+        x2 = max(
+            c["x"] + c["w"]
+            for c in group
+        )
+
+        y2 = max(
+            c["y"] + c["h"]
+            for c in group
+        )
+
+        area = sum(
+            c["area"]
+            for c in group
+        )
+
+        merged.append({
+            "x": x1,
+            "y": y1,
+            "w": x2 - x1,
+            "h": y2 - y1,
+            "area": area,
+            "color": color
+        })
+
+    return merged
+
+
+def filter_spacing(candles):
+
+    """
+    Remove extremely suspicious detections.
+
+    Real candles should normally appear at roughly
+    regular horizontal intervals.
+    """
+
+    if len(candles) < 5:
+        return candles
+
+    candles = sorted(
+        candles,
+        key=lambda c: c["x"]
+    )
+
+    centers = np.array([
+        c["x"] + c["w"] / 2
+        for c in candles
+    ])
+
+    gaps = np.diff(centers)
+
+    positive_gaps = gaps[gaps > 0]
+
+    if len(positive_gaps) == 0:
+        return candles
+
+    median_gap = np.median(positive_gaps)
+
+    # Very wide gaps may indicate missing candles,
+    # but we don't delete them. We only reject objects
+    # that are extremely close together.
+    filtered = []
+
+    for i, candle in enumerate(candles):
+
+        if i == 0:
+
+            filtered.append(candle)
+            continue
+
+        gap = centers[i] - centers[i - 1]
+
+        # If objects overlap heavily, likely duplicate detection
+        if gap < max(4, median_gap * 0.35):
+
+            previous = filtered[-1]
+
+            if candle["h"] > previous["h"]:
+
+                filtered[-1] = candle
+
+        else:
+
+            filtered.append(candle)
+
+    return filtered
+
+
+def calculate_detection_quality(candles):
+
+    """
+    This is NOT a probability.
+
+    It is a diagnostic score based on:
+        - number of detections
+        - candle width consistency
+        - spacing consistency
+        - reasonable candle geometry
+    """
+
+    if len(candles) < 5:
+        return 0
+
+    widths = np.array([
+        c["w"]
+        for c in candles
+    ])
+
+    centers = np.array([
+        c["x"] + c["w"] / 2
+        for c in candles
+    ])
+
+    gaps = np.diff(centers)
+
+    # Width consistency
+    width_median = np.median(widths)
+
+    if width_median == 0:
+        width_score = 0
+    else:
+
+        width_deviation = np.mean(
+            np.abs(widths - width_median)
+            / width_median
+        )
+
+        width_score = max(
+            0,
+            1 - width_deviation
+        )
+
+    # Spacing consistency
+    if len(gaps) > 1:
+
+        gap_median = np.median(gaps)
+
+        if gap_median > 0:
+
+            gap_deviation = np.mean(
+                np.abs(gaps - gap_median)
+                / gap_median
+            )
+
+            spacing_score = max(
+                0,
+                1 - gap_deviation
+            )
+
+        else:
+
+            spacing_score = 0
+
+    else:
+
+        spacing_score = 0
+
+    # Count score
+    count_score = min(
+        len(candles) / 60,
+        1
+    )
+
+    score = (
+        width_score * 0.25 +
+        spacing_score * 0.35 +
+        count_score * 0.40
+    )
+
+    return round(
+        score * 100,
+        1
+    )
+
+
+def annotate_candles(image, candles):
+
+    """
+    Draw detection results on the chart.
+    """
+
+    output = image.copy()
+
+    for index, candle in enumerate(candles):
+
+        x = candle["x"]
+        y = candle["y"]
+        w = candle["w"]
+        h = candle["h"]
+
+        if candle["color"] == "GREEN":
+
+            box_color = (0, 255, 0)
+
+        else:
+
+            box_color = (255, 60, 60)
+
+        cv2.rectangle(
+            output,
+            (x, y),
+            (x + w, y + h),
+            box_color,
+            2
+        )
+
+        cv2.putText(
+            output,
+            str(index + 1),
+            (x, max(12, y - 5)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            box_color,
+            1,
+            cv2.LINE_AA
+        )
+
+    return output
+
+
+# ============================================================
+# INPUT
+# ============================================================
+
+st.subheader("1️⃣ Upload Chart")
+
+mode = st.radio(
+    "Input Mode",
+    ["Upload Screenshot", "Camera"],
+    horizontal=True
+)
+
+image = None
+
+if mode == "Upload Screenshot":
+
+    uploaded = st.file_uploader(
+        "Upload your Pocket Option chart",
+        type=["png", "jpg", "jpeg"]
+    )
+
+    if uploaded:
+
+        image = np.array(
+            Image.open(uploaded).convert("RGB")
+        )
+
+
+else:
+
+    camera = st.camera_input(
+        "Capture chart"
+    )
+
+    if camera:
+
+        image = np.array(
+            Image.open(camera).convert("RGB")
+        )
+
+
+if image is None:
+
+    st.info(
+        "Upload a chart screenshot to begin."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# IMAGE DIMENSIONS
+# ============================================================
+
+height, width = image.shape[:2]
+
+st.write(
+    f"Image size: **{width} × {height} px**"
+)
+
+
+# ============================================================
+# CROP CONTROLS
+# ============================================================
+
+st.subheader("2️⃣ Chart Region")
+
+st.caption(
+    "For this version, we deliberately crop the chart manually. "
+    "This removes the trading controls and stochastic panel."
+)
+
+# Defaults based on the screenshot you provided
+default_x1 = int(width * 0.01)
+default_x2 = int(width * 0.76)
+
+default_y1 = int(height * 0.105)
+default_y2 = int(height * 0.80)
+
+
+with st.expander(
+    "⚙️ Adjust chart crop",
+    expanded=False
+):
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+
+        x1 = st.slider(
+            "Left",
+            0,
+            width - 2,
+            default_x1
+        )
+
+        y1 = st.slider(
+            "Top",
+            0,
+            height - 2,
+            default_y1
+        )
+
+    with c2:
+
+        x2 = st.slider(
+            "Right",
+            x1 + 1,
+            width,
+            default_x2
+        )
+
+        y2 = st.slider(
+            "Bottom",
+            y1 + 1,
+            height,
+            default_y2
+        )
+
+
+crop = crop_chart(
+    image,
+    x1,
+    y1,
+    x2,
+    y2
+)
+
+
+st.image(
+    crop,
+    caption="Chart region used by the vision engine",
+    width="stretch"
+)
+
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+st.subheader("3️⃣ Vision Diagnostic")
+
+analyse = st.button(
+    "👁️ Detect Candles",
+    type="primary"
+)
+
+
+if analyse:
+
+    with st.spinner(
+        "Analysing chart geometry..."
+    ):
+
+        # ----------------------------------------------------
+        # COLOR MASKS
+        # ----------------------------------------------------
+
+        green_mask, red_mask = create_color_masks(
+            crop
+        )
+
+        # ----------------------------------------------------
+        # FIND CANDIDATES
+        # ----------------------------------------------------
+
+        green_candidates = find_candidates(
+            green_mask,
+            "GREEN"
+        )
+
+        red_candidates = find_candidates(
+            red_mask,
+            "RED"
+        )
+
+        all_candidates = (
+            green_candidates +
+            red_candidates
+        )
+
+        # ----------------------------------------------------
+        # MERGE FRAGMENTS
+        # ----------------------------------------------------
+
+        candles = merge_candle_fragments(
+            all_candidates
+        )
+
+        # ----------------------------------------------------
+        # FILTER SPACING
+        # ----------------------------------------------------
+
+        candles = filter_spacing(
+            candles
+        )
+
+        candles = sorted(
+            candles,
+            key=lambda c: c["x"]
+        )
+
+        # ----------------------------------------------------
+        # QUALITY
+        # ----------------------------------------------------
+
+        quality = calculate_detection_quality(
+            candles
+        )
+
+        # ----------------------------------------------------
+        # ANNOTATION
+        # ----------------------------------------------------
+
+        annotated = annotate_candles(
+            crop,
+            candles
+        )
+
+
+    # ========================================================
+    # RESULTS
+    # ========================================================
+
+    st.subheader("4️⃣ Detection Result")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Candles detected",
+            len(candles)
+        )
+
+    with col2:
+
+        st.metric(
+            "Green candidates",
+            len(green_candidates)
+        )
+
+    with col3:
+
+        st.metric(
+            "Red candidates",
+            len(red_candidates)
+        )
+
+    with col4:
+
+        st.metric(
+            "Diagnostic score",
+            f"{quality}%"
+        )
+
+
+    # ========================================================
+    # WARNING
+    # ========================================================
+
+    if len(candles) < 20:
+
+        st.warning(
+            "⚠️ Too few candle candidates detected. "
+            "Do NOT use this output for trading."
+        )
+
+    elif quality < 60:
+
+        st.warning(
+            "⚠️ Detection quality is currently low. "
+            "The engine needs calibration."
+        )
+
+    else:
+
+        st.success(
+            "Candle candidates detected. "
+            "Now inspect the annotated image carefully."
+        )
+
+
+    # ========================================================
+    # ANNOTATED IMAGE
+    # ========================================================
+
+    st.subheader(
+        "5️⃣ What the Computer Thinks Are Candles"
+    )
+
+    st.image(
+        annotated,
+        caption=(
+            "Green boxes = detected bullish candle candidates | "
+            "Red boxes = detected bearish candle candidates"
+        ),
+        width="stretch"
+    )
+
+
+    # ========================================================
+    # MASKS
+    # ========================================================
+
+    st.subheader(
+        "6️⃣ Raw Color Detection"
+    )
+
+    mask_col1, mask_col2 = st.columns(2)
+
+    with mask_col1:
+
+        st.image(
+            green_mask,
+            caption="Green pixel mask",
+            width="stretch"
+        )
+
+    with mask_col2:
+
+        st.image(
+            red_mask,
+            caption="Red pixel mask",
+            width="stretch"
+        )
+
+
+    # ========================================================
+    # CANDLE DATA
+    # ========================================================
+
+    if candles:
+
+        st.subheader(
+            "7️⃣ Detected Candle Data"
+        )
+
+        table_data = []
+
+        for i, candle in enumerate(candles):
+
+            table_data.append({
+                "Candle": i + 1,
+                "X": candle["x"],
+                "Y": candle["y"],
+                "Width": candle["w"],
+                "Height": candle["h"],
+                "Area": round(
+                    candle["area"],
+                    1
+                ),
+                "Color": candle["color"]
+            })
+
+        df = pd.DataFrame(
+            table_data
+        )
+
+        st.dataframe(
+            df,
+            width="stretch",
+            hide_index=True
+        )
+
+
+    # ========================================================
+    # IMPORTANT STATUS
+    # ========================================================
+
+    st.divider()
+
+    st.warning(
+        """
+        IMPORTANT:
+
+        This version does NOT generate BUY or SELL signals.
+
+        The purpose of V2.0 is to verify that the computer
+        correctly identifies candles from the screenshot.
+
+        Do not trade based on the diagnostic score.
+        """
+    )
