@@ -1,854 +1,823 @@
 import streamlit as st
-import hashlib
 import cv2
 import numpy as np
 from PIL import Image
 import pandas as pd
-
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Maluz Signal Engine V2",
+    page_title="Maluz Signal Engine V2.1",
     layout="wide"
 )
 
-st.title("🔹 Maluz Signal Engine V2")
-st.caption("Vision Diagnostic • Candle Detection • NO TRADING SIGNALS YET")
-
-
-# ============================================================
-# PASSWORD
-# ============================================================
-
-PASSWORD = "maluz123"
-PASSWORD_HASH = hashlib.sha256(PASSWORD.encode()).hexdigest()
-
-
-def check_password():
-
-    def entered():
-
-        entered_password = st.session_state["pw"]
-
-        if hashlib.sha256(
-            entered_password.encode()
-        ).hexdigest() == PASSWORD_HASH:
-
-            st.session_state.auth = True
-
-        else:
-
-            st.session_state.auth = False
-
-    if "auth" not in st.session_state:
-        st.session_state.auth = False
-
-    if not st.session_state.auth:
-
-        st.text_input(
-            "🔐 Password",
-            type="password",
-            key="pw",
-            on_change=entered
-        )
-
-        if "auth" in st.session_state and st.session_state.auth:
-            pass
-
-        elif st.session_state.get("pw"):
-            st.error("Incorrect password")
-
-        st.stop()
-
-
-check_password()
-
+st.title("🔹 Maluz Signal Engine V2.1")
+st.caption(
+    "Vision Diagnostic • Candle Geometry • OHLC Reconstruction • NO TRADING SIGNALS"
+)
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
-def crop_chart(image, x1, y1, x2, y2):
+def load_image(uploaded_file):
+    image = Image.open(uploaded_file).convert("RGB")
+    return np.array(image)
 
+
+def crop_chart(image, left, right, top, bottom):
     h, w = image.shape[:2]
 
-    x1 = max(0, min(x1, w - 1))
-    x2 = max(x1 + 1, min(x2, w))
+    left = max(0, min(left, w - 1))
+    right = max(left + 1, min(right, w))
+    top = max(0, min(top, h - 1))
+    bottom = max(top + 1, min(bottom, h))
 
-    y1 = max(0, min(y1, h - 1))
-    y2 = max(y1 + 1, min(y2, h))
+    return image[top:bottom, left:right]
 
-    return image[y1:y2, x1:x2]
 
+# ============================================================
+# COLOR MASKS
+# ============================================================
 
 def create_color_masks(image):
-
     """
-    Detect strongly colored pixels.
+    Pocket Option style:
+    Green candles = strong green
+    Red candles   = strong red
 
-    Green:
-        Used for bullish candles.
-
-    Red:
-        Used for bearish candles.
-
-    We deliberately use HSV rather than RGB because
-    HSV makes color segmentation more stable.
+    HSV is used because it separates color from brightness
+    better than raw RGB.
     """
 
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
-    H, S, V = cv2.split(hsv)
+    # GREEN
+    green_lower = np.array([35, 80, 50])
+    green_upper = np.array([95, 255, 255])
 
-    # Green
-    green_mask = (
-        (H >= 35) &
-        (H <= 90) &
-        (S >= 100) &
-        (V >= 70)
-    ).astype(np.uint8) * 255
+    green_mask = cv2.inRange(
+        hsv,
+        green_lower,
+        green_upper
+    )
 
-    # Red wraps around the HSV hue scale
-    red_mask = (
-        ((H <= 10) | (H >= 170)) &
-        (S >= 100) &
-        (V >= 70)
-    ).astype(np.uint8) * 255
+    # RED
+    red_lower1 = np.array([0, 80, 50])
+    red_upper1 = np.array([12, 255, 255])
+
+    red_lower2 = np.array([165, 80, 50])
+    red_upper2 = np.array([180, 255, 255])
+
+    red_mask1 = cv2.inRange(
+        hsv,
+        red_lower1,
+        red_upper1
+    )
+
+    red_mask2 = cv2.inRange(
+        hsv,
+        red_lower2,
+        red_upper2
+    )
+
+    red_mask = cv2.bitwise_or(
+        red_mask1,
+        red_mask2
+    )
+
+    # Remove tiny isolated noise
+    kernel = np.ones((2, 2), np.uint8)
+
+    green_mask = cv2.morphologyEx(
+        green_mask,
+        cv2.MORPH_OPEN,
+        kernel
+    )
+
+    red_mask = cv2.morphologyEx(
+        red_mask,
+        cv2.MORPH_OPEN,
+        kernel
+    )
 
     return green_mask, red_mask
 
 
-def find_candidates(mask, color_name):
+# ============================================================
+# COMPONENT DETECTION
+# ============================================================
 
-    """
-    Find narrow vertical colored objects.
+def find_components(mask, color_name):
 
-    Candle bodies/wicks tend to be:
-        - narrow
-        - vertical
-        - relatively tall
-
-    Moving averages tend to be:
-        - long
-        - thin
-        - horizontally connected
-
-    Therefore we reject very wide objects.
-    """
-
-    contours, _ = cv2.findContours(
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
         mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
+        connectivity=8
     )
 
-    candidates = []
+    components = []
 
-    for contour in contours:
+    for i in range(1, num_labels):
 
-        x, y, w, h = cv2.boundingRect(contour)
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        w = int(stats[i, cv2.CC_STAT_WIDTH])
+        h = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
 
-        area = cv2.contourArea(contour)
-
-        # Candle candidate filters
-        if w < 3:
-            continue
-
-        if w > 15:
-            continue
-
-        if h < 15:
-            continue
-
-        if h > 125:
-            continue
-
+        # Basic noise filtering
         if area < 15:
             continue
 
-        if area > 1000:
+        if w < 2:
             continue
 
-        candidates.append({
-            "x": int(x),
-            "y": int(y),
-            "w": int(w),
-            "h": int(h),
-            "area": float(area),
+        if h < 5:
+            continue
+
+        components.append({
+            "x": x,
+            "y": y,
+            "width": w,
+            "height": h,
+            "area": area,
             "color": color_name
         })
 
-    return candidates
+    return components
 
 
-def merge_candle_fragments(candidates):
+# ============================================================
+# COMPONENT GROUPING
+# ============================================================
+
+def group_components(components, x_tolerance=5):
 
     """
-    Sometimes a candle is split into several colored pieces.
+    A candle may consist of several connected components:
 
-    For example:
+        wick
+         |
+       ███
+       ███
+         |
 
-          wick
-           |
-        ┌──┐
-        │  │
-        └──┘
-           |
-          wick
-
-    Other chart elements can interrupt the colored pixels.
-
-    We therefore group candidates that occupy almost
+    Therefore we group objects that occupy approximately
     the same X position.
     """
 
-    if not candidates:
+    if not components:
         return []
 
-    candidates = sorted(
-        candidates,
-        key=lambda c: c["x"] + c["w"] / 2
+    components = sorted(
+        components,
+        key=lambda c: c["x"]
     )
 
     groups = []
 
-    for candidate in candidates:
+    for component in components:
 
-        center_x = candidate["x"] + candidate["w"] / 2
+        center_x = component["x"] + component["width"] / 2
 
-        if not groups:
+        placed = False
 
-            groups.append([candidate])
+        for group in groups:
 
-            continue
+            group_center = np.mean([
+                c["x"] + c["width"] / 2
+                for c in group
+            ])
 
-        previous_group = groups[-1]
+            if abs(center_x - group_center) <= x_tolerance:
 
-        previous_centers = [
-            c["x"] + c["w"] / 2
-            for c in previous_group
-        ]
+                group.append(component)
+                placed = True
+                break
 
-        previous_center = np.mean(previous_centers)
+        if not placed:
+            groups.append([component])
 
-        # Same candle if centers are close
-        if abs(center_x - previous_center) <= 4:
+    return groups
 
-            previous_group.append(candidate)
 
-        else:
+# ============================================================
+# CANDLE RECONSTRUCTION
+# ============================================================
 
-            groups.append([candidate])
+def reconstruct_candle(group):
 
-    merged = []
+    if not group:
+        return None
+
+    # Determine overall geometry
+    left = min(c["x"] for c in group)
+    right = max(
+        c["x"] + c["width"]
+        for c in group
+    )
+
+    top = min(c["y"] for c in group)
+    bottom = max(
+        c["y"] + c["height"]
+        for c in group
+    )
+
+    width = right - left
+    height = bottom - top
+
+    # Determine dominant color
+    green_area = sum(
+        c["area"]
+        for c in group
+        if c["color"] == "GREEN"
+    )
+
+    red_area = sum(
+        c["area"]
+        for c in group
+        if c["color"] == "RED"
+    )
+
+    if green_area >= red_area:
+        color = "GREEN"
+    else:
+        color = "RED"
+
+    # --------------------------------------------------------
+    # Find likely BODY
+    # --------------------------------------------------------
+
+    body_candidates = sorted(
+        group,
+        key=lambda c: c["area"],
+        reverse=True
+    )
+
+    body = body_candidates[0]
+
+    body_top = body["y"]
+    body_bottom = body["y"] + body["height"]
+
+    body_height = max(
+        1,
+        body_bottom - body_top
+    )
+
+    # --------------------------------------------------------
+    # Wick estimation
+    # --------------------------------------------------------
+
+    upper_wick = max(
+        0,
+        body_top - top
+    )
+
+    lower_wick = max(
+        0,
+        bottom - body_bottom
+    )
+
+    # --------------------------------------------------------
+    # OHLC in PIXEL coordinates
+    #
+    # IMPORTANT:
+    # This is NOT real price yet.
+    # --------------------------------------------------------
+
+    high = top
+    low = bottom
+
+    if color == "GREEN":
+
+        open_price = body_bottom
+        close_price = body_top
+
+    else:
+
+        open_price = body_top
+        close_price = body_bottom
+
+    # --------------------------------------------------------
+    # Geometry ratios
+    # --------------------------------------------------------
+
+    body_ratio = body_height / max(height, 1)
+
+    aspect_ratio = height / max(width, 1)
+
+    # --------------------------------------------------------
+    # Confidence
+    # --------------------------------------------------------
+
+    confidence = 100
+
+    # Extremely thin object
+    if width < 3:
+        confidence -= 25
+
+    # Extremely short object
+    if height < 10:
+        confidence -= 20
+
+    # Suspiciously wide object
+    if width > 20:
+        confidence -= 20
+
+    # Moving-average-like shape
+    if aspect_ratio < 1.2:
+        confidence -= 20
+
+    # Very tiny body
+    if body_height <= 2:
+        confidence -= 15
+
+    confidence = max(
+        0,
+        min(100, confidence)
+    )
+
+    return {
+        "x": left,
+        "y": top,
+        "width": width,
+        "height": height,
+        "color": color,
+
+        "open": open_price,
+        "high": high,
+        "low": low,
+        "close": close_price,
+
+        "body_height": body_height,
+        "upper_wick": upper_wick,
+        "lower_wick": lower_wick,
+
+        "body_ratio": round(body_ratio, 3),
+        "aspect_ratio": round(aspect_ratio, 3),
+
+        "confidence": confidence
+    }
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def validate_candle(candle):
+
+    if candle is None:
+        return False
+
+    if candle["width"] < 3:
+        return False
+
+    if candle["height"] < 10:
+        return False
+
+    if candle["width"] > 20:
+        return False
+
+    if candle["confidence"] < 45:
+        return False
+
+    return True
+
+
+# ============================================================
+# DETECT CANDLES
+# ============================================================
+
+def detect_candles(image):
+
+    green_mask, red_mask = create_color_masks(image)
+
+    green_components = find_components(
+        green_mask,
+        "GREEN"
+    )
+
+    red_components = find_components(
+        red_mask,
+        "RED"
+    )
+
+    all_components = (
+        green_components +
+        red_components
+    )
+
+    groups = group_components(
+        all_components,
+        x_tolerance=5
+    )
+
+    candles = []
 
     for group in groups:
 
-        # Keep dominant color
-        colors = [c["color"] for c in group]
+        candle = reconstruct_candle(group)
 
-        if colors.count("GREEN") >= colors.count("RED"):
-            color = "GREEN"
-        else:
-            color = "RED"
+        if validate_candle(candle):
 
-        x1 = min(c["x"] for c in group)
-        y1 = min(c["y"] for c in group)
-
-        x2 = max(
-            c["x"] + c["w"]
-            for c in group
-        )
-
-        y2 = max(
-            c["y"] + c["h"]
-            for c in group
-        )
-
-        area = sum(
-            c["area"]
-            for c in group
-        )
-
-        merged.append({
-            "x": x1,
-            "y": y1,
-            "w": x2 - x1,
-            "h": y2 - y1,
-            "area": area,
-            "color": color
-        })
-
-    return merged
-
-
-def filter_spacing(candles):
-
-    """
-    Remove extremely suspicious detections.
-
-    Real candles should normally appear at roughly
-    regular horizontal intervals.
-    """
-
-    if len(candles) < 5:
-        return candles
+            candles.append(candle)
 
     candles = sorted(
         candles,
         key=lambda c: c["x"]
     )
 
-    centers = np.array([
-        c["x"] + c["w"] / 2
-        for c in candles
-    ])
-
-    gaps = np.diff(centers)
-
-    positive_gaps = gaps[gaps > 0]
-
-    if len(positive_gaps) == 0:
-        return candles
-
-    median_gap = np.median(positive_gaps)
-
-    # Very wide gaps may indicate missing candles,
-    # but we don't delete them. We only reject objects
-    # that are extremely close together.
-    filtered = []
-
-    for i, candle in enumerate(candles):
-
-        if i == 0:
-
-            filtered.append(candle)
-            continue
-
-        gap = centers[i] - centers[i - 1]
-
-        # If objects overlap heavily, likely duplicate detection
-        if gap < max(4, median_gap * 0.35):
-
-            previous = filtered[-1]
-
-            if candle["h"] > previous["h"]:
-
-                filtered[-1] = candle
-
-        else:
-
-            filtered.append(candle)
-
-    return filtered
-
-
-def calculate_detection_quality(candles):
-
-    """
-    This is NOT a probability.
-
-    It is a diagnostic score based on:
-        - number of detections
-        - candle width consistency
-        - spacing consistency
-        - reasonable candle geometry
-    """
-
-    if len(candles) < 5:
-        return 0
-
-    widths = np.array([
-        c["w"]
-        for c in candles
-    ])
-
-    centers = np.array([
-        c["x"] + c["w"] / 2
-        for c in candles
-    ])
-
-    gaps = np.diff(centers)
-
-    # Width consistency
-    width_median = np.median(widths)
-
-    if width_median == 0:
-        width_score = 0
-    else:
-
-        width_deviation = np.mean(
-            np.abs(widths - width_median)
-            / width_median
-        )
-
-        width_score = max(
-            0,
-            1 - width_deviation
-        )
-
-    # Spacing consistency
-    if len(gaps) > 1:
-
-        gap_median = np.median(gaps)
-
-        if gap_median > 0:
-
-            gap_deviation = np.mean(
-                np.abs(gaps - gap_median)
-                / gap_median
-            )
-
-            spacing_score = max(
-                0,
-                1 - gap_deviation
-            )
-
-        else:
-
-            spacing_score = 0
-
-    else:
-
-        spacing_score = 0
-
-    # Count score
-    count_score = min(
-        len(candles) / 60,
-        1
+    return (
+        candles,
+        green_mask,
+        red_mask,
+        all_components
     )
 
-    score = (
-        width_score * 0.25 +
-        spacing_score * 0.35 +
-        count_score * 0.40
-    )
 
-    return round(
-        score * 100,
-        1
-    )
-
+# ============================================================
+# ANNOTATION
+# ============================================================
 
 def annotate_candles(image, candles):
 
-    """
-    Draw detection results on the chart.
-    """
+    annotated = image.copy()
 
-    output = image.copy()
-
-    for index, candle in enumerate(candles):
+    for index, candle in enumerate(candles, start=1):
 
         x = candle["x"]
         y = candle["y"]
-        w = candle["w"]
-        h = candle["h"]
+        w = candle["width"]
+        h = candle["height"]
 
+        # Green / red annotation
         if candle["color"] == "GREEN":
-
-            box_color = (0, 255, 0)
-
+            color = (0, 255, 0)
         else:
+            color = (255, 60, 60)
 
-            box_color = (255, 60, 60)
-
+        # Bounding box
         cv2.rectangle(
-            output,
+            annotated,
             (x, y),
             (x + w, y + h),
-            box_color,
+            color,
             2
         )
 
+        # Number
         cv2.putText(
-            output,
-            str(index + 1),
-            (x, max(12, y - 5)),
+            annotated,
+            str(index),
+            (x, max(15, y - 5)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.35,
-            box_color,
+            0.45,
+            color,
             1,
             cv2.LINE_AA
         )
 
-    return output
+    return annotated
 
 
 # ============================================================
-# INPUT
+# MAIN UI
 # ============================================================
 
-st.subheader("1️⃣ Upload Chart")
+st.header("1️⃣ Upload Chart")
 
-mode = st.radio(
-    "Input Mode",
-    ["Upload Screenshot", "Camera"],
-    horizontal=True
+uploaded = st.file_uploader(
+    "Upload your Pocket Option chart",
+    type=["png", "jpg", "jpeg"]
 )
 
-image = None
+if uploaded is None:
 
-if mode == "Upload Screenshot":
-
-    uploaded = st.file_uploader(
-        "Upload your Pocket Option chart",
-        type=["png", "jpg", "jpeg"]
-    )
-
-    if uploaded:
-
-        image = np.array(
-            Image.open(uploaded).convert("RGB")
-        )
-
-
-else:
-
-    camera = st.camera_input(
-        "Capture chart"
-    )
-
-    if camera:
-
-        image = np.array(
-            Image.open(camera).convert("RGB")
-        )
-
-
-if image is None:
-
-    st.info(
-        "Upload a chart screenshot to begin."
-    )
+    st.info("Upload a screenshot to begin.")
 
     st.stop()
 
+image = load_image(uploaded)
 
-# ============================================================
-# IMAGE DIMENSIONS
-# ============================================================
-
-height, width = image.shape[:2]
+h, w = image.shape[:2]
 
 st.write(
-    f"Image size: **{width} × {height} px**"
+    f"**Image size:** {w} × {h} px"
 )
 
-
 # ============================================================
-# CROP CONTROLS
+# CROP
 # ============================================================
 
-st.subheader("2️⃣ Chart Region")
+st.header("2️⃣ Chart Region")
 
 st.caption(
-    "For this version, we deliberately crop the chart manually. "
-    "This removes the trading controls and stochastic panel."
+    "Manually crop out trading controls and indicators "
+    "that are not part of the candle chart."
 )
 
-# Defaults based on the screenshot you provided
-default_x1 = int(width * 0.01)
-default_x2 = int(width * 0.76)
+with st.expander("⚙️ Adjust chart crop", expanded=False):
 
-default_y1 = int(height * 0.105)
-default_y2 = int(height * 0.80)
+    left = st.slider(
+        "Left",
+        0,
+        w - 1,
+        min(34, w - 1)
+    )
 
+    right = st.slider(
+        "Right",
+        1,
+        w,
+        min(1164, w)
+    )
 
-with st.expander(
-    "⚙️ Adjust chart crop",
-    expanded=False
-):
+    top = st.slider(
+        "Top",
+        0,
+        h - 1,
+        min(122, h - 1)
+    )
 
-    c1, c2 = st.columns(2)
+    bottom = st.slider(
+        "Bottom",
+        1,
+        h,
+        min(734, h)
+    )
 
-    with c1:
-
-        x1 = st.slider(
-            "Left",
-            0,
-            width - 2,
-            default_x1
-        )
-
-        y1 = st.slider(
-            "Top",
-            0,
-            height - 2,
-            default_y1
-        )
-
-    with c2:
-
-        x2 = st.slider(
-            "Right",
-            x1 + 1,
-            width,
-            default_x2
-        )
-
-        y2 = st.slider(
-            "Bottom",
-            y1 + 1,
-            height,
-            default_y2
-        )
-
-
-crop = crop_chart(
+chart = crop_chart(
     image,
-    x1,
-    y1,
-    x2,
-    y2
+    left,
+    right,
+    top,
+    bottom
 )
-
 
 st.image(
-    crop,
-    caption="Chart region used by the vision engine",
-    width="stretch"
+    chart,
+    caption="Chart region used by detector",
+    use_container_width=True
 )
 
-
 # ============================================================
-# ANALYSIS
+# DETECTION
 # ============================================================
 
-st.subheader("3️⃣ Vision Diagnostic")
+st.header("3️⃣ Vision Diagnostic")
 
-analyse = st.button(
-    "👁️ Detect Candles",
+if st.button(
+    "👁️ Detect & Reconstruct Candles",
     type="primary"
-)
+):
+
+    candles, green_mask, red_mask, components = detect_candles(
+        chart
+    )
+
+    # Store results
+    st.session_state["candles"] = candles
+    st.session_state["green_mask"] = green_mask
+    st.session_state["red_mask"] = red_mask
+    st.session_state["components"] = components
 
 
-if analyse:
+# ============================================================
+# RESULTS
+# ============================================================
 
-    with st.spinner(
-        "Analysing chart geometry..."
-    ):
+if "candles" in st.session_state:
 
-        # ----------------------------------------------------
-        # COLOR MASKS
-        # ----------------------------------------------------
+    candles = st.session_state["candles"]
+    green_mask = st.session_state["green_mask"]
+    red_mask = st.session_state["red_mask"]
+    components = st.session_state["components"]
 
-        green_mask, red_mask = create_color_masks(
-            crop
-        )
+    st.header("4️⃣ Detection Result")
 
-        # ----------------------------------------------------
-        # FIND CANDIDATES
-        # ----------------------------------------------------
+    green_count = sum(
+        c["color"] == "GREEN"
+        for c in candles
+    )
 
-        green_candidates = find_candidates(
-            green_mask,
-            "GREEN"
-        )
-
-        red_candidates = find_candidates(
-            red_mask,
-            "RED"
-        )
-
-        all_candidates = (
-            green_candidates +
-            red_candidates
-        )
-
-        # ----------------------------------------------------
-        # MERGE FRAGMENTS
-        # ----------------------------------------------------
-
-        candles = merge_candle_fragments(
-            all_candidates
-        )
-
-        # ----------------------------------------------------
-        # FILTER SPACING
-        # ----------------------------------------------------
-
-        candles = filter_spacing(
-            candles
-        )
-
-        candles = sorted(
-            candles,
-            key=lambda c: c["x"]
-        )
-
-        # ----------------------------------------------------
-        # QUALITY
-        # ----------------------------------------------------
-
-        quality = calculate_detection_quality(
-            candles
-        )
-
-        # ----------------------------------------------------
-        # ANNOTATION
-        # ----------------------------------------------------
-
-        annotated = annotate_candles(
-            crop,
-            candles
-        )
-
-
-    # ========================================================
-    # RESULTS
-    # ========================================================
-
-    st.subheader("4️⃣ Detection Result")
+    red_count = sum(
+        c["color"] == "RED"
+        for c in candles
+    )
 
     col1, col2, col3, col4 = st.columns(4)
 
-    with col1:
+    col1.metric(
+        "Confirmed Candles",
+        len(candles)
+    )
 
-        st.metric(
-            "Candles detected",
-            len(candles)
+    col2.metric(
+        "Green",
+        green_count
+    )
+
+    col3.metric(
+        "Red",
+        red_count
+    )
+
+    col4.metric(
+        "Rejected Candidates",
+        max(
+            0,
+            len(components) - len(candles)
         )
-
-    with col2:
-
-        st.metric(
-            "Green candidates",
-            len(green_candidates)
-        )
-
-    with col3:
-
-        st.metric(
-            "Red candidates",
-            len(red_candidates)
-        )
-
-    with col4:
-
-        st.metric(
-            "Diagnostic score",
-            f"{quality}%"
-        )
-
-
-    # ========================================================
-    # WARNING
-    # ========================================================
-
-    if len(candles) < 20:
-
-        st.warning(
-            "⚠️ Too few candle candidates detected. "
-            "Do NOT use this output for trading."
-        )
-
-    elif quality < 60:
-
-        st.warning(
-            "⚠️ Detection quality is currently low. "
-            "The engine needs calibration."
-        )
-
-    else:
-
-        st.success(
-            "Candle candidates detected. "
-            "Now inspect the annotated image carefully."
-        )
-
+    )
 
     # ========================================================
     # ANNOTATED IMAGE
     # ========================================================
 
-    st.subheader(
-        "5️⃣ What the Computer Thinks Are Candles"
+    st.header("5️⃣ What the Computer Thinks Are Candles")
+
+    annotated = annotate_candles(
+        chart,
+        candles
     )
 
     st.image(
         annotated,
-        caption=(
-            "Green boxes = detected bullish candle candidates | "
-            "Red boxes = detected bearish candle candidates"
-        ),
-        width="stretch"
+        use_container_width=True
     )
 
+    st.caption(
+        "Each numbered box represents a candle candidate "
+        "that survived the geometry filters."
+    )
 
     # ========================================================
     # MASKS
     # ========================================================
 
-    st.subheader(
-        "6️⃣ Raw Color Detection"
-    )
+    st.header("6️⃣ Color Segmentation")
 
-    mask_col1, mask_col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-    with mask_col1:
+    with col1:
 
         st.image(
             green_mask,
-            caption="Green pixel mask",
-            width="stretch"
+            caption="Green mask",
+            use_container_width=True
         )
 
-    with mask_col2:
+    with col2:
 
         st.image(
             red_mask,
-            caption="Red pixel mask",
-            width="stretch"
+            caption="Red mask",
+            use_container_width=True
         )
-
 
     # ========================================================
     # CANDLE DATA
     # ========================================================
 
+    st.header("7️⃣ Reconstructed Candle Data")
+
     if candles:
 
-        st.subheader(
-            "7️⃣ Detected Candle Data"
-        )
+        df = pd.DataFrame(candles)
 
-        table_data = []
-
-        for i, candle in enumerate(candles):
-
-            table_data.append({
-                "Candle": i + 1,
-                "X": candle["x"],
-                "Y": candle["y"],
-                "Width": candle["w"],
-                "Height": candle["h"],
-                "Area": round(
-                    candle["area"],
-                    1
-                ),
-                "Color": candle["color"]
-            })
-
-        df = pd.DataFrame(
-            table_data
+        df.insert(
+            0,
+            "Candle",
+            range(1, len(df) + 1)
         )
 
         st.dataframe(
             df,
-            width="stretch",
+            use_container_width=True,
             hide_index=True
         )
 
+        st.caption(
+            "OHLC values are currently PIXEL coordinates, "
+            "not actual market prices."
+        )
+
+    else:
+
+        st.warning(
+            "No candles survived the geometry filters."
+        )
 
     # ========================================================
-    # IMPORTANT STATUS
+    # SPACING ANALYSIS
     # ========================================================
 
-    st.divider()
+    st.header("8️⃣ Candle Spacing")
+
+    if len(candles) >= 3:
+
+        x_positions = np.array([
+            c["x"] + c["width"] / 2
+            for c in candles
+        ])
+
+        spacing = np.diff(x_positions)
+
+        st.write(
+            f"Median candle spacing: "
+            f"**{np.median(spacing):.2f} px**"
+        )
+
+        st.write(
+            f"Minimum spacing: "
+            f"**{np.min(spacing):.2f} px**"
+        )
+
+        st.write(
+            f"Maximum spacing: "
+            f"**{np.max(spacing):.2f} px**"
+        )
+
+        spacing_df = pd.DataFrame({
+            "From Candle": range(1, len(spacing) + 1),
+            "To Candle": range(2, len(spacing) + 2),
+            "Spacing (px)": np.round(spacing, 2)
+        })
+
+        st.dataframe(
+            spacing_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # ========================================================
+    # QUALITY SUMMARY
+    # ========================================================
+
+    st.header("9️⃣ Detection Quality")
+
+    if candles:
+
+        confidence = np.array([
+            c["confidence"]
+            for c in candles
+        ])
+
+        average_confidence = np.mean(
+            confidence
+        )
+
+        high_confidence = np.sum(
+            confidence >= 80
+        )
+
+        low_confidence = np.sum(
+            confidence < 60
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Average Confidence",
+            f"{average_confidence:.1f}%"
+        )
+
+        col2.metric(
+            "High Confidence",
+            int(high_confidence)
+        )
+
+        col3.metric(
+            "Low Confidence",
+            int(low_confidence)
+        )
+
+        if average_confidence >= 80:
+
+            st.success(
+                "The geometry detector is producing "
+                "promising candidates."
+            )
+
+        elif average_confidence >= 65:
+
+            st.warning(
+                "Detection is usable for debugging, "
+                "but not yet reliable."
+            )
+
+        else:
+
+            st.error(
+                "Detection quality is poor. "
+                "Do NOT proceed to signal generation."
+            )
+
+    # ========================================================
+    # IMPORTANT
+    # ========================================================
 
     st.warning(
         """
@@ -856,9 +825,11 @@ if analyse:
 
         This version does NOT generate BUY or SELL signals.
 
-        The purpose of V2.0 is to verify that the computer
-        correctly identifies candles from the screenshot.
+        The purpose of V2.1 is to determine whether the
+        screenshot can be converted into a reliable candle
+        sequence.
 
-        Do not trade based on the diagnostic score.
+        We will not build a trading signal layer until this
+        extraction layer has been validated.
         """
     )
