@@ -4,22 +4,48 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Maluz Signal Engine V2.2",
+    page_title="Maluz Signal Engine V2.3",
     layout="wide"
 )
 
-st.title("🔹 Maluz Signal Engine V2.2")
+st.title("🔹 Maluz Signal Engine V2.3")
 st.caption(
-    "Vision Diagnostic • Candle Reconstruction • Sequence Validation • NO TRADING SIGNALS"
+    "Vision Diagnostic • Candle Geometry • OHLC Reconstruction "
+    "• Structural Validation • NO TRADING SIGNALS"
 )
 
+
 # ============================================================
-# IMAGE LOADING
+# CONFIGURATION
+# ============================================================
+
+MIN_COMPONENT_AREA = 15
+MIN_COMPONENT_WIDTH = 2
+MIN_COMPONENT_HEIGHT = 5
+
+MIN_CANDLE_WIDTH = 3
+MAX_CANDLE_WIDTH = 30
+MIN_CANDLE_HEIGHT = 10
+
+MIN_CONFIDENCE_ACCEPT = 50
+
+# Missing-candle detection
+SUSPICIOUS_GAP_RATIO = 1.35
+POSSIBLE_MISSING_RATIO = 1.65
+MAX_MISSING_RATIO = 2.35
+
+# Local spacing consistency
+LOCAL_SPACING_TOLERANCE = 0.25
+
+
+# ============================================================
+# HELPER FUNCTIONS
 # ============================================================
 
 def load_image(uploaded_file):
@@ -28,38 +54,65 @@ def load_image(uploaded_file):
 
 
 def crop_chart(image, left, right, top, bottom):
+
     h, w = image.shape[:2]
 
-    left = max(0, min(int(left), w - 1))
-    right = max(left + 1, min(int(right), w))
-    top = max(0, min(int(top), h - 1))
-    bottom = max(top + 1, min(int(bottom), h))
+    left = max(0, min(left, w - 1))
+    right = max(left + 1, min(right, w))
+
+    top = max(0, min(top, h - 1))
+    bottom = max(top + 1, min(bottom, h))
 
     return image[top:bottom, left:right]
 
 
+def clamp_score(value):
+    return max(0.0, min(100.0, float(value)))
+
+
+def score_from_distance(value, target, tolerance):
+
+    if target <= 0:
+        return 100.0
+
+    deviation = abs(value - target) / target
+
+    score = 100.0 - (
+        deviation / max(tolerance, 0.01) * 100.0
+    )
+
+    return clamp_score(score)
+
+
 # ============================================================
-# COLOR SEGMENTATION
+# COLOR MASKS
 # ============================================================
 
 def create_color_masks(image):
+
     """
-    Detect red and green chart objects.
+    Detect strong Pocket Option style candle colours.
 
-    IMPORTANT:
-    These masks identify COLOUR candidates.
-    They do not automatically mean that every candidate
-    is a candle.
+    HSV is used because it separates hue from brightness
+    better than raw RGB.
     """
 
-    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    hsv = cv2.cvtColor(
+        image,
+        cv2.COLOR_RGB2HSV
+    )
 
-    # -----------------------------
+    # --------------------------------------------------------
     # GREEN
-    # -----------------------------
+    # --------------------------------------------------------
 
-    green_lower = np.array([35, 70, 40])
-    green_upper = np.array([95, 255, 255])
+    green_lower = np.array(
+        [35, 80, 50]
+    )
+
+    green_upper = np.array(
+        [95, 255, 255]
+    )
 
     green_mask = cv2.inRange(
         hsv,
@@ -67,38 +120,51 @@ def create_color_masks(image):
         green_upper
     )
 
-    # -----------------------------
+    # --------------------------------------------------------
     # RED
-    # -----------------------------
+    # --------------------------------------------------------
 
-    red_lower1 = np.array([0, 70, 40])
-    red_upper1 = np.array([15, 255, 255])
+    red_lower1 = np.array(
+        [0, 80, 50]
+    )
 
-    red_lower2 = np.array([165, 70, 40])
-    red_upper2 = np.array([180, 255, 255])
+    red_upper1 = np.array(
+        [12, 255, 255]
+    )
 
-    red_mask_1 = cv2.inRange(
+    red_lower2 = np.array(
+        [165, 80, 50]
+    )
+
+    red_upper2 = np.array(
+        [180, 255, 255]
+    )
+
+    red_mask1 = cv2.inRange(
         hsv,
         red_lower1,
         red_upper1
     )
 
-    red_mask_2 = cv2.inRange(
+    red_mask2 = cv2.inRange(
         hsv,
         red_lower2,
         red_upper2
     )
 
     red_mask = cv2.bitwise_or(
-        red_mask_1,
-        red_mask_2
+        red_mask1,
+        red_mask2
     )
 
-    # -----------------------------
-    # Remove tiny noise
-    # -----------------------------
+    # --------------------------------------------------------
+    # Remove tiny isolated noise
+    # --------------------------------------------------------
 
-    kernel = np.ones((2, 2), np.uint8)
+    kernel = np.ones(
+        (2, 2),
+        np.uint8
+    )
 
     green_mask = cv2.morphologyEx(
         green_mask,
@@ -132,19 +198,33 @@ def find_components(mask, color_name):
 
     for i in range(1, num_labels):
 
-        x = int(stats[i, cv2.CC_STAT_LEFT])
-        y = int(stats[i, cv2.CC_STAT_TOP])
-        w = int(stats[i, cv2.CC_STAT_WIDTH])
-        h = int(stats[i, cv2.CC_STAT_HEIGHT])
-        area = int(stats[i, cv2.CC_STAT_AREA])
+        x = int(
+            stats[i, cv2.CC_STAT_LEFT]
+        )
 
-        if area < 10:
+        y = int(
+            stats[i, cv2.CC_STAT_TOP]
+        )
+
+        w = int(
+            stats[i, cv2.CC_STAT_WIDTH]
+        )
+
+        h = int(
+            stats[i, cv2.CC_STAT_HEIGHT]
+        )
+
+        area = int(
+            stats[i, cv2.CC_STAT_AREA]
+        )
+
+        if area < MIN_COMPONENT_AREA:
             continue
 
-        if w < 2:
+        if w < MIN_COMPONENT_WIDTH:
             continue
 
-        if h < 4:
+        if h < MIN_COMPONENT_HEIGHT:
             continue
 
         components.append({
@@ -160,10 +240,25 @@ def find_components(mask, color_name):
 
 
 # ============================================================
-# INITIAL X GROUPING
+# COMPONENT GROUPING
 # ============================================================
 
-def group_components(components, x_tolerance=5):
+def group_components(
+    components,
+    x_tolerance=5
+):
+
+    """
+    A candle can consist of several connected components:
+
+          |
+        ███
+        ███
+          |
+
+    Components occupying approximately the same X position
+    are grouped together.
+    """
 
     if not components:
         return []
@@ -178,8 +273,8 @@ def group_components(components, x_tolerance=5):
     for component in components:
 
         center_x = (
-            component["x"] +
-            component["width"] / 2
+            component["x"]
+            + component["width"] / 2
         )
 
         placed = False
@@ -191,7 +286,9 @@ def group_components(components, x_tolerance=5):
                 for c in group
             ])
 
-            if abs(center_x - group_center) <= x_tolerance:
+            if abs(
+                center_x - group_center
+            ) <= x_tolerance:
 
                 group.append(component)
                 placed = True
@@ -199,21 +296,25 @@ def group_components(components, x_tolerance=5):
 
         if not placed:
 
-            groups.append([
-                component
-            ])
+            groups.append(
+                [component]
+            )
 
     return groups
 
 
 # ============================================================
-# CANDIDATE GEOMETRY
+# BASIC CANDLE RECONSTRUCTION
 # ============================================================
 
-def calculate_group_geometry(group):
+def reconstruct_candle(group):
 
     if not group:
         return None
+
+    # --------------------------------------------------------
+    # Overall bounding geometry
+    # --------------------------------------------------------
 
     left = min(
         c["x"]
@@ -238,6 +339,13 @@ def calculate_group_geometry(group):
     width = right - left
     height = bottom - top
 
+    if width <= 0 or height <= 0:
+        return None
+
+    # --------------------------------------------------------
+    # Dominant colour
+    # --------------------------------------------------------
+
     green_area = sum(
         c["area"]
         for c in group
@@ -250,214 +358,63 @@ def calculate_group_geometry(group):
         if c["color"] == "RED"
     )
 
+    total_color_area = (
+        green_area + red_area
+    )
+
     if green_area >= red_area:
         color = "GREEN"
+        dominant_area = green_area
     else:
         color = "RED"
+        dominant_area = red_area
 
-    total_area = green_area + red_area
+    # --------------------------------------------------------
+    # Colour purity
+    # --------------------------------------------------------
 
-    color_confidence = (
-        max(green_area, red_area) /
-        max(total_area, 1)
-    )
+    if total_color_area > 0:
 
-    return {
-        "left": left,
-        "right": right,
-        "top": top,
-        "bottom": bottom,
-        "width": width,
-        "height": height,
-        "color": color,
-        "green_area": green_area,
-        "red_area": red_area,
-        "color_confidence": color_confidence
-    }
-
-
-# ============================================================
-# BODY DETECTION
-# ============================================================
-
-def detect_body_from_mask(
-    mask,
-    x1,
-    x2,
-    y1,
-    y2
-):
-
-    h, w = mask.shape
-
-    x1 = max(0, min(x1, w - 1))
-    x2 = max(x1 + 1, min(x2, w))
-
-    y1 = max(0, min(y1, h - 1))
-    y2 = max(y1 + 1, min(y2, h))
-
-    roi = mask[y1:y2, x1:x2]
-
-    if roi.size == 0:
-        return None
-
-    # Count coloured pixels on every row.
-    row_counts = np.sum(
-        roi > 0,
-        axis=1
-    )
-
-    if len(row_counts) == 0:
-        return None
-
-    max_count = np.max(row_counts)
-
-    if max_count <= 0:
-        return None
-
-    # A candle body generally occupies a wider
-    # horizontal section than its wick.
-    threshold = max(
-        2,
-        max_count * 0.35
-    )
-
-    body_rows = np.where(
-        row_counts >= threshold
-    )[0]
-
-    if len(body_rows) == 0:
-        return None
-
-    body_top = int(body_rows[0] + y1)
-    body_bottom = int(body_rows[-1] + y1)
-
-    body_height = (
-        body_bottom -
-        body_top +
-        1
-    )
-
-    # Estimate body width from the relevant rows.
-    relevant = roi[
-        body_rows[0]:
-        body_rows[-1] + 1
-    ]
-
-    ys, xs = np.where(
-        relevant > 0
-    )
-
-    if len(xs) == 0:
-        body_width = 0
-    else:
-        body_width = (
-            int(xs.max()) -
-            int(xs.min()) +
-            1
+        color_purity = (
+            dominant_area
+            / total_color_area
         )
 
-    return {
-        "top": body_top,
-        "bottom": body_bottom,
-        "height": body_height,
-        "width": body_width
-    }
-
-
-# ============================================================
-# CANDLE RECONSTRUCTION
-# ============================================================
-
-def reconstruct_candle(
-    group,
-    green_mask,
-    red_mask,
-    expected_spacing=None
-):
-
-    geometry = calculate_group_geometry(
-        group
-    )
-
-    if geometry is None:
-        return None
-
-    left = geometry["left"]
-    right = geometry["right"]
-    top = geometry["top"]
-    bottom = geometry["bottom"]
-
-    width = geometry["width"]
-    height = geometry["height"]
-
-    if width <= 0 or height <= 0:
-        return None
-
-    # Select the dominant colour mask.
-    if geometry["color"] == "GREEN":
-        mask = green_mask
     else:
-        mask = red_mask
 
-    # Expand slightly around candidate.
-    x_pad = 2
-    y_pad = 1
+        color_purity = 0.0
 
-    x1 = max(0, left - x_pad)
-    x2 = min(
-        mask.shape[1],
-        right + x_pad
-    )
-
-    y1 = max(0, top - y_pad)
-    y2 = min(
-        mask.shape[0],
-        bottom + y_pad
-    )
-
-    body = detect_body_from_mask(
-        mask,
-        x1,
-        x2,
-        y1,
-        y2
+    color_score = clamp_score(
+        color_purity * 100
     )
 
     # --------------------------------------------------------
-    # If body cannot be identified
+    # Likely candle body
     # --------------------------------------------------------
 
-    if body is None:
+    body_candidates = sorted(
+        group,
+        key=lambda c: c["area"],
+        reverse=True
+    )
 
-        return {
-            "x": left,
-            "y": top,
-            "width": width,
-            "height": height,
-            "color": geometry["color"],
-            "open": np.nan,
-            "high": top,
-            "low": bottom,
-            "close": np.nan,
-            "body_top": np.nan,
-            "body_bottom": np.nan,
-            "body_height": 0,
-            "upper_wick": 0,
-            "lower_wick": 0,
-            "body_ratio": 0,
-            "wick_ratio": 0,
-            "color_confidence": geometry[
-                "color_confidence"
-            ],
-            "spacing_score": 0,
-            "geometry_score": 0,
-            "confidence": 0
-        }
+    body = body_candidates[0]
 
-    body_top = body["top"]
-    body_bottom = body["bottom"]
-    body_height = body["height"]
+    body_top = body["y"]
+
+    body_bottom = (
+        body["y"]
+        + body["height"]
+    )
+
+    body_height = max(
+        1,
+        body_bottom - body_top
+    )
+
+    # --------------------------------------------------------
+    # Wick estimation
+    # --------------------------------------------------------
 
     upper_wick = max(
         0,
@@ -470,134 +427,134 @@ def reconstruct_candle(
     )
 
     # --------------------------------------------------------
-    # Pixel-space OHLC
+    # OHLC in PIXEL coordinates
     #
-    # Y increases downward.
+    # IMPORTANT:
+    # These are NOT actual market prices.
     # --------------------------------------------------------
 
-    if geometry["color"] == "GREEN":
+    high = top
+    low = bottom
 
-        open_pixel = body_bottom
-        close_pixel = body_top
+    if color == "GREEN":
+
+        open_price = body_bottom
+        close_price = body_top
 
     else:
 
-        open_pixel = body_top
-        close_pixel = body_bottom
-
-    high_pixel = top
-    low_pixel = bottom
+        open_price = body_top
+        close_price = body_bottom
 
     # --------------------------------------------------------
-    # Geometry
+    # Geometry ratios
     # --------------------------------------------------------
 
     body_ratio = (
-        body_height /
-        max(height, 1)
-    )
-
-    wick_ratio = (
-        (upper_wick + lower_wick) /
-        max(height, 1)
+        body_height
+        / max(height, 1)
     )
 
     aspect_ratio = (
-        height /
-        max(width, 1)
+        height
+        / max(width, 1)
+    )
+
+    wick_ratio = (
+        (upper_wick + lower_wick)
+        / max(height, 1)
     )
 
     # --------------------------------------------------------
-    # Geometry score
+    # Initial geometry score
     # --------------------------------------------------------
 
     geometry_score = 100.0
 
+    # Width
     if width < 3:
+
+        geometry_score -= 35
+
+    elif width > 20:
+
+        geometry_score -= min(
+            35,
+            (width - 20) * 3
+        )
+
+    # Height
+    if height < 10:
+
+        geometry_score -= 35
+
+    elif height < 14:
+
+        geometry_score -= 10
+
+    # Aspect ratio
+    if aspect_ratio < 1.2:
+
         geometry_score -= 30
 
-    if width > 25:
-        geometry_score -= 30
+    elif aspect_ratio < 1.8:
 
-    if height < 8:
-        geometry_score -= 20
+        geometry_score -= 10
 
-    if body_height < 2:
-        geometry_score -= 20
+    # Body ratio
+    if body_ratio < 0.03:
 
-    if body_height > height:
-        geometry_score -= 20
+        geometry_score -= 25
 
-    if aspect_ratio < 1.0:
-        geometry_score -= 20
+    elif body_ratio < 0.06:
 
-    geometry_score = max(
-        0,
-        min(100, geometry_score)
+        geometry_score -= 10
+
+    # Extremely dominant wick structure
+    if wick_ratio > 0.90:
+
+        geometry_score -= 15
+
+    geometry_score = clamp_score(
+        geometry_score
     )
 
     # --------------------------------------------------------
-    # Spacing score
+    # Group support score
     # --------------------------------------------------------
 
-    spacing_score = 100.0
+    component_count = len(group)
 
-    if expected_spacing is not None:
+    if component_count >= 3:
 
-        center_x = (
-            left +
-            width / 2
-        )
+        detection_score = 100.0
 
-        # expected_spacing is only used as
-        # contextual information here.
-        #
-        # Individual spacing is evaluated
-        # later in sequence validation.
+    elif component_count == 2:
 
-        if expected_spacing <= 0:
-            spacing_score = 50
+        detection_score = 92.0
 
     else:
 
-        spacing_score = 70
+        detection_score = 82.0
 
     # --------------------------------------------------------
-    # Overall confidence
+    # Return reconstructed candle
     # --------------------------------------------------------
-
-    confidence = (
-        geometry["color_confidence"] * 25
-        +
-        geometry_score / 100 * 35
-        +
-        min(body_ratio * 2, 1) * 20
-        +
-        min(wick_ratio * 2, 1) * 10
-        +
-        spacing_score / 100 * 10
-    )
-
-    confidence = max(
-        0,
-        min(100, confidence)
-    )
 
     return {
+
         "x": left,
         "y": top,
+
         "width": width,
         "height": height,
 
-        "color": geometry["color"],
+        "color": color,
 
-        "open": open_pixel,
-        "high": high_pixel,
-        "low": low_pixel,
-        "close": close_pixel,
-
-        "body_top": body_top,
-        "body_bottom": body_bottom,
+        "open": open_price,
+        "high": high,
+        "low": low,
+        "close": close_price,
 
         "body_height": body_height,
 
@@ -614,13 +571,13 @@ def reconstruct_candle(
             3
         ),
 
-        "color_confidence": round(
-            geometry["color_confidence"] * 100,
-            1
+        "aspect_ratio": round(
+            aspect_ratio,
+            3
         ),
 
-        "spacing_score": round(
-            spacing_score,
+        "color_confidence": round(
+            color_score,
             1
         ),
 
@@ -629,380 +586,485 @@ def reconstruct_candle(
             1
         ),
 
-        "confidence": round(
-            confidence,
+        "detection_score": round(
+            detection_score,
             1
-        )
+        ),
+
+        "structure_score": 0.0,
+
+        "confidence": 0.0,
+
+        "validation": "Pending"
     }
 
 
 # ============================================================
-# ADAPTIVE SPACING
+# STRUCTURAL SCORING
 # ============================================================
 
-def estimate_spacing(candles):
+def apply_structural_scores(candles):
 
-    if len(candles) < 3:
-        return None
+    """
+    Compare each candle against its neighbours.
 
-    centers = np.array([
-        c["x"] + c["width"] / 2
+    This is deliberately relative rather than using a single
+    fixed candle size, because screenshots can be scaled.
+    """
+
+    if not candles:
+        return candles
+
+    widths = np.array([
+        c["width"]
         for c in candles
-    ])
+    ], dtype=float)
 
-    spacing = np.diff(
-        centers
-    )
-
-    spacing = spacing[
-        spacing > 0
-    ]
-
-    if len(spacing) == 0:
-        return None
-
-    # Median is more resistant to
-    # missing candles and outliers.
-    return float(
-        np.median(spacing)
-    )
-
-
-# ============================================================
-# SEQUENCE VALIDATION
-# ============================================================
-
-def validate_sequence(candles):
-
-    if len(candles) < 3:
-
-        return candles, {
-            "median_spacing": None,
-            "missing_gaps": [],
-            "duplicate_gaps": [],
-            "spacing_consistency": 0
-        }
-
-    candles = sorted(
-        candles,
-        key=lambda c: c["x"]
-    )
-
-    centers = np.array([
-        c["x"] + c["width"] / 2
+    heights = np.array([
+        c["height"]
         for c in candles
-    ])
+    ], dtype=float)
 
-    spacing = np.diff(
-        centers
+    # Robust medians
+    median_width = np.median(
+        widths
     )
 
-    valid_spacing = spacing[
-        spacing > 0
-    ]
-
-    if len(valid_spacing) == 0:
-
-        return candles, {
-            "median_spacing": None,
-            "missing_gaps": [],
-            "duplicate_gaps": [],
-            "spacing_consistency": 0
-        }
-
-    median_spacing = float(
-        np.median(valid_spacing)
+    median_height = np.median(
+        heights
     )
-
-    missing_gaps = []
-    duplicate_gaps = []
-
-    tolerance = median_spacing * 0.45
-
-    for i, gap in enumerate(
-        valid_spacing
-    ):
-
-        ratio = (
-            gap /
-            max(median_spacing, 0.001)
-        )
-
-        # Approximately 2x, 3x etc.
-        # may indicate missing candles.
-        nearest_multiple = round(
-            ratio
-        )
-
-        if (
-            nearest_multiple >= 2
-            and
-            abs(
-                ratio -
-                nearest_multiple
-            ) < 0.25
-        ):
-
-            missing_gaps.append({
-                "after_candle": i + 1,
-                "gap": round(
-                    float(gap),
-                    2
-                ),
-                "ratio": round(
-                    float(ratio),
-                    2
-                ),
-                "possible_missing": (
-                    nearest_multiple - 1
-                )
-            })
-
-        elif gap < (
-            median_spacing -
-            tolerance
-        ):
-
-            duplicate_gaps.append({
-                "after_candle": i + 1,
-                "gap": round(
-                    float(gap),
-                    2
-                )
-            })
-
-    # --------------------------------------------------------
-    # Spacing consistency
-    # --------------------------------------------------------
-
-    deviation = np.abs(
-        valid_spacing -
-        median_spacing
-    )
-
-    consistency = 100 * (
-        1 -
-        np.mean(
-            deviation /
-            max(median_spacing, 0.001)
-        )
-    )
-
-    consistency = max(
-        0,
-        min(100, consistency)
-    )
-
-    # --------------------------------------------------------
-    # Apply spacing score to candles
-    # --------------------------------------------------------
 
     for i, candle in enumerate(
         candles
     ):
 
-        if i == 0:
+        width_score = score_from_distance(
+            candle["width"],
+            median_width,
+            0.75
+        )
 
-            candle["spacing_score"] = round(
-                consistency,
-                1
+        height_score = score_from_distance(
+            candle["height"],
+            median_height,
+            1.00
+        )
+
+        # ----------------------------------------------------
+        # Neighbour spacing score
+        # ----------------------------------------------------
+
+        spacing_values = []
+
+        if i > 0:
+
+            previous_center = (
+                candles[i - 1]["x"]
+                + candles[i - 1]["width"] / 2
+            )
+
+            current_center = (
+                candle["x"]
+                + candle["width"] / 2
+            )
+
+            spacing_values.append(
+                current_center
+                - previous_center
+            )
+
+        if i < len(candles) - 1:
+
+            current_center = (
+                candle["x"]
+                + candle["width"] / 2
+            )
+
+            next_center = (
+                candles[i + 1]["x"]
+                + candles[i + 1]["width"] / 2
+            )
+
+            spacing_values.append(
+                next_center
+                - current_center
+            )
+
+        if spacing_values:
+
+            local_spacing = np.median(
+                spacing_values
+            )
+
+            all_centers = np.array([
+                c["x"] + c["width"] / 2
+                for c in candles
+            ])
+
+            all_spacing = np.diff(
+                all_centers
+            )
+
+            global_spacing = np.median(
+                all_spacing
+            )
+
+            spacing_score = score_from_distance(
+                local_spacing,
+                global_spacing,
+                0.75
             )
 
         else:
 
-            gap = (
-                centers[i] -
-                centers[i - 1]
-            )
+            spacing_score = 80.0
 
-            ratio = (
-                gap /
-                max(median_spacing, 0.001)
-            )
+        # ----------------------------------------------------
+        # Combine structure
+        # ----------------------------------------------------
 
-            if (
-                abs(ratio - 1)
-                <= 0.25
-            ):
+        structure_score = (
+            width_score * 0.35
+            + height_score * 0.35
+            + spacing_score * 0.30
+        )
 
-                score = 100
-
-            elif (
-                abs(ratio - 1)
-                <= 0.5
-            ):
-
-                score = 75
-
-            elif ratio >= 1.75:
-
-                score = 40
-
-            else:
-
-                score = 55
-
-            candle["spacing_score"] = score
-
-    return candles, {
-        "median_spacing": median_spacing,
-        "missing_gaps": missing_gaps,
-        "duplicate_gaps": duplicate_gaps,
-        "spacing_consistency": round(
-            consistency,
+        candle["structure_score"] = round(
+            clamp_score(structure_score),
             1
         )
-    }
+
+        # ----------------------------------------------------
+        # Final weighted confidence
+        #
+        # Geometry  = 40%
+        # Colour    = 25%
+        # Structure = 25%
+        # Detection = 10%
+        # ----------------------------------------------------
+
+        final_confidence = (
+            candle["geometry_score"] * 0.40
+            + candle["color_confidence"] * 0.25
+            + candle["structure_score"] * 0.25
+            + candle["detection_score"] * 0.10
+        )
+
+        candle["confidence"] = round(
+            clamp_score(final_confidence),
+            1
+        )
+
+    return candles
 
 
 # ============================================================
-# CANDLE VALIDATION
+# VALIDATION
 # ============================================================
 
 def validate_candle(candle):
 
     if candle is None:
-        return False, "No candle data"
+        return False
 
-    if candle["width"] < 3:
-        return False, "Too narrow"
+    # Hard failures
+    if candle["width"] < MIN_CANDLE_WIDTH:
+        return False
 
-    if candle["width"] > 25:
-        return False, "Too wide"
+    if candle["height"] < MIN_CANDLE_HEIGHT:
+        return False
 
-    if candle["height"] < 8:
-        return False, "Too short"
+    if candle["width"] > MAX_CANDLE_WIDTH:
+        return False
 
-    if candle["body_height"] < 2:
-        return False, "No clear body"
+    # Confidence is now a composite score.
+    if candle["confidence"] < MIN_CONFIDENCE_ACCEPT:
+        return False
 
-    if candle["confidence"] < 50:
-        return False, "Low confidence"
-
-    if (
-        candle["upper_wick"] < 0
-        or
-        candle["lower_wick"] < 0
-    ):
-        return False, "Invalid wick geometry"
-
-    return True, "Accepted"
+    return True
 
 
 # ============================================================
-# COMPLETE CANDLE DETECTION
+# DETECT CANDLES
 # ============================================================
 
 def detect_candles(image):
 
-    green_mask, red_mask = (
-        create_color_masks(image)
+    green_mask, red_mask = create_color_masks(
+        image
     )
 
-    green_components = (
-        find_components(
-            green_mask,
-            "GREEN"
-        )
+    green_components = find_components(
+        green_mask,
+        "GREEN"
     )
 
-    red_components = (
-        find_components(
-            red_mask,
-            "RED"
-        )
+    red_components = find_components(
+        red_mask,
+        "RED"
     )
 
     all_components = (
-        green_components +
-        red_components
+        green_components
+        + red_components
     )
-
-    # --------------------------------------------------------
-    # First candidate grouping
-    # --------------------------------------------------------
 
     groups = group_components(
         all_components,
         x_tolerance=5
     )
 
-    raw_candidates = []
-
-    for group in groups:
-
-        candle = reconstruct_candle(
-            group,
-            green_mask,
-            red_mask
-        )
-
-        if candle is not None:
-
-            raw_candidates.append(
-                candle
-            )
-
-    # --------------------------------------------------------
-    # Estimate spacing
-    # --------------------------------------------------------
-
-    estimated_spacing = (
-        estimate_spacing(
-            raw_candidates
-        )
-    )
-
-    # --------------------------------------------------------
-    # Reconstruct again with spacing context
-    # --------------------------------------------------------
-
     candles = []
 
     for group in groups:
 
         candle = reconstruct_candle(
-            group,
-            green_mask,
-            red_mask,
-            estimated_spacing
+            group
         )
 
         if candle is None:
             continue
 
-        valid, reason = (
-            validate_candle(
-                candle
-            )
-        )
+        # First pass only.
+        # Structural scores are applied after
+        # all candidates have been reconstructed.
+        candles.append(candle)
 
-        candle["validation"] = reason
-
-        if valid:
-
-            candles.append(
-                candle
-            )
-
-    # --------------------------------------------------------
-    # Sequence validation
-    # --------------------------------------------------------
-
-    candles, sequence = (
-        validate_sequence(
-            candles
-        )
+    candles = sorted(
+        candles,
+        key=lambda c: c["x"]
     )
 
+    candles = apply_structural_scores(
+        candles
+    )
+
+    validated = []
+
+    for candle in candles:
+
+        if validate_candle(candle):
+
+            candle["validation"] = (
+                "Accepted"
+            )
+
+            validated.append(
+                candle
+            )
+
+        else:
+
+            candle["validation"] = (
+                "Rejected"
+            )
+
     return (
-        candles,
+        validated,
         green_mask,
         red_mask,
         all_components,
-        raw_candidates,
-        sequence
+        candles
     )
+
+
+# ============================================================
+# SPACING ANALYSIS
+# ============================================================
+
+def analyze_spacing(candles):
+
+    if len(candles) < 3:
+
+        return {
+            "median": None,
+            "minimum": None,
+            "maximum": None,
+            "rows": [],
+            "possible_missing": []
+        }
+
+    centers = np.array([
+        c["x"] + c["width"] / 2
+        for c in candles
+    ])
+
+    spacing = np.diff(
+        centers
+    )
+
+    baseline = float(
+        np.median(spacing)
+    )
+
+    minimum = float(
+        np.min(spacing)
+    )
+
+    maximum = float(
+        np.max(spacing)
+    )
+
+    rows = []
+
+    possible_missing = []
+
+    for i, gap in enumerate(
+        spacing
+    ):
+
+        ratio = (
+            gap / baseline
+            if baseline > 0
+            else 1
+        )
+
+        status = "Normal"
+        status_score = 100.0
+
+        # ----------------------------------------------------
+        # Normal
+        # ----------------------------------------------------
+
+        if ratio < SUSPICIOUS_GAP_RATIO:
+
+            status = "Normal"
+
+        # ----------------------------------------------------
+        # Suspicious
+        # ----------------------------------------------------
+
+        elif ratio < POSSIBLE_MISSING_RATIO:
+
+            status = "Suspicious"
+            status_score = 60.0
+
+        # ----------------------------------------------------
+        # Possible missing
+        # ----------------------------------------------------
+
+        else:
+
+            # We need surrounding evidence.
+            left_support = False
+            right_support = False
+
+            if i > 0:
+
+                previous_gap = (
+                    spacing[i - 1]
+                )
+
+                previous_ratio = (
+                    previous_gap
+                    / baseline
+                )
+
+                left_support = (
+                    abs(
+                        previous_ratio - 1.0
+                    ) <= LOCAL_SPACING_TOLERANCE
+                )
+
+            if i < len(spacing) - 1:
+
+                next_gap = (
+                    spacing[i + 1]
+                )
+
+                next_ratio = (
+                    next_gap
+                    / baseline
+                )
+
+                right_support = (
+                    abs(
+                        next_ratio - 1.0
+                    ) <= LOCAL_SPACING_TOLERANCE
+                )
+
+            # Strong evidence:
+            # large gap + normal neighbours
+            if (
+                left_support
+                and right_support
+                and ratio <= MAX_MISSING_RATIO
+            ):
+
+                status = (
+                    "Possible Missing Candle"
+                )
+
+                # Confidence increases as the gap
+                # approaches approximately 2 intervals.
+                distance_from_two = abs(
+                    ratio - 2.0
+                )
+
+                gap_score = max(
+                    0,
+                    100
+                    - distance_from_two * 80
+                )
+
+                status_score = clamp_score(
+                    gap_score
+                )
+
+                possible_missing.append({
+                    "from": i + 1,
+                    "to": i + 2,
+                    "spacing": round(
+                        float(gap),
+                        2
+                    ),
+                    "ratio": round(
+                        float(ratio),
+                        2
+                    ),
+                    "confidence": round(
+                        status_score,
+                        1
+                    )
+                })
+
+            else:
+
+                status = (
+                    "Suspicious Gap"
+                )
+
+                status_score = 55.0
+
+        rows.append({
+            "From Candle": i + 1,
+            "To Candle": i + 2,
+            "Spacing (px)": round(
+                float(gap),
+                2
+            ),
+            "Baseline (px)": round(
+                baseline,
+                2
+            ),
+            "Ratio": round(
+                float(ratio),
+                2
+            ),
+            "Status": status,
+            "Gap Score": round(
+                status_score,
+                1
+            )
+        })
+
+    return {
+        "median": baseline,
+        "minimum": minimum,
+        "maximum": maximum,
+        "rows": rows,
+        "possible_missing": possible_missing
+    }
 
 
 # ============================================================
@@ -1011,28 +1073,29 @@ def detect_candles(image):
 
 def annotate_candles(
     image,
-    candles
+    candles,
+    spacing_analysis=None
 ):
 
     annotated = image.copy()
+
+    # --------------------------------------------------------
+    # Candle annotations
+    # --------------------------------------------------------
 
     for index, candle in enumerate(
         candles,
         start=1
     ):
 
-        x = int(candle["x"])
-        y = int(candle["y"])
-        w = int(candle["width"])
-        h = int(candle["height"])
-
-        # ----------------------------------------------------
-        # Candle colour
-        # ----------------------------------------------------
+        x = candle["x"]
+        y = candle["y"]
+        w = candle["width"]
+        h = candle["height"]
 
         if candle["color"] == "GREEN":
 
-            colour = (
+            color = (
                 0,
                 255,
                 0
@@ -1040,92 +1103,25 @@ def annotate_candles(
 
         else:
 
-            colour = (
+            color = (
                 255,
-                70,
-                70
+                60,
+                60
             )
 
-        # ----------------------------------------------------
-        # Body
-        # ----------------------------------------------------
-
-        body_top = int(
-            candle["body_top"]
-        )
-
-        body_bottom = int(
-            candle["body_bottom"]
-        )
-
-        body_left = x
-        body_right = x + w
-
+        # Bounding box
         cv2.rectangle(
             annotated,
-            (
-                body_left,
-                body_top
-            ),
-            (
-                body_right,
-                body_bottom
-            ),
-            colour,
+            (x, y),
+            (x + w, y + h),
+            color,
             2
         )
 
-        # ----------------------------------------------------
-        # Upper wick
-        # ----------------------------------------------------
-
-        center_x = int(
-            x + w / 2
-        )
-
-        cv2.line(
-            annotated,
-            (
-                center_x,
-                y
-            ),
-            (
-                center_x,
-                body_top
-            ),
-            colour,
-            2
-        )
-
-        # ----------------------------------------------------
-        # Lower wick
-        # ----------------------------------------------------
-
-        cv2.line(
-            annotated,
-            (
-                center_x,
-                body_bottom
-            ),
-            (
-                center_x,
-                y + h
-            ),
-            colour,
-            2
-        )
-
-        # ----------------------------------------------------
-        # Candle number
-        # ----------------------------------------------------
-
-        label = (
-            f"{index}"
-        )
-
+        # Number
         cv2.putText(
             annotated,
-            label,
+            str(index),
             (
                 x,
                 max(
@@ -1134,16 +1130,13 @@ def annotate_candles(
                 )
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.4,
-            colour,
+            0.45,
+            color,
             1,
             cv2.LINE_AA
         )
 
-        # ----------------------------------------------------
         # Confidence
-        # ----------------------------------------------------
-
         confidence_text = (
             f"{candle['confidence']:.0f}%"
         )
@@ -1153,124 +1146,116 @@ def annotate_candles(
             confidence_text,
             (
                 x,
-                y + h + 14
+                min(
+                    image.shape[0] - 5,
+                    y + h + 14
+                )
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.35,
-            colour,
+            color,
             1,
             cv2.LINE_AA
         )
+
+    # --------------------------------------------------------
+    # Missing candle markers
+    #
+    # IMPORTANT:
+    # Yellow lines are drawn ONLY for strong
+    # "Possible Missing Candle" candidates.
+    # --------------------------------------------------------
+
+    if spacing_analysis:
+
+        for candidate in spacing_analysis[
+            "possible_missing"
+        ]:
+
+            from_index = candidate[
+                "from"
+            ]
+
+            to_index = candidate[
+                "to"
+            ]
+
+            if (
+                from_index <= len(candles)
+                and to_index <= len(candles)
+            ):
+
+                left_candle = candles[
+                    from_index - 1
+                ]
+
+                right_candle = candles[
+                    to_index - 1
+                ]
+
+                left_center = (
+                    left_candle["x"]
+                    + left_candle["width"] / 2
+                )
+
+                right_center = (
+                    right_candle["x"]
+                    + right_candle["width"] / 2
+                )
+
+                estimated_x = int(
+                    (
+                        left_center
+                        + right_center
+                    ) / 2
+                )
+
+                # Yellow marker
+                marker_color = (
+                    255,
+                    255,
+                    0
+                )
+
+                cv2.line(
+                    annotated,
+                    (
+                        estimated_x,
+                        0
+                    ),
+                    (
+                        estimated_x,
+                        image.shape[0]
+                    ),
+                    marker_color,
+                    1
+                )
+
+                cv2.putText(
+                    annotated,
+                    (
+                        "POSSIBLE MISSING "
+                        f"{candidate['confidence']:.0f}%"
+                    ),
+                    (
+                        max(
+                            5,
+                            estimated_x - 80
+                        ),
+                        18
+                    ),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45,
+                    marker_color,
+                    1,
+                    cv2.LINE_AA
+                )
 
     return annotated
 
 
 # ============================================================
-# GAP ANNOTATION
-# ============================================================
-
-def annotate_missing_gaps(
-    image,
-    candles,
-    sequence
-):
-
-    annotated = image.copy()
-
-    missing = sequence[
-        "missing_gaps"
-    ]
-
-    if not missing:
-        return annotated
-
-    centers = np.array([
-        c["x"] + c["width"] / 2
-        for c in candles
-    ])
-
-    for item in missing:
-
-        i = item[
-            "after_candle"
-        ]
-
-        if i >= len(centers):
-            continue
-
-        x1 = int(
-            centers[i - 1]
-        )
-
-        x2 = int(
-            centers[i]
-        )
-
-        mid_x = int(
-            (x1 + x2) / 2
-        )
-
-        cv2.line(
-            annotated,
-            (
-                mid_x,
-                0
-            ),
-            (
-                mid_x,
-                annotated.shape[0]
-            ),
-            (255, 255, 0),
-            1
-        )
-
-        cv2.putText(
-            annotated,
-            "POSSIBLE MISSING",
-            (
-                max(0, mid_x - 45),
-                20
-            ),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.4,
-            (255, 255, 0),
-            1,
-            cv2.LINE_AA
-        )
-
-    return annotated
-
-
-# ============================================================
-# DATAFRAME
-# ============================================================
-
-def candles_to_dataframe(
-    candles
-):
-
-    if not candles:
-
-        return pd.DataFrame()
-
-    df = pd.DataFrame(
-        candles
-    )
-
-    df.insert(
-        0,
-        "Candle",
-        range(
-            1,
-            len(df) + 1
-        )
-    )
-
-    return df
-
-
-# ============================================================
-# APPLICATION
+# MAIN UI
 # ============================================================
 
 st.header("1️⃣ Upload Chart")
@@ -1292,6 +1277,7 @@ if uploaded is None:
 
     st.stop()
 
+
 image = load_image(
     uploaded
 )
@@ -1302,16 +1288,16 @@ st.write(
     f"**Image size:** {w} × {h} px"
 )
 
+
 # ============================================================
-# CHART CROP
+# CROP
 # ============================================================
 
-st.header(
-    "2️⃣ Chart Region"
-)
+st.header("2️⃣ Chart Region")
 
 st.caption(
-    "Crop out controls, menus and unrelated interface elements."
+    "Manually crop out trading controls and indicators "
+    "that are not part of the candle chart."
 )
 
 with st.expander(
@@ -1322,30 +1308,43 @@ with st.expander(
     left = st.slider(
         "Left",
         0,
-        max(1, w - 1),
-        min(34, max(0, w - 1))
+        w - 1,
+        min(
+            34,
+            w - 1
+        )
     )
 
     right = st.slider(
         "Right",
         1,
         w,
-        min(1164, w)
+        min(
+            1164,
+            w
+        )
     )
 
     top = st.slider(
         "Top",
         0,
-        max(1, h - 1),
-        min(122, max(0, h - 1))
+        h - 1,
+        min(
+            122,
+            h - 1
+        )
     )
 
     bottom = st.slider(
         "Bottom",
         1,
         h,
-        min(734, h)
+        min(
+            734,
+            h
+        )
     )
+
 
 chart = crop_chart(
     image,
@@ -1358,8 +1357,9 @@ chart = crop_chart(
 st.image(
     chart,
     caption="Chart region used by detector",
-    width="stretch"
+    use_container_width=True
 )
+
 
 # ============================================================
 # DETECTION
@@ -1379,15 +1379,23 @@ if st.button(
         green_mask,
         red_mask,
         components,
-        raw_candidates,
-        sequence
+        all_candles
     ) = detect_candles(
         chart
     )
 
+    spacing_analysis = (
+        analyze_spacing(candles)
+    )
+
+    # Store results
     st.session_state[
         "candles"
     ] = candles
+
+    st.session_state[
+        "all_candles"
+    ] = all_candles
 
     st.session_state[
         "green_mask"
@@ -1402,12 +1410,8 @@ if st.button(
     ] = components
 
     st.session_state[
-        "raw_candidates"
-    ] = raw_candidates
-
-    st.session_state[
-        "sequence"
-    ] = sequence
+        "spacing_analysis"
+    ] = spacing_analysis
 
 
 # ============================================================
@@ -1418,6 +1422,10 @@ if "candles" in st.session_state:
 
     candles = st.session_state[
         "candles"
+    ]
+
+    all_candles = st.session_state[
+        "all_candles"
     ]
 
     green_mask = st.session_state[
@@ -1432,20 +1440,16 @@ if "candles" in st.session_state:
         "components"
     ]
 
-    raw_candidates = st.session_state[
-        "raw_candidates"
-    ]
-
-    sequence = st.session_state[
-        "sequence"
+    spacing_analysis = st.session_state[
+        "spacing_analysis"
     ]
 
     # ========================================================
-    # SUMMARY
+    # DETECTION RESULT
     # ========================================================
 
     st.header(
-        "4️⃣ Detection Summary"
+        "4️⃣ Detection Result"
     )
 
     green_count = sum(
@@ -1458,14 +1462,19 @@ if "candles" in st.session_state:
         for c in candles
     )
 
-    rejected_count = max(
-        0,
-        len(raw_candidates) -
-        len(candles)
+    rejected_count = sum(
+        c["validation"] == "Rejected"
+        for c in all_candles
     )
 
-    col1, col2, col3, col4 = (
-        st.columns(4)
+    possible_missing_count = len(
+        spacing_analysis[
+            "possible_missing"
+        ]
+    )
+
+    col1, col2, col3, col4, col5 = (
+        st.columns(5)
     )
 
     col1.metric(
@@ -1488,118 +1497,55 @@ if "candles" in st.session_state:
         rejected_count
     )
 
-    # ========================================================
-    # SPACING
-    # ========================================================
-
-    st.header(
-        "5️⃣ Candle Sequence Integrity"
+    col5.metric(
+        "Possible Missing",
+        possible_missing_count
     )
 
-    median_spacing = sequence[
-        "median_spacing"
-    ]
-
-    consistency = sequence[
-        "spacing_consistency"
-    ]
-
-    if median_spacing is not None:
-
-        col1, col2, col3 = (
-            st.columns(3)
-        )
-
-        col1.metric(
-            "Expected Spacing",
-            f"{median_spacing:.2f} px"
-        )
-
-        col2.metric(
-            "Spacing Consistency",
-            f"{consistency:.1f}%"
-        )
-
-        col3.metric(
-            "Possible Missing Gaps",
-            len(
-                sequence[
-                    "missing_gaps"
-                ]
-            )
-        )
-
-        if sequence[
-            "missing_gaps"
-        ]:
-
-            st.warning(
-                "Potential missing candles were detected."
-            )
-
-            st.dataframe(
-                pd.DataFrame(
-                    sequence[
-                        "missing_gaps"
-                    ]
-                ),
-                width="stretch",
-                hide_index=True
-            )
-
-        else:
-
-            st.success(
-                "No obvious multi-candle gaps detected."
-            )
 
     # ========================================================
     # ANNOTATED IMAGE
     # ========================================================
 
     st.header(
-        "6️⃣ Candle Geometry"
+        "5️⃣ What the Computer Thinks Are Candles"
     )
 
     annotated = annotate_candles(
         chart,
-        candles
-    )
-
-    annotated = annotate_missing_gaps(
-        annotated,
         candles,
-        sequence
+        spacing_analysis
     )
 
     st.image(
         annotated,
-        caption=(
-            "Green/red boxes = candle bodies. "
-            "Lines = estimated wicks. "
-            "Yellow = possible missing candle."
-        ),
-        width="stretch"
+        use_container_width=True
     )
 
+    st.caption(
+        "Green/red boxes are detected candles. "
+        "Confidence is shown below each candle. "
+        "Yellow lines appear only when spacing evidence "
+        "supports a possible missing candle."
+    )
+
+
     # ========================================================
-    # COLOR MASKS
+    # MASKS
     # ========================================================
 
     st.header(
-        "7️⃣ Colour Segmentation"
+        "6️⃣ Color Segmentation"
     )
 
-    col1, col2 = (
-        st.columns(2)
-    )
+    col1, col2 = st.columns(2)
 
     with col1:
 
         st.image(
             green_mask,
             caption="Green mask",
-            width="stretch"
+            use_container_width=True
         )
 
     with col2:
@@ -1607,71 +1553,153 @@ if "candles" in st.session_state:
         st.image(
             red_mask,
             caption="Red mask",
-            width="stretch"
+            use_container_width=True
         )
 
+
     # ========================================================
-    # RECONSTRUCTED DATA
+    # CANDLE DATA
     # ========================================================
 
     st.header(
-        "8️⃣ Reconstructed Candle Data"
+        "7️⃣ Reconstructed Candle Data"
     )
 
     if candles:
 
-        df = candles_to_dataframe(
+        df = pd.DataFrame(
             candles
         )
 
-        display_columns = [
+        df.insert(
+            0,
             "Candle",
-            "color",
-            "open",
-            "high",
-            "low",
-            "close",
-            "body_height",
-            "upper_wick",
-            "lower_wick",
+            range(
+                1,
+                len(df) + 1
+            )
+        )
+
+        # Round numerical values
+        for column in [
             "body_ratio",
             "wick_ratio",
+            "aspect_ratio",
             "color_confidence",
             "geometry_score",
-            "spacing_score",
-            "confidence",
-            "validation"
-        ]
+            "detection_score",
+            "structure_score",
+            "confidence"
+        ]:
 
-        available_columns = [
-            col
-            for col in display_columns
-            if col in df.columns
-        ]
+            if column in df.columns:
 
-        display_df = df[
-            available_columns
-        ].copy()
+                df[column] = df[
+                    column
+                ].round(2)
 
         st.dataframe(
-            display_df,
-            width="stretch",
+            df,
+            use_container_width=True,
             hide_index=True
         )
 
         st.caption(
-            "OHLC values are still PIXEL coordinates. "
-            "They are not real market prices yet."
+            "OHLC values are currently PIXEL coordinates, "
+            "not actual market prices."
         )
 
     else:
 
-        st.error(
-            "No valid candles survived the validation layer."
+        st.warning(
+            "No candles survived the validation filters."
         )
 
+
     # ========================================================
-    # QUALITY
+    # SPACING ANALYSIS
+    # ========================================================
+
+    st.header(
+        "8️⃣ Candle Spacing"
+    )
+
+    if spacing_analysis[
+        "median"
+    ] is not None:
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Median Spacing",
+            f"{spacing_analysis['median']:.2f} px"
+        )
+
+        col2.metric(
+            "Minimum Spacing",
+            f"{spacing_analysis['minimum']:.2f} px"
+        )
+
+        col3.metric(
+            "Maximum Spacing",
+            f"{spacing_analysis['maximum']:.2f} px"
+        )
+
+        spacing_df = pd.DataFrame(
+            spacing_analysis[
+                "rows"
+            ]
+        )
+
+        st.dataframe(
+            spacing_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # ----------------------------------------------------
+        # Missing candidates
+        # ----------------------------------------------------
+
+        if spacing_analysis[
+            "possible_missing"
+        ]:
+
+            st.warning(
+                "Strong spacing anomalies detected. "
+                "These are possible missing candles, "
+                "not confirmed missing candles."
+            )
+
+            missing_df = pd.DataFrame(
+                spacing_analysis[
+                    "possible_missing"
+                ]
+            )
+
+            st.dataframe(
+                missing_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        else:
+
+            st.success(
+                "No strong evidence of missing candles "
+                "was found in the detected sequence."
+            )
+
+    else:
+
+        st.info(
+            "At least three candles are required "
+            "for spacing analysis."
+        )
+
+
+    # ========================================================
+    # QUALITY SUMMARY
     # ========================================================
 
     st.header(
@@ -1685,7 +1713,7 @@ if "candles" in st.session_state:
             for c in candles
         ])
 
-        geometry_scores = np.array([
+        geometry = np.array([
             c["geometry_score"]
             for c in candles
         ])
@@ -1695,174 +1723,174 @@ if "candles" in st.session_state:
             for c in candles
         ])
 
-        avg_confidence = float(
-            np.mean(confidence)
+        structure = np.array([
+            c["structure_score"]
+            for c in candles
+        ])
+
+        average_confidence = np.mean(
+            confidence
         )
 
-        avg_geometry = float(
-            np.mean(
-                geometry_scores
-            )
+        average_geometry = np.mean(
+            geometry
         )
 
-        avg_color = float(
-            np.mean(
-                color_scores
-            )
+        average_color = np.mean(
+            color_scores
         )
 
-        col1, col2, col3 = (
-            st.columns(3)
+        average_structure = np.mean(
+            structure
+        )
+
+        high_confidence = np.sum(
+            confidence >= 80
+        )
+
+        review_count = np.sum(
+            (confidence >= 60)
+            & (confidence < 80)
+        )
+
+        low_confidence = np.sum(
+            confidence < 60
+        )
+
+        col1, col2, col3, col4 = (
+            st.columns(4)
         )
 
         col1.metric(
             "Average Confidence",
-            f"{avg_confidence:.1f}%"
+            f"{average_confidence:.1f}%"
         )
 
         col2.metric(
-            "Geometry Quality",
-            f"{avg_geometry:.1f}%"
+            "Average Geometry",
+            f"{average_geometry:.1f}%"
         )
 
         col3.metric(
-            "Colour Confidence",
-            f"{avg_color:.1f}%"
+            "Average Structure",
+            f"{average_structure:.1f}%"
         )
 
-        if avg_confidence >= 85:
+        col4.metric(
+            "High Confidence",
+            int(high_confidence)
+        )
+
+        st.write(
+            f"**Average colour confidence:** "
+            f"{average_color:.1f}%"
+        )
+
+        st.write(
+            f"**Review candidates:** "
+            f"{int(review_count)}"
+        )
+
+        st.write(
+            f"**Low-confidence candidates:** "
+            f"{int(low_confidence)}"
+        )
+
+        if average_confidence >= 85:
 
             st.success(
-                "Detection quality looks promising."
+                "Detection quality is strong. "
+                "Continue validating against additional screenshots."
             )
 
-        elif avg_confidence >= 70:
+        elif average_confidence >= 70:
 
             st.warning(
-                "Detection is usable for development, "
-                "but still needs validation."
+                "Detection is usable for diagnostics, "
+                "but still requires validation."
             )
 
         else:
 
             st.error(
-                "Detection quality is poor. "
-                "Do not build signals on this result."
+                "Detection quality is weak. "
+                "Do NOT proceed to signal generation."
             )
 
+    else:
+
+        st.error(
+            "No accepted candles are available "
+            "for quality analysis."
+        )
+
+
     # ========================================================
-    # CANDLE GEOMETRY STATISTICS
+    # INTERPRETATION GUIDE
     # ========================================================
 
     st.header(
-        "🔟 Candle Geometry Statistics"
+        "🔟 How to Read the Scores"
     )
 
-    if candles:
+    st.markdown(
+        """
+**Geometry Score**
 
-        body_sizes = np.array([
-            c["body_height"]
-            for c in candles
-        ])
+Measures whether the detected object has a
+plausible candle-like shape.
 
-        upper_wicks = np.array([
-            c["upper_wick"]
-            for c in candles
-        ])
+**Colour Confidence**
 
-        lower_wicks = np.array([
-            c["lower_wick"]
-            for c in candles
-        ])
+Measures how strongly the detected pixels support
+the assigned RED or GREEN classification.
 
-        col1, col2, col3 = (
-            st.columns(3)
-        )
+**Structure Score**
 
-        col1.metric(
-            "Median Body",
-            f"{np.median(body_sizes):.1f} px"
-        )
+Measures how well the candle fits the surrounding
+candle sequence in terms of size and spacing.
 
-        col2.metric(
-            "Median Upper Wick",
-            f"{np.median(upper_wicks):.1f} px"
-        )
+**Final Confidence**
 
-        col3.metric(
-            "Median Lower Wick",
-            f"{np.median(lower_wicks):.1f} px"
-        )
+Weighted combination of:
 
-    # ========================================================
-    # REJECTED CANDIDATE DIAGNOSTICS
-    # ========================================================
+- Geometry: 40%
+- Colour: 25%
+- Structure: 25%
+- Detection support: 10%
 
-    st.header(
-        "1️⃣1️⃣ Candidate Diagnostics"
+**Spacing**
+
+- **Normal:** spacing is consistent with the local sequence.
+- **Suspicious Gap:** spacing is unusual but not strong enough
+  to claim a missing candle.
+- **Possible Missing Candle:** a large gap is supported by
+  normal neighbouring spacing.
+
+A "Possible Missing Candle" is still a hypothesis.
+It is NOT treated as an actual candle.
+"""
     )
 
-    if raw_candidates:
-
-        rejected = []
-
-        for candidate in raw_candidates:
-
-            valid, reason = (
-                validate_candle(
-                    candidate
-                )
-            )
-
-            if not valid:
-
-                rejected.append({
-                    "x": candidate["x"],
-                    "width": candidate["width"],
-                    "height": candidate["height"],
-                    "color": candidate["color"],
-                    "confidence": candidate[
-                        "confidence"
-                    ],
-                    "reason": reason
-                })
-
-        if rejected:
-
-            st.dataframe(
-                pd.DataFrame(
-                    rejected
-                ),
-                width="stretch",
-                hide_index=True
-            )
-
-        else:
-
-            st.success(
-                "No candidates were rejected by the current validation rules."
-            )
 
     # ========================================================
-    # FINAL STATUS
+    # IMPORTANT
     # ========================================================
-
-    st.header(
-        "1️⃣2️⃣ Engine Status"
-    )
 
     st.warning(
         """
-        V2.2 is intentionally NOT generating BUY or SELL signals.
+IMPORTANT:
 
-        Current objective:
+This version does NOT generate BUY or SELL signals.
 
-        1. Detect candles.
-        2. Reconstruct body and wick geometry.
-        3. Validate candle spacing.
-        4. Identify possible missing candles.
-        5. Produce a trustworthy pixel-space OHLC series.
+The purpose of V2.3 is still to determine whether
+a screenshot can be converted into a reliable candle
+sequence.
 
-        Real price calibration and technical indicators come later.
-        """
+Do not use the output as a trading signal yet.
+
+The extraction layer must be validated against
+multiple independent screenshots before we build
+any trading logic on top of it.
+"""
     )
