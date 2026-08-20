@@ -1,5 +1,5 @@
 streamlit
-yfinance
-ta
+opencv-python-headless
+Pillow
 pandas
 numpy
