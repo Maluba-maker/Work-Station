@@ -1288,6 +1288,402 @@ def analyze_spacing(candles):
     }
 
 # ============================================================
+# SEQUENCE VALIDATION / MARKET STRUCTURE
+# V2.4
+# ============================================================
+
+def analyze_candle_sequence(candles):
+
+    if not candles:
+        return {
+            "count": 0,
+            "sequence_integrity": 0.0,
+            "ohlc_validity": 0.0,
+            "duplicate_centers": 0,
+            "spacing_consistency": 0.0,
+            "higher_highs": 0,
+            "higher_lows": 0,
+            "lower_highs": 0,
+            "lower_lows": 0,
+            "trend": "UNKNOWN",
+            "current_structure": "INSUFFICIENT DATA"
+        }
+
+    # --------------------------------------------------------
+    # BASIC COUNTS
+    # --------------------------------------------------------
+
+    count = len(candles)
+
+    # --------------------------------------------------------
+    # CENTRES
+    # --------------------------------------------------------
+
+    centers = np.array([
+        c["x"] + c["width"] / 2
+        for c in candles
+    ], dtype=float)
+
+    # --------------------------------------------------------
+    # DUPLICATE CENTRES
+    # --------------------------------------------------------
+
+    duplicate_centers = 0
+
+    if len(centers) > 1:
+
+        for i in range(1, len(centers)):
+
+            if abs(centers[i] - centers[i - 1]) < 1.0:
+                duplicate_centers += 1
+
+    # --------------------------------------------------------
+    # OHLC VALIDATION
+    #
+    # Remember:
+    # These are pixel coordinates, NOT market prices.
+    # --------------------------------------------------------
+
+    valid_ohlc = 0
+
+    for candle in candles:
+
+        high = candle["high"]
+        low = candle["low"]
+        open_price = candle["open"]
+        close_price = candle["close"]
+
+        valid = (
+            high >= open_price
+            and high >= close_price
+            and low <= open_price
+            and low <= close_price
+            and high >= low
+        )
+
+        if valid:
+            valid_ohlc += 1
+
+    ohlc_validity = (
+        valid_ohlc / count * 100
+        if count > 0
+        else 0
+    )
+
+    # --------------------------------------------------------
+    # SPACING CONSISTENCY
+    # --------------------------------------------------------
+
+    spacing_consistency = 0.0
+
+    if len(centers) >= 3:
+
+        spacing = np.diff(centers)
+
+        median_spacing = np.median(spacing)
+
+        if median_spacing > 0:
+
+            deviations = np.abs(
+                spacing - median_spacing
+            ) / median_spacing
+
+            average_deviation = np.mean(
+                deviations
+            )
+
+            spacing_consistency = clamp_score(
+                100 - (average_deviation * 100)
+            )
+
+    elif len(centers) == 2:
+
+        spacing_consistency = 100.0
+
+    # --------------------------------------------------------
+    # MARKET STRUCTURE
+    #
+    # We compare each candle's HIGH and LOW
+    # against the previous candle.
+    #
+    # This is intentionally simple for V2.4.
+    # We will later replace this with swing detection.
+    # --------------------------------------------------------
+
+    higher_highs = 0
+    higher_lows = 0
+    lower_highs = 0
+    lower_lows = 0
+
+    for i in range(1, len(candles)):
+
+        previous = candles[i - 1]
+        current = candles[i]
+
+        if current["high"] < previous["high"]:
+            lower_highs += 1
+
+        elif current["high"] > previous["high"]:
+            higher_highs += 1
+
+        if current["low"] > previous["low"]:
+            higher_lows += 1
+
+        elif current["low"] < previous["low"]:
+            lower_lows += 1
+
+    # --------------------------------------------------------
+    # RECENT STRUCTURE
+    #
+    # Use last 10 candles rather than the entire chart.
+    # This prevents old price action from dominating.
+    # --------------------------------------------------------
+
+    recent = candles[-10:]
+
+    recent_hh = 0
+    recent_hl = 0
+    recent_lh = 0
+    recent_ll = 0
+
+    for i in range(1, len(recent)):
+
+        previous = recent[i - 1]
+        current = recent[i]
+
+        if current["high"] > previous["high"]:
+            recent_hh += 1
+
+        elif current["high"] < previous["high"]:
+            recent_lh += 1
+
+        if current["low"] > previous["low"]:
+            recent_hl += 1
+
+        elif current["low"] < previous["low"]:
+            recent_ll += 1
+
+    # --------------------------------------------------------
+    # TREND CLASSIFICATION
+    # --------------------------------------------------------
+
+    bullish_score = recent_hh + recent_hl
+    bearish_score = recent_lh + recent_ll
+
+    if bullish_score >= bearish_score + 2:
+
+        trend = "BULLISH"
+
+    elif bearish_score >= bullish_score + 2:
+
+        trend = "BEARISH"
+
+    else:
+
+        trend = "SIDEWAYS / MIXED"
+
+    # --------------------------------------------------------
+    # CURRENT CANDLE
+    # --------------------------------------------------------
+
+    current = candles[-1]
+
+    if current["color"] == "GREEN":
+        direction = "GREEN"
+    else:
+        direction = "RED"
+
+    # --------------------------------------------------------
+    # BODY / WICK ANALYSIS
+    # --------------------------------------------------------
+
+    body_height = float(
+        current["body_height"]
+    )
+
+    total_height = max(
+        float(current["height"]),
+        1.0
+    )
+
+    body_percentage = (
+        body_height /
+        total_height *
+        100
+    )
+
+    upper_wick_percentage = (
+        current["upper_wick"] /
+        total_height *
+        100
+    )
+
+    lower_wick_percentage = (
+        current["lower_wick"] /
+        total_height *
+        100
+    )
+
+    # --------------------------------------------------------
+    # CURRENT STRUCTURE DESCRIPTION
+    # --------------------------------------------------------
+
+    if (
+        recent_hh >= 2
+        and recent_hl >= 2
+    ):
+
+        current_structure = (
+            "HIGHER HIGH + HIGHER LOW"
+        )
+
+    elif (
+        recent_lh >= 2
+        and recent_ll >= 2
+    ):
+
+        current_structure = (
+            "LOWER HIGH + LOWER LOW"
+        )
+
+    elif (
+        recent_hh > recent_lh
+        and recent_hl > recent_ll
+    ):
+
+        current_structure = (
+            "BULLISH STRUCTURE DEVELOPING"
+        )
+
+    elif (
+        recent_lh > recent_hh
+        and recent_ll > recent_hl
+    ):
+
+        current_structure = (
+            "BEARISH STRUCTURE DEVELOPING"
+        )
+
+    else:
+
+        current_structure = (
+            "CONSOLIDATION / MIXED"
+        )
+
+    # --------------------------------------------------------
+    # SEQUENCE INTEGRITY
+    # --------------------------------------------------------
+
+    integrity_components = []
+
+    # Duplicate penalty
+    duplicate_score = (
+        100.0
+        if duplicate_centers == 0
+        else clamp_score(
+            100 -
+            duplicate_centers /
+            count *
+            100
+        )
+    )
+
+    integrity_components.append(
+        duplicate_score
+    )
+
+    integrity_components.append(
+        ohlc_validity
+    )
+
+    integrity_components.append(
+        spacing_consistency
+    )
+
+    sequence_integrity = round(
+        np.mean(
+            integrity_components
+        ),
+        1
+    )
+
+    return {
+
+        "count": count,
+
+        "sequence_integrity":
+            sequence_integrity,
+
+        "ohlc_validity":
+            round(
+                ohlc_validity,
+                1
+            ),
+
+        "duplicate_centers":
+            duplicate_centers,
+
+        "spacing_consistency":
+            round(
+                spacing_consistency,
+                1
+            ),
+
+        "higher_highs":
+            higher_highs,
+
+        "higher_lows":
+            higher_lows,
+
+        "lower_highs":
+            lower_highs,
+
+        "lower_lows":
+            lower_lows,
+
+        "recent_hh":
+            recent_hh,
+
+        "recent_hl":
+            recent_hl,
+
+        "recent_lh":
+            recent_lh,
+
+        "recent_ll":
+            recent_ll,
+
+        "trend":
+            trend,
+
+        "current_structure":
+            current_structure,
+
+        "current_direction":
+            direction,
+
+        "body_percentage":
+            round(
+                body_percentage,
+                1
+            ),
+
+        "upper_wick_percentage":
+            round(
+                upper_wick_percentage,
+                1
+            ),
+
+        "lower_wick_percentage":
+            round(
+                lower_wick_percentage,
+                1
+            ),
+
+        "current_confidence":
+            current["confidence"]
+    }
+# ============================================================
 # ANNOTATION
 # ============================================================
 
@@ -1537,7 +1933,6 @@ with st.expander(
         )
     )
 
-
 chart = crop_chart(
     image,
     left,
@@ -1551,7 +1946,6 @@ st.image(
     caption="Chart region used by detector",
     use_container_width=True
 )
-
 
 # ============================================================
 # DETECTION
@@ -1580,31 +1974,35 @@ if st.button(
         analyze_spacing(candles)
     )
 
-    # Store results
-    st.session_state[
-        "candles"
-    ] = candles
+    # ========================================================
+    # V2.4 SEQUENCE VALIDATION
+    # ========================================================
 
-    st.session_state[
-        "all_candles"
-    ] = all_candles
+    sequence_analysis = (
+        analyze_candle_sequence(candles)
+    )
 
-    st.session_state[
-        "green_mask"
-    ] = green_mask
+    # ========================================================
+    # STORE RESULTS
+    # ========================================================
 
-    st.session_state[
-        "red_mask"
-    ] = red_mask
+    st.session_state["candles"] = candles
 
-    st.session_state[
-        "components"
-    ] = components
+    st.session_state["all_candles"] = all_candles
 
-    st.session_state[
-        "spacing_analysis"
-    ] = spacing_analysis
+    st.session_state["green_mask"] = green_mask
 
+    st.session_state["red_mask"] = red_mask
+
+    st.session_state["components"] = components
+
+    st.session_state["spacing_analysis"] = (
+        spacing_analysis
+    )
+
+    st.session_state["sequence_analysis"] = (
+        sequence_analysis
+    )
 
 # ============================================================
 # RESULTS
@@ -1635,7 +2033,7 @@ if "candles" in st.session_state:
     spacing_analysis = st.session_state[
         "spacing_analysis"
     ]
-
+    
     # ========================================================
     # DETECTION RESULT
     # ========================================================
@@ -2016,7 +2414,147 @@ if "candles" in st.session_state:
             "for quality analysis."
         )
 
+    # ============================================================
+    # SEQUENCE VALIDATION
+    # ============================================================
+    
+    st.header(
+        "1️⃣1️⃣ Candle Sequence Validation"
+    )
+    
+    if "sequence_analysis" in st.session_state:
+    
+        sequence = st.session_state[
+            "sequence_analysis"
+        ]
+    
+        # --------------------------------------------------------
+        # TOP METRICS
+        # --------------------------------------------------------
+    
+        col1, col2, col3, col4 = st.columns(4)
+    
+        col1.metric(
+            "Sequence Integrity",
+            f"{sequence['sequence_integrity']:.1f}%"
+        )
+    
+        col2.metric(
+            "OHLC Validity",
+            f"{sequence['ohlc_validity']:.1f}%"
+        )
+    
+        col3.metric(
+            "Spacing Consistency",
+            f"{sequence['spacing_consistency']:.1f}%"
+        )
+    
+        col4.metric(
+            "Duplicate Centres",
+            sequence["duplicate_centers"]
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # STRUCTURE
+        # --------------------------------------------------------
+    
+        st.subheader(
+            "Market Structure Diagnostic"
+        )
+    
+        col1, col2, col3, col4 = st.columns(4)
+    
+        col1.metric(
+            "Higher Highs",
+            sequence["higher_highs"]
+        )
+    
+        col2.metric(
+            "Higher Lows",
+            sequence["higher_lows"]
+        )
+    
+        col3.metric(
+            "Lower Highs",
+            sequence["lower_highs"]
+        )
+    
+        col4.metric(
+            "Lower Lows",
+            sequence["lower_lows"]
+        )
+    
+        st.write(
+            f"**Current Trend:** "
+            f"`{sequence['trend']}`"
+        )
+    
+        st.write(
+            f"**Current Structure:** "
+            f"`{sequence['current_structure']}`"
+        )
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE
+        # --------------------------------------------------------
+    
+        st.subheader(
+            "Current Candle"
+        )
+    
+        col1, col2, col3, col4 = st.columns(4)
+    
+        col1.metric(
+            "Direction",
+            sequence["current_direction"]
+        )
+    
+        col2.metric(
+            "Body",
+            f"{sequence['body_percentage']:.1f}%"
+        )
+    
+        col3.metric(
+            "Upper Wick",
+            f"{sequence['upper_wick_percentage']:.1f}%"
+        )
+    
+        col4.metric(
+            "Lower Wick",
+            f"{sequence['lower_wick_percentage']:.1f}%"
+        )
+    
+        st.write(
+            f"**Detection confidence:** "
+            f"{sequence['current_confidence']:.1f}%"
+        )
 
+        # --------------------------------------------------------
+        # INTERPRETATION
+        # --------------------------------------------------------
+    
+        if sequence["sequence_integrity"] >= 95:
+    
+            st.success(
+                "The reconstructed candle sequence "
+                "is internally consistent."
+            )
+    
+        elif sequence["sequence_integrity"] >= 85:
+    
+            st.warning(
+                "The sequence is usable, but some "
+                "structural inconsistencies remain."
+            )
+    
+        else:
+    
+            st.error(
+                "The sequence is not reliable enough "
+                "for predictive analysis."
+            )
     # ========================================================
     # INTERPRETATION GUIDE
     # ========================================================
