@@ -1718,10 +1718,14 @@ def detect_swings(candles, lookback=2):
     A swing high is a local peak.
     A swing low is a local trough.
 
-    We allow equal neighbouring pixel values because
-    screenshot reconstruction can produce flat/duplicate
+    Equal neighbouring pixel values are allowed because
+    screenshot reconstruction can produce identical
     high or low coordinates.
     """
+
+    # --------------------------------------------------------
+    # NOT ENOUGH DATA
+    # --------------------------------------------------------
 
     if len(candles) < (lookback * 2 + 1):
         return {
@@ -1729,8 +1733,34 @@ def detect_swings(candles, lookback=2):
             "swing_lows": []
         }
 
+    # --------------------------------------------------------
+    # STORAGE
+    # --------------------------------------------------------
+
     swing_highs = []
     swing_lows = []
+
+    # --------------------------------------------------------
+    # DIAGNOSTIC OUTPUT
+    # --------------------------------------------------------
+
+    print("\n========== SWING DIAGNOSTIC ==========")
+    print("Total candles:", len(candles))
+
+    for i, candle in enumerate(candles[:15]):
+        print(
+            f"{i}: "
+            f"high={candle['high']} "
+            f"low={candle['low']} "
+            f"x={candle['x']} "
+            f"width={candle['width']}"
+        )
+
+    print("=======================================\n")
+
+    # --------------------------------------------------------
+    # CHECK EACH POSSIBLE SWING
+    # --------------------------------------------------------
 
     for i in range(
         lookback,
@@ -1761,10 +1791,13 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Smaller Y = higher market price
+        # Smaller pixel Y = higher market price.
         #
-        # Allow equality because pixel reconstruction
-        # can produce identical high coordinates.
+        # The current candle must be at least as high
+        # as the surrounding candles.
+        #
+        # The second condition prevents a completely flat
+        # group of candles from being classified as a swing.
 
         is_swing_high = (
             current_high <= min(left_highs)
@@ -1812,10 +1845,13 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Larger Y = lower market price
+        # Larger pixel Y = lower market price.
         #
-        # Allow equality because pixel reconstruction
-        # can produce identical low coordinates.
+        # The current candle must be at least as low
+        # as the surrounding candles.
+        #
+        # The second condition prevents a completely flat
+        # group of candles from being classified as a swing.
 
         is_swing_low = (
             current_low >= max(left_lows)
@@ -1841,10 +1877,33 @@ def detect_swings(candles, lookback=2):
                 "type": "SWING LOW"
             })
 
+    # --------------------------------------------------------
+    # FINAL DIAGNOSTIC
+    # --------------------------------------------------------
+
+    print("SWING RESULTS")
+    print("Candles:", len(candles))
+    print("Swing highs found:", len(swing_highs))
+    print("Swing lows found:", len(swing_lows))
+
+    if swing_highs:
+        print("Swing high indexes:",
+              [x["index"] for x in swing_highs])
+
+    if swing_lows:
+        print("Swing low indexes:",
+              [x["index"] for x in swing_lows])
+
+    print("===============================\n")
+
+    # --------------------------------------------------------
+    # RETURN
+    # --------------------------------------------------------
+
     return {
         "swing_highs": swing_highs,
         "swing_lows": swing_lows
-    }   
+    }
 # ============================================================
 # ANNOTATION
 # ============================================================
@@ -2037,7 +2096,6 @@ h, w = image.shape[:2]
 st.write(
     f"**Image size:** {w} × {h} px"
 )
-
 
 # ============================================================
 # CROP
