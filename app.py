@@ -1354,11 +1354,11 @@ def analyze_candle_sequence(candles):
         close_price = candle["close"]
 
         valid = (
-            high >= open_price
-            and high >= close_price
-            and low <= open_price
-            and low <= close_price
-            and high >= low
+            high <= open_price
+            and high <= close_price
+            and low >= open_price
+            and low >= close_price
+            and high <= low
         )
 
         if valid:
@@ -1421,14 +1421,12 @@ def analyze_candle_sequence(candles):
         current = candles[i]
 
         if current["high"] < previous["high"]:
-            lower_highs += 1
-
-        elif current["high"] > previous["high"]:
             higher_highs += 1
+        elif current["high"] > previous["high"]:
+            lower_highs += 1
 
         if current["low"] > previous["low"]:
             higher_lows += 1
-
         elif current["low"] < previous["low"]:
             lower_lows += 1
 
@@ -1436,33 +1434,39 @@ def analyze_candle_sequence(candles):
     # RECENT STRUCTURE
     #
     # Use last 10 candles rather than the entire chart.
-    # This prevents old price action from dominating.
+    # IMPORTANT:
+    # These are PIXEL coordinates.
+    # Smaller Y = higher price.
+    # Larger Y = lower price.
     # --------------------------------------------------------
-
+    
     recent = candles[-10:]
-
+    
     recent_hh = 0
     recent_hl = 0
     recent_lh = 0
     recent_ll = 0
-
+    
     for i in range(1, len(recent)):
-
+    
         previous = recent[i - 1]
         current = recent[i]
-
-        if current["high"] > previous["high"]:
+    
+        # HIGH comparison
+        # Smaller pixel Y means a higher market price.
+        if current["high"] < previous["high"]:
             recent_hh += 1
-
-        elif current["high"] < previous["high"]:
+    
+        elif current["high"] > previous["high"]:
             recent_lh += 1
-
-        if current["low"] > previous["low"]:
+    
+        # LOW comparison
+        # Smaller pixel Y means a higher market price.
+        if current["low"] < previous["low"]:
             recent_hl += 1
-
-        elif current["low"] < previous["low"]:
+    
+        elif current["low"] > previous["low"]:
             recent_ll += 1
-
     # --------------------------------------------------------
     # TREND CLASSIFICATION
     # --------------------------------------------------------
