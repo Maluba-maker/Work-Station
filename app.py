@@ -1322,7 +1322,7 @@ def analyze_candle_sequence(candles):
 
     swing_analysis = detect_swings(
         candles,
-        lookback=1
+        lookback=2
     )
 
     swing_highs = swing_analysis["swing_highs"]
@@ -1730,12 +1730,24 @@ def detect_swings(candles, lookback=2):
 
     swing_highs = []
     swing_lows = []
-
+    
+    print("\n--- CANDLE DEBUG ---")
+    
+    for i, candle in enumerate(candles[:10]):
+        print(
+            i,
+            "high =", candle["high"],
+            "low =", candle["low"],
+            "x =", candle["x"]
+        )
+    
+    print("--- END DEBUG ---\n")
+    
     for i in range(
         lookback,
         len(candles) - lookback
     ):
-
+        
         current = candles[i]
 
         # ----------------------------------------------------
