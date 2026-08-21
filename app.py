@@ -1706,26 +1706,14 @@ def analyze_candle_sequence(candles):
 # ============================================================
 
 def detect_swings(candles, lookback=2):
+
     """
-    Detect confirmed swing highs and swing lows.
+    Diagnostic swing detector.
 
-    IMPORTANT:
-    Candle coordinates are PIXEL coordinates.
-
-    Smaller Y = higher market price
-    Larger Y = lower market price
-
-    A swing high is a local peak.
-    A swing low is a local trough.
-
-    Equal neighbouring pixel values are allowed because
-    screenshot reconstruction can produce identical
-    high or low coordinates.
+    Pixel coordinates:
+        Smaller Y = higher price
+        Larger Y = lower price
     """
-
-    # --------------------------------------------------------
-    # NOT ENOUGH DATA
-    # --------------------------------------------------------
 
     if len(candles) < (lookback * 2 + 1):
         return {
@@ -1733,33 +1721,33 @@ def detect_swings(candles, lookback=2):
             "swing_lows": []
         }
 
-    # --------------------------------------------------------
-    # STORAGE
-    # --------------------------------------------------------
-
     swing_highs = []
     swing_lows = []
 
+    print("\n")
+    print("=" * 60)
+    print("SWING DETECTION DEBUG")
+    print("=" * 60)
+
+    print("Number of candles:", len(candles))
+    print("Lookback:", lookback)
+
     # --------------------------------------------------------
-    # DIAGNOSTIC OUTPUT
+    # SHOW ALL CANDLE HIGH / LOW VALUES
     # --------------------------------------------------------
 
-    print("\n========== SWING DIAGNOSTIC ==========")
-    print("Total candles:", len(candles))
+    for i, candle in enumerate(candles):
 
-    for i, candle in enumerate(candles[:15]):
         print(
-            f"{i}: "
-            f"high={candle['high']} "
-            f"low={candle['low']} "
-            f"x={candle['x']} "
-            f"width={candle['width']}"
+            f"{i:3d} | "
+            f"H={candle['high']:8.2f} | "
+            f"L={candle['low']:8.2f}"
         )
 
-    print("=======================================\n")
+    print("-" * 60)
 
     # --------------------------------------------------------
-    # CHECK EACH POSSIBLE SWING
+    # TEST EACH POSSIBLE SWING
     # --------------------------------------------------------
 
     for i in range(
@@ -1769,11 +1757,8 @@ def detect_swings(candles, lookback=2):
 
         current = candles[i]
 
-        # ====================================================
-        # SWING HIGH
-        # ====================================================
-
         current_high = current["high"]
+        current_low = current["low"]
 
         left_highs = [
             candles[j]["high"]
@@ -1791,44 +1776,6 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Smaller pixel Y = higher market price.
-        #
-        # The current candle must be at least as high
-        # as the surrounding candles.
-        #
-        # The second condition prevents a completely flat
-        # group of candles from being classified as a swing.
-
-        is_swing_high = (
-            current_high <= min(left_highs)
-            and
-            current_high <= min(right_highs)
-            and
-            (
-                current_high < max(left_highs)
-                or
-                current_high < max(right_highs)
-            )
-        )
-
-        if is_swing_high:
-
-            swing_highs.append({
-                "index": i,
-                "price": current_high,
-                "x": (
-                    current["x"]
-                    + current["width"] / 2
-                ),
-                "type": "SWING HIGH"
-            })
-
-        # ====================================================
-        # SWING LOW
-        # ====================================================
-
-        current_low = current["low"]
-
         left_lows = [
             candles[j]["low"]
             for j in range(
@@ -1845,27 +1792,51 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Larger pixel Y = lower market price.
-        #
-        # The current candle must be at least as low
-        # as the surrounding candles.
-        #
-        # The second condition prevents a completely flat
-        # group of candles from being classified as a swing.
+        # ====================================================
+        # SWING HIGH
+        # ====================================================
+
+        is_swing_high = (
+            current_high <= min(left_highs)
+            and
+            current_high <= min(right_highs)
+        )
+
+        if is_swing_high:
+
+            print(
+                f"SWING HIGH FOUND "
+                f"at index {i} "
+                f"price={current_high}"
+            )
+
+            swing_highs.append({
+                "index": i,
+                "price": current_high,
+                "x": (
+                    current["x"]
+                    + current["width"] / 2
+                ),
+                "type": "SWING HIGH"
+            })
+
+        # ====================================================
+        # SWING LOW
+        # ====================================================
 
         is_swing_low = (
             current_low >= max(left_lows)
             and
             current_low >= max(right_lows)
-            and
-            (
-                current_low > min(left_lows)
-                or
-                current_low > min(right_lows)
-            )
         )
 
         if is_swing_low:
+
+            print(
+                f"SWING LOW FOUND "
+                f"at index {i} "
+                f"price={current_low}"
+            )
 
             swing_lows.append({
                 "index": i,
@@ -1878,23 +1849,24 @@ def detect_swings(candles, lookback=2):
             })
 
     # --------------------------------------------------------
-    # FINAL DIAGNOSTIC
+    # FINAL RESULT
     # --------------------------------------------------------
 
-    print("SWING RESULTS")
-    print("Candles:", len(candles))
-    print("Swing highs found:", len(swing_highs))
-    print("Swing lows found:", len(swing_lows))
+    print("-" * 60)
 
-    if swing_highs:
-        print("Swing high indexes:",
-              [x["index"] for x in swing_highs])
+    print(
+        "FINAL SWING RESULTS:",
+        "Highs =", len(swing_highs),
+        "Lows =", len(swing_lows)
+    )
 
-    if swing_lows:
-        print("Swing low indexes:",
-              [x["index"] for x in swing_lows])
+    print("=" * 60)
+    print("\n")
 
-    print("===============================\n")
+    return {
+        "swing_highs": swing_highs,
+        "swing_lows": swing_lows
+    }
 
     # --------------------------------------------------------
     # RETURN
