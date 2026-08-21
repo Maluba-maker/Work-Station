@@ -1322,7 +1322,7 @@ def analyze_candle_sequence(candles):
 
     swing_analysis = detect_swings(
         candles,
-        lookback=2
+        lookback=1
     )
 
     swing_highs = swing_analysis["swing_highs"]
