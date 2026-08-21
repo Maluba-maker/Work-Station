@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 
-
 # ============================================================
 # PAGE CONFIG
 # ============================================================
@@ -1296,17 +1295,20 @@ def analyze_candle_sequence(candles):
 
     if not candles:
         return {
-            "count": 0,
-            "sequence_integrity": 0.0,
-            "ohlc_validity": 0.0,
-            "duplicate_centers": 0,
-            "spacing_consistency": 0.0,
-            "higher_highs": 0,
-            "higher_lows": 0,
-            "lower_highs": 0,
-            "lower_lows": 0,
-            "trend": "UNKNOWN",
-            "current_structure": "INSUFFICIENT DATA"
+            "count": count,
+            "sequence_integrity": sequence_integrity,
+            "ohlc_validity": ohlc_validity,
+            "duplicate_centres": duplicate_centres,
+            "spacing_consistency": spacing_consistency,
+            "higher_highs": higher_highs,
+            "higher_lows": higher_lows,
+            "lower_highs": lower_highs,
+            "lower_lows": lower_lows,
+            "trend": trend,
+            "current_structure": current_structure,
+        
+            "swing_highs": swing_highs,
+            "swing_lows": swing_lows
         }
 
     # --------------------------------------------------------
@@ -1314,7 +1316,19 @@ def analyze_candle_sequence(candles):
     # --------------------------------------------------------
 
     count = len(candles)
+    
+    # --------------------------------------------------------
+    # SWING STRUCTURE
+    # --------------------------------------------------------
 
+    swing_analysis = detect_swings(
+        candles,
+        lookback=2
+    )
+
+    swing_highs = swing_analysis["swing_highs"]
+    swing_lows = swing_analysis["swing_lows"]
+    
     # --------------------------------------------------------
     # CENTRES
     # --------------------------------------------------------
@@ -1686,6 +1700,130 @@ def analyze_candle_sequence(candles):
 
         "current_confidence":
             current["confidence"]
+    }
+
+# ============================================================
+# SWING STRUCTURE DETECTION
+# ============================================================
+
+def detect_swings(candles, lookback=2):
+    """
+    Detect confirmed swing highs and swing lows.
+
+    IMPORTANT:
+    Candle coordinates are PIXEL coordinates.
+
+    Smaller Y = higher market price
+    Larger Y = lower market price
+
+    A swing high is a candle whose HIGH is higher
+    than the highs of nearby candles.
+
+    A swing low is a candle whose LOW is lower
+    than the lows of nearby candles.
+    """
+
+    if len(candles) < (lookback * 2 + 1):
+        return {
+            "swing_highs": [],
+            "swing_lows": []
+        }
+
+    swing_highs = []
+    swing_lows = []
+
+    for i in range(
+        lookback,
+        len(candles) - lookback
+    ):
+
+        current = candles[i]
+
+        # ----------------------------------------------------
+        # HIGH
+        # ----------------------------------------------------
+
+        current_high = current["high"]
+
+        left_highs = [
+            candles[j]["high"]
+            for j in range(
+                i - lookback,
+                i
+            )
+        ]
+
+        right_highs = [
+            candles[j]["high"]
+            for j in range(
+                i + 1,
+                i + lookback + 1
+            )
+        ]
+
+        # Smaller pixel Y = higher price
+        is_swing_high = (
+            current_high < min(left_highs)
+            and
+            current_high < min(right_highs)
+        )
+
+        if is_swing_high:
+
+            swing_highs.append({
+                "index": i,
+                "price": current_high,
+                "x": (
+                    current["x"]
+                    + current["width"] / 2
+                ),
+                "type": "SWING HIGH"
+            })
+
+        # ----------------------------------------------------
+        # LOW
+        # ----------------------------------------------------
+
+        current_low = current["low"]
+
+        left_lows = [
+            candles[j]["low"]
+            for j in range(
+                i - lookback,
+                i
+            )
+        ]
+
+        right_lows = [
+            candles[j]["low"]
+            for j in range(
+                i + 1,
+                i + lookback + 1
+            )
+        ]
+
+        # Larger pixel Y = lower price
+        is_swing_low = (
+            current_low > max(left_lows)
+            and
+            current_low > max(right_lows)
+        )
+
+        if is_swing_low:
+
+            swing_lows.append({
+                "index": i,
+                "price": current_low,
+                "x": (
+                    current["x"]
+                    + current["width"] / 2
+                ),
+                "type": "SWING LOW"
+            })
+
+    return {
+        "swing_highs": swing_highs,
+        "swing_lows": swing_lows
     }
 # ============================================================
 # ANNOTATION
@@ -2499,7 +2637,56 @@ if "candles" in st.session_state:
             f"**Current Structure:** "
             f"`{sequence['current_structure']}`"
         )
-    
+
+        st.subheader("Swing Structure Diagnostic")
+
+        swing_highs = sequence_analysis.get(
+            "swing_highs",
+            []
+        )
+        
+        swing_lows = sequence_analysis.get(
+            "swing_lows",
+            []
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric(
+                "Swing Highs",
+                len(swing_highs)
+            )
+        
+        with col2:
+            st.metric(
+                "Swing Lows",
+                len(swing_lows)
+            )
+        
+        if swing_highs:
+            swing_high_df = pd.DataFrame(
+                swing_highs
+            )
+        
+            st.write("Detected Swing Highs")
+            st.dataframe(
+                swing_high_df,
+                use_container_width=True,
+                hide_index=True
+            )
+        
+        if swing_lows:
+            swing_low_df = pd.DataFrame(
+                swing_lows
+            )
+        
+            st.write("Detected Swing Lows")
+            st.dataframe(
+                swing_low_df,
+                use_container_width=True,
+                hide_index=True
+            )
         # --------------------------------------------------------
         # CURRENT CANDLE
         # --------------------------------------------------------
