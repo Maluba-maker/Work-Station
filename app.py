@@ -1328,6 +1328,11 @@ def analyze_candle_sequence(candles):
     swing_highs = swing_analysis["swing_highs"]
     swing_lows = swing_analysis["swing_lows"]
     
+    st.write("SWING HIGH DATA")
+    st.write(swing_highs)
+    
+    st.write("SWING LOW DATA")
+    st.write(swing_lows)
     # --------------------------------------------------------
     # CENTRES
     # --------------------------------------------------------
