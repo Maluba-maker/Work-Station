@@ -1715,11 +1715,12 @@ def detect_swings(candles, lookback=2):
     Smaller Y = higher market price
     Larger Y = lower market price
 
-    A swing high is a candle whose HIGH is higher
-    than the highs of nearby candles.
+    A swing high is a local peak.
+    A swing low is a local trough.
 
-    A swing low is a candle whose LOW is lower
-    than the lows of nearby candles.
+    We allow equal neighbouring pixel values because
+    screenshot reconstruction can produce flat/duplicate
+    high or low coordinates.
     """
 
     if len(candles) < (lookback * 2 + 1):
@@ -1730,29 +1731,17 @@ def detect_swings(candles, lookback=2):
 
     swing_highs = []
     swing_lows = []
-    
-    print("\n--- CANDLE DEBUG ---")
-    
-    for i, candle in enumerate(candles[:10]):
-        print(
-            i,
-            "high =", candle["high"],
-            "low =", candle["low"],
-            "x =", candle["x"]
-        )
-    
-    print("--- END DEBUG ---\n")
-    
+
     for i in range(
         lookback,
         len(candles) - lookback
     ):
-        
+
         current = candles[i]
 
-        # ----------------------------------------------------
-        # HIGH
-        # ----------------------------------------------------
+        # ====================================================
+        # SWING HIGH
+        # ====================================================
 
         current_high = current["high"]
 
@@ -1772,11 +1761,21 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Smaller pixel Y = higher price
+        # Smaller Y = higher market price
+        #
+        # Allow equality because pixel reconstruction
+        # can produce identical high coordinates.
+
         is_swing_high = (
-            current_high < min(left_highs)
+            current_high <= min(left_highs)
             and
-            current_high < min(right_highs)
+            current_high <= min(right_highs)
+            and
+            (
+                current_high < max(left_highs)
+                or
+                current_high < max(right_highs)
+            )
         )
 
         if is_swing_high:
@@ -1791,9 +1790,9 @@ def detect_swings(candles, lookback=2):
                 "type": "SWING HIGH"
             })
 
-        # ----------------------------------------------------
-        # LOW
-        # ----------------------------------------------------
+        # ====================================================
+        # SWING LOW
+        # ====================================================
 
         current_low = current["low"]
 
@@ -1813,11 +1812,21 @@ def detect_swings(candles, lookback=2):
             )
         ]
 
-        # Larger pixel Y = lower price
+        # Larger Y = lower market price
+        #
+        # Allow equality because pixel reconstruction
+        # can produce identical low coordinates.
+
         is_swing_low = (
-            current_low > max(left_lows)
+            current_low >= max(left_lows)
             and
-            current_low > max(right_lows)
+            current_low >= max(right_lows)
+            and
+            (
+                current_low > min(left_lows)
+                or
+                current_low > min(right_lows)
+            )
         )
 
         if is_swing_low:
@@ -1831,16 +1840,11 @@ def detect_swings(candles, lookback=2):
                 ),
                 "type": "SWING LOW"
             })
-    
-    print("SWING DEBUG")
-    print("Candles:", len(candles))
-    print("Swing highs found:", len(swing_highs))
-    print("Swing lows found:", len(swing_lows))
-    
+
     return {
         "swing_highs": swing_highs,
         "swing_lows": swing_lows
-    }
+    }   
 # ============================================================
 # ANNOTATION
 # ============================================================
