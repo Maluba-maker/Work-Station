@@ -20,7 +20,30 @@ st.caption(
     "• Structural Validation • NO TRADING SIGNALS"
 )
 
+# =============================
+# PASSWORD
+# =============================
 
+PASSWORD = "maluz123"
+PASSWORD_HASH = hashlib.sha256(PASSWORD.encode()).hexdigest()
+
+def check_password():
+
+    def entered():
+        if hashlib.sha256(st.session_state["pw"].encode()).hexdigest() == PASSWORD_HASH:
+            st.session_state.auth = True
+        else:
+            st.session_state.auth = False
+
+    if "auth" not in st.session_state or not st.session_state.auth:
+        st.text_input("🔐 Password", type="password", key="pw", on_change=entered)
+
+        if "auth" in st.session_state and not st.session_state.auth:
+            st.error("Incorrect password")
+
+        st.stop()
+
+check_password()
 # ============================================================
 # CONFIGURATION
 # ============================================================
