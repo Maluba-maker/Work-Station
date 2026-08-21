@@ -273,7 +273,6 @@ def find_components(mask, color_name):
 
     return components
 
-
 # ============================================================
 # COMPONENT GROUPING
 # ============================================================
@@ -1820,7 +1819,12 @@ def detect_swings(candles, lookback=2):
                 ),
                 "type": "SWING LOW"
             })
-
+    
+    print("SWING DEBUG")
+    print("Candles:", len(candles))
+    print("Swing highs found:", len(swing_highs))
+    print("Swing lows found:", len(swing_lows))
+    
     return {
         "swing_highs": swing_highs,
         "swing_lows": swing_lows
