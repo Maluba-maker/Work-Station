@@ -1936,7 +1936,7 @@ def analyze_candle_sequence(candles):
                 1
             ),
 
-        "duplicate_centres":
+        "duplicate_centers":
             duplicate_centers,
 
         "spacing_consistency":
