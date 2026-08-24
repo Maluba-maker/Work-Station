@@ -1400,61 +1400,62 @@ def analyze_candle_sequence(candles):
     # ========================================================
     # SWING STRUCTURE
     # ========================================================
-
+    
     swing_analysis = detect_swings(
         candles,
         lookback=2
     )
-
+    
     swing_highs = swing_analysis["swing_highs"]
     swing_lows = swing_analysis["swing_lows"]
-
+    
     swing_high_count = len(swing_highs)
     swing_low_count = len(swing_lows)
-
+    
+    
+    # ========================================================
+    # CLASSIFY SWING STRUCTURE
+    # ========================================================
+    
+    swing_structure = classify_swing_structure(
+        swing_highs,
+        swing_lows
+    )
+    
+    
+    # ========================================================
+    # GET CLASSIFIED SWING DATA
+    # ========================================================
+    
+    swing_highs = swing_structure["swing_highs"]
+    swing_lows = swing_structure["swing_lows"]
+    
+    swing_high_count = len(swing_highs)
+    swing_low_count = len(swing_lows)
+    
+    
     # ========================================================
     # BOS / CHoCH DETECTION
     # ========================================================
-
+    
     bos_choch_analysis = detect_bos_choch(
         candles,
         swing_highs,
         swing_lows,
         lookback=2
     )
-
+    
     bos_choch_events = (
         bos_choch_analysis["events"]
     )
-
+    
     bos_choch_bias = (
         bos_choch_analysis["current_bias"]
     )
-
+    
     last_bos_choch = (
         bos_choch_analysis["last_event"]
     )
-    
-    # --------------------------------------------------------
-    # CLASSIFY SWING STRUCTURE
-    # --------------------------------------------------------
-
-    swing_structure = classify_swing_structure(
-        swing_highs,
-        swing_lows
-    )
-
-    # --------------------------------------------------------
-    # GET CLASSIFIED SWING DATA
-    # --------------------------------------------------------
-
-    swing_highs = swing_structure["swing_highs"]
-
-    swing_lows = swing_structure["swing_lows"]
-
-    swing_high_count = len(swing_highs)
-
-    swing_low_count = len(swing_lows)
 
     # --------------------------------------------------------
     # GET STRUCTURE COUNTS
