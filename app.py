@@ -1287,38 +1287,49 @@ def analyze_spacing(candles):
 
 # ============================================================
 # SEQUENCE VALIDATION / MARKET STRUCTURE
-# V2.4
 # ============================================================
 
 def analyze_candle_sequence(candles):
 
+    # --------------------------------------------------------
+    # EMPTY DATA
+    # --------------------------------------------------------
+
     if not candles:
         return {
-            "count": count,
-            "sequence_integrity": sequence_integrity,
-            "ohlc_validity": ohlc_validity,
-            "duplicate_centres": duplicate_centres,
-            "spacing_consistency": spacing_consistency,
-            "higher_highs": higher_highs,
-            "higher_lows": higher_lows,
-            "lower_highs": lower_highs,
-            "lower_lows": lower_lows,
-            "trend": trend,
-            "current_structure": current_structure,
-        
-            "swing_highs": swing_highs,
-            "swing_lows": swing_lows
+            "count": 0,
+            "sequence_integrity": 0.0,
+            "ohlc_validity": 0.0,
+            "duplicate_centers": 0,
+            "spacing_consistency": 0.0,
+
+            "higher_highs": 0,
+            "higher_lows": 0,
+            "lower_highs": 0,
+            "lower_lows": 0,
+
+            "trend": "UNKNOWN",
+            "current_structure": "INSUFFICIENT DATA",
+
+            "swing_highs": [],
+            "swing_lows": [],
+
+            "current_direction": "UNKNOWN",
+            "body_percentage": 0.0,
+            "upper_wick_percentage": 0.0,
+            "lower_wick_percentage": 0.0,
+            "current_confidence": 0.0
         }
 
     # --------------------------------------------------------
-    # BASIC COUNTS
+    # BASIC COUNT
     # --------------------------------------------------------
 
     count = len(candles)
-    
-    # --------------------------------------------------------
+
+    # ========================================================
     # SWING STRUCTURE
-    # --------------------------------------------------------
+    # ========================================================
 
     swing_analysis = detect_swings(
         candles,
@@ -1327,40 +1338,120 @@ def analyze_candle_sequence(candles):
 
     swing_highs = swing_analysis["swing_highs"]
     swing_lows = swing_analysis["swing_lows"]
-    
-    st.write("SWING HIGH DATA")
-    st.write(swing_highs)
-    
-    st.write("SWING LOW DATA")
-    st.write(swing_lows)
+
+    swing_high_count = len(swing_highs)
+    swing_low_count = len(swing_lows)
+
     # --------------------------------------------------------
+    # TERMINAL DEBUG
+    # --------------------------------------------------------
+
+    print("\n")
+    print("=" * 70)
+    print("SWING ANALYSIS")
+    print("=" * 70)
+
+    print("Total candles:", count)
+    print("Swing highs:", swing_high_count)
+    print("Swing lows:", swing_low_count)
+
+    print("-" * 70)
+    print("SWING HIGH DATA")
+
+    for swing in swing_highs:
+        print(swing)
+
+    print("-" * 70)
+    print("SWING LOW DATA")
+
+    for swing in swing_lows:
+        print(swing)
+
+    print("=" * 70)
+    print("\n")
+
+    # --------------------------------------------------------
+    # STREAMLIT DEBUG DISPLAY
+    # --------------------------------------------------------
+    #
+    # This is the part that makes the actual data appear
+    # on your Streamlit page.
+    #
+    # --------------------------------------------------------
+
+    st.subheader("🔎 Detected Swing Points")
+
+    st.write(
+        f"**Swing Highs Detected:** {swing_high_count}"
+    )
+
+    st.write(
+        f"**Swing Lows Detected:** {swing_low_count}"
+    )
+
+    if swing_highs:
+        st.write("### Swing High Data")
+        st.dataframe(
+            pd.DataFrame(swing_highs),
+            use_container_width=True
+        )
+    else:
+        st.warning(
+            "No swing highs were detected."
+        )
+
+    if swing_lows:
+        st.write("### Swing Low Data")
+        st.dataframe(
+            pd.DataFrame(swing_lows),
+            use_container_width=True
+        )
+    else:
+        st.warning(
+            "No swing lows were detected."
+        )
+
+    # ========================================================
     # CENTRES
-    # --------------------------------------------------------
+    # ========================================================
 
-    centers = np.array([
-        c["x"] + c["width"] / 2
-        for c in candles
-    ], dtype=float)
+    centers = np.array(
+        [
+            c["x"] + c["width"] / 2
+            for c in candles
+        ],
+        dtype=float
+    )
 
-    # --------------------------------------------------------
+    # ========================================================
     # DUPLICATE CENTRES
-    # --------------------------------------------------------
+    # ========================================================
 
     duplicate_centers = 0
 
     if len(centers) > 1:
 
-        for i in range(1, len(centers)):
+        for i in range(
+            1,
+            len(centers)
+        ):
 
-            if abs(centers[i] - centers[i - 1]) < 1.0:
+            if abs(
+                centers[i] -
+                centers[i - 1]
+            ) < 1.0:
+
                 duplicate_centers += 1
 
-    # --------------------------------------------------------
+    # ========================================================
     # OHLC VALIDATION
     #
-    # Remember:
-    # These are pixel coordinates, NOT market prices.
-    # --------------------------------------------------------
+    # IMPORTANT:
+    # These are PIXEL coordinates.
+    #
+    # Smaller Y = higher price
+    # Larger Y = lower price
+    # ========================================================
 
     valid_ohlc = 0
 
@@ -1368,15 +1459,20 @@ def analyze_candle_sequence(candles):
 
         high = candle["high"]
         low = candle["low"]
+
         open_price = candle["open"]
         close_price = candle["close"]
 
         valid = (
             high <= open_price
-            and high <= close_price
-            and low >= open_price
-            and low >= close_price
-            and high <= low
+            and
+            high <= close_price
+            and
+            low >= open_price
+            and
+            low >= close_price
+            and
+            high <= low
         )
 
         if valid:
@@ -1388,9 +1484,9 @@ def analyze_candle_sequence(candles):
         else 0
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # SPACING CONSISTENCY
-    # --------------------------------------------------------
+    # ========================================================
 
     spacing_consistency = 0.0
 
@@ -1398,99 +1494,130 @@ def analyze_candle_sequence(candles):
 
         spacing = np.diff(centers)
 
-        median_spacing = np.median(spacing)
+        median_spacing = np.median(
+            spacing
+        )
 
         if median_spacing > 0:
 
-            deviations = np.abs(
-                spacing - median_spacing
-            ) / median_spacing
+            deviations = (
+                np.abs(
+                    spacing -
+                    median_spacing
+                )
+                /
+                median_spacing
+            )
 
             average_deviation = np.mean(
                 deviations
             )
 
             spacing_consistency = clamp_score(
-                100 - (average_deviation * 100)
+                100 -
+                (
+                    average_deviation *
+                    100
+                )
             )
 
     elif len(centers) == 2:
 
         spacing_consistency = 100.0
 
-    # --------------------------------------------------------
+    # ========================================================
     # MARKET STRUCTURE
     #
-    # We compare each candle's HIGH and LOW
-    # against the previous candle.
-    #
-    # This is intentionally simple for V2.4.
-    # We will later replace this with swing detection.
-    # --------------------------------------------------------
+    # Use the detected candle sequence to determine
+    # higher highs / higher lows / lower highs / lower lows.
+    # ========================================================
 
     higher_highs = 0
     higher_lows = 0
     lower_highs = 0
     lower_lows = 0
 
-    for i in range(1, len(candles)):
+    # --------------------------------------------------------
+    # Compare consecutive candle highs/lows
+    # --------------------------------------------------------
+
+    for i in range(1, count):
 
         previous = candles[i - 1]
         current = candles[i]
 
+        # Smaller Y = higher price
         if current["high"] < previous["high"]:
             higher_highs += 1
+
         elif current["high"] > previous["high"]:
             lower_highs += 1
 
-        if current["low"] > previous["low"]:
+        # Larger Y = lower price
+        if current["low"] < previous["low"]:
             higher_lows += 1
-        elif current["low"] < previous["low"]:
+
+        elif current["low"] > previous["low"]:
             lower_lows += 1
 
-    # --------------------------------------------------------
+    # ========================================================
     # RECENT STRUCTURE
-    #
-    # Use last 10 candles rather than the entire chart.
-    # IMPORTANT:
-    # These are PIXEL coordinates.
-    # Smaller Y = higher price.
-    # Larger Y = lower price.
-    # --------------------------------------------------------
-    
-    recent = candles[-10:]
-    
+    # ========================================================
+
+    recent_window = min(
+        10,
+        count
+    )
+
+    recent_candles = candles[
+        -recent_window:
+    ]
+
     recent_hh = 0
     recent_hl = 0
     recent_lh = 0
     recent_ll = 0
-    
-    for i in range(1, len(recent)):
-    
-        previous = recent[i - 1]
-        current = recent[i]
-    
-        # HIGH comparison
-        # Smaller pixel Y means a higher market price.
+
+    for i in range(
+        1,
+        len(recent_candles)
+    ):
+
+        previous = recent_candles[
+            i - 1
+        ]
+
+        current = recent_candles[i]
+
+        # Higher high
         if current["high"] < previous["high"]:
             recent_hh += 1
-    
+
+        # Lower high
         elif current["high"] > previous["high"]:
             recent_lh += 1
-    
-        # LOW comparison
-        # Smaller pixel Y means a higher market price.
+
+        # Higher low
         if current["low"] < previous["low"]:
             recent_hl += 1
-    
+
+        # Lower low
         elif current["low"] > previous["low"]:
             recent_ll += 1
-    # --------------------------------------------------------
-    # TREND CLASSIFICATION
-    # --------------------------------------------------------
 
-    bullish_score = recent_hh + recent_hl
-    bearish_score = recent_lh + recent_ll
+    # ========================================================
+    # TREND
+    # ========================================================
+
+    bullish_score = (
+        recent_hh +
+        recent_hl
+    )
+
+    bearish_score = (
+        recent_lh +
+        recent_ll
+    )
 
     if bullish_score >= bearish_score + 2:
 
@@ -1504,20 +1631,23 @@ def analyze_candle_sequence(candles):
 
         trend = "SIDEWAYS / MIXED"
 
-    # --------------------------------------------------------
+    # ========================================================
     # CURRENT CANDLE
-    # --------------------------------------------------------
+    # ========================================================
 
     current = candles[-1]
 
     if current["color"] == "GREEN":
+
         direction = "GREEN"
+
     else:
+
         direction = "RED"
 
-    # --------------------------------------------------------
+    # ========================================================
     # BODY / WICK ANALYSIS
-    # --------------------------------------------------------
+    # ========================================================
 
     body_height = float(
         current["body_height"]
@@ -1546,13 +1676,14 @@ def analyze_candle_sequence(candles):
         100
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # CURRENT STRUCTURE DESCRIPTION
-    # --------------------------------------------------------
+    # ========================================================
 
     if (
         recent_hh >= 2
-        and recent_hl >= 2
+        and
+        recent_hl >= 2
     ):
 
         current_structure = (
@@ -1561,7 +1692,8 @@ def analyze_candle_sequence(candles):
 
     elif (
         recent_lh >= 2
-        and recent_ll >= 2
+        and
+        recent_ll >= 2
     ):
 
         current_structure = (
@@ -1570,7 +1702,8 @@ def analyze_candle_sequence(candles):
 
     elif (
         recent_hh > recent_lh
-        and recent_hl > recent_ll
+        and
+        recent_hl > recent_ll
     ):
 
         current_structure = (
@@ -1579,7 +1712,8 @@ def analyze_candle_sequence(candles):
 
     elif (
         recent_lh > recent_hh
-        and recent_ll > recent_hl
+        and
+        recent_ll > recent_hl
     ):
 
         current_structure = (
@@ -1592,13 +1726,12 @@ def analyze_candle_sequence(candles):
             "CONSOLIDATION / MIXED"
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # SEQUENCE INTEGRITY
-    # --------------------------------------------------------
+    # ========================================================
 
     integrity_components = []
 
-    # Duplicate penalty
     duplicate_score = (
         100.0
         if duplicate_centers == 0
@@ -1629,9 +1762,14 @@ def analyze_candle_sequence(candles):
         1
     )
 
+    # ========================================================
+    # FINAL RETURN
+    # ========================================================
+
     return {
 
-        "count": count,
+        "count":
+            count,
 
         "sequence_integrity":
             sequence_integrity,
@@ -1703,8 +1841,22 @@ def analyze_candle_sequence(candles):
             ),
 
         "current_confidence":
-            current["confidence"]
+            current["confidence"],
+
+        # ----------------------------------------------------
+        # ACTUAL SWING DATA
+        # ----------------------------------------------------
+
+        "swing_highs":
+            swing_highs,
+
+        "swing_lows":
+            swing_lows
     }
+
+# ============================================================
+# SWING STRUCTURE DETECTION
+# ============================================================
 
 # ============================================================
 # SWING STRUCTURE DETECTION
@@ -1713,14 +1865,33 @@ def analyze_candle_sequence(candles):
 def detect_swings(candles, lookback=2):
 
     """
-    Diagnostic swing detector.
+    Detect confirmed swing highs and swing lows.
 
-    Pixel coordinates:
-        Smaller Y = higher price
-        Larger Y = lower price
+    Candle coordinates are PIXEL coordinates.
+
+    Smaller Y = higher market price.
+    Larger Y = lower market price.
+
+    Swing High:
+        Current HIGH is at or above the surrounding highs.
+
+    Swing Low:
+        Current LOW is at or below the surrounding lows.
+
+    Equal pixel values are allowed because screenshot
+    reconstruction can produce flat coordinates.
     """
 
-    if len(candles) < (lookback * 2 + 1):
+    # --------------------------------------------------------
+    # NOT ENOUGH DATA
+    # --------------------------------------------------------
+
+    minimum_candles = (
+        lookback * 2 + 1
+    )
+
+    if len(candles) < minimum_candles:
+
         return {
             "swing_highs": [],
             "swing_lows": []
@@ -1729,31 +1900,9 @@ def detect_swings(candles, lookback=2):
     swing_highs = []
     swing_lows = []
 
-    print("\n")
-    print("=" * 60)
-    print("SWING DETECTION DEBUG")
-    print("=" * 60)
-
-    print("Number of candles:", len(candles))
-    print("Lookback:", lookback)
-
-    # --------------------------------------------------------
-    # SHOW ALL CANDLE HIGH / LOW VALUES
-    # --------------------------------------------------------
-
-    for i, candle in enumerate(candles):
-
-        print(
-            f"{i:3d} | "
-            f"H={candle['high']:8.2f} | "
-            f"L={candle['low']:8.2f}"
-        )
-
-    print("-" * 60)
-
-    # --------------------------------------------------------
+    # ========================================================
     # TEST EACH POSSIBLE SWING
-    # --------------------------------------------------------
+    # ========================================================
 
     for i in range(
         lookback,
@@ -1762,11 +1911,18 @@ def detect_swings(candles, lookback=2):
 
         current = candles[i]
 
-        current_high = current["high"]
-        current_low = current["low"]
+        # ====================================================
+        # SURROUNDING HIGHS
+        # ====================================================
+
+        current_high = float(
+            current["high"]
+        )
 
         left_highs = [
-            candles[j]["high"]
+            float(
+                candles[j]["high"]
+            )
             for j in range(
                 i - lookback,
                 i
@@ -1774,23 +1930,9 @@ def detect_swings(candles, lookback=2):
         ]
 
         right_highs = [
-            candles[j]["high"]
-            for j in range(
-                i + 1,
-                i + lookback + 1
+            float(
+                candles[j]["high"]
             )
-        ]
-
-        left_lows = [
-            candles[j]["low"]
-            for j in range(
-                i - lookback,
-                i
-            )
-        ]
-
-        right_lows = [
-            candles[j]["low"]
             for j in range(
                 i + 1,
                 i + lookback + 1
@@ -1799,78 +1941,194 @@ def detect_swings(candles, lookback=2):
 
         # ====================================================
         # SWING HIGH
+        #
+        # Smaller Y = higher price.
+        #
+        # Therefore current high must be <= the surrounding
+        # high coordinates.
+        #
+        # We also require that at least one neighbouring
+        # value is strictly lower in market height
+        # (larger Y), otherwise a completely flat area
+        # would generate multiple swing highs.
         # ====================================================
 
         is_swing_high = (
-            current_high <= min(left_highs)
+
+            current_high <=
+            min(left_highs)
+
             and
-            current_high <= min(right_highs)
+
+            current_high <=
+            min(right_highs)
+
+            and
+
+            (
+                current_high <
+                max(left_highs)
+
+                or
+
+                current_high <
+                max(right_highs)
+            )
         )
 
         if is_swing_high:
 
-            print(
-                f"SWING HIGH FOUND "
-                f"at index {i} "
-                f"price={current_high}"
-            )
-
             swing_highs.append({
-                "index": i,
-                "price": current_high,
-                "x": (
-                    current["x"]
-                    + current["width"] / 2
-                ),
-                "type": "SWING HIGH"
+
+                "index":
+                    i,
+
+                "price":
+                    current_high,
+
+                "x":
+                    (
+                        current["x"]
+                        +
+                        current["width"] / 2
+                    ),
+
+                "type":
+                    "SWING HIGH"
             })
 
         # ====================================================
+        # SURROUNDING LOWS
+        # ====================================================
+
+        current_low = float(
+            current["low"]
+        )
+
+        left_lows = [
+            float(
+                candles[j]["low"]
+            )
+            for j in range(
+                i - lookback,
+                i
+            )
+        ]
+
+        right_lows = [
+            float(
+                candles[j]["low"]
+            )
+            for j in range(
+                i + 1,
+                i + lookback + 1
+            )
+        ]
+
+        # ====================================================
         # SWING LOW
+        #
+        # Larger Y = lower price.
+        #
+        # Therefore current low must be >= the surrounding
+        # low coordinates.
         # ====================================================
 
         is_swing_low = (
-            current_low >= max(left_lows)
+
+            current_low >=
+            max(left_lows)
+
             and
-            current_low >= max(right_lows)
+
+            current_low >=
+            max(right_lows)
+
+            and
+
+            (
+                current_low >
+                min(left_lows)
+
+                or
+
+                current_low >
+                min(right_lows)
+            )
         )
 
         if is_swing_low:
 
-            print(
-                f"SWING LOW FOUND "
-                f"at index {i} "
-                f"price={current_low}"
-            )
-
             swing_lows.append({
-                "index": i,
-                "price": current_low,
-                "x": (
-                    current["x"]
-                    + current["width"] / 2
-                ),
-                "type": "SWING LOW"
+
+                "index":
+                    i,
+
+                "price":
+                    current_low,
+
+                "x":
+                    (
+                        current["x"]
+                        +
+                        current["width"] / 2
+                    ),
+
+                "type":
+                    "SWING LOW"
             })
 
-    # --------------------------------------------------------
-    # FINAL RESULT
-    # --------------------------------------------------------
+    # ========================================================
+    # DEBUG
+    # ========================================================
 
-    print("-" * 60)
+    print("\n")
+    print("=" * 70)
+    print("FINAL SWING DETECTION RESULT")
+    print("=" * 70)
 
     print(
-        "FINAL SWING RESULTS:",
-        "Highs =", len(swing_highs),
-        "Lows =", len(swing_lows)
+        "Total candles:",
+        len(candles)
     )
 
-    print("=" * 60)
+    print(
+        "Swing highs found:",
+        len(swing_highs)
+    )
+
+    print(
+        "Swing lows found:",
+        len(swing_lows)
+    )
+
+    print("-" * 70)
+
+    print("SWING HIGH DATA")
+
+    for swing in swing_highs:
+        print(swing)
+
+    print("-" * 70)
+
+    print("SWING LOW DATA")
+
+    for swing in swing_lows:
+        print(swing)
+
+    print("=" * 70)
     print("\n")
 
+    # ========================================================
+    # RETURN
+    # ========================================================
+
     return {
-        "swing_highs": swing_highs,
-        "swing_lows": swing_lows
+        "swing_highs":
+            swing_highs,
+
+        "swing_lows":
+            swing_lows
     }
 
 # ============================================================
