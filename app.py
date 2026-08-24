@@ -21,7 +21,7 @@ st.set_page_config(
 
 # Password used for the current protected version.
 # Change this value before deploying if you want a different password.
-PASSWORD_HASH = "Malu123"
+PASSWORD_HASH = "73e5f1c0605c49650e419c6486a26c31721235175b285331b8ea32bf12cd6677"
 
 def check_password(password):
     """Check the entered password against the stored SHA-256 hash."""
