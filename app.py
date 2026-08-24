@@ -3,17 +3,87 @@ import cv2
 import numpy as np
 from PIL import Image
 import pandas as pd
+import hashlib
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Maluz Signal Engine V2.3",
+    page_title="Maluz Signal Engine V2.5",
     layout="wide"
 )
 
-st.title("🔹 Maluz Signal Engine V2.3")
+
+# ============================================================
+# PASSWORD PROTECTION
+# ============================================================
+
+# Password used for the current protected version.
+# Change this value before deploying if you want a different password.
+PASSWORD_HASH = "Malu123"
+
+def check_password(password):
+    """Check the entered password against the stored SHA-256 hash."""
+    entered_hash = hashlib.sha256(
+        password.encode("utf-8")
+    ).hexdigest()
+
+    return entered_hash == PASSWORD_HASH
+
+def require_password():
+
+    # Already authenticated during this browser session
+    if st.session_state.get("authenticated", False):
+        return True
+
+    st.title("🔒 Maluz Signal Engine")
+    st.caption(
+        "This application is protected. "
+        "Enter the password to continue."
+    )
+
+    password = st.text_input(
+        "Password",
+        type="password",
+        key="login_password"
+    )
+
+    if st.button(
+        "🔓 Unlock",
+        type="primary"
+    ):
+
+        if check_password(password):
+
+            st.session_state["authenticated"] = True
+            st.rerun()
+
+        else:
+
+            st.error(
+                "Incorrect password."
+            )
+
+    return False
+
+
+if not require_password():
+    st.stop()
+
+
+# ------------------------------------------------------------
+# LOGOUT
+# ------------------------------------------------------------
+
+with st.sidebar:
+    st.markdown("### 🔐 Access")
+    if st.button("Log out"):
+        st.session_state["authenticated"] = False
+        st.session_state.pop("login_password", None)
+        st.rerun()
+
+st.title("🔹 Maluz Signal Engine V2.5")
 st.caption(
     "Vision Diagnostic • Candle Geometry • OHLC Reconstruction "
     "• Structural Validation • NO TRADING SIGNALS"
@@ -1341,7 +1411,63 @@ def analyze_candle_sequence(candles):
 
     swing_high_count = len(swing_highs)
     swing_low_count = len(swing_lows)
+    
+    # --------------------------------------------------------
+    # CLASSIFY SWING STRUCTURE
+    # --------------------------------------------------------
 
+    swing_structure = classify_swing_structure(
+        swing_highs,
+        swing_lows
+    )
+
+    swing_trend = swing_structure["trend"]
+    swing_current_structure = swing_structure["structure"]
+
+    print("\n========== SWING STRUCTURE ==========")
+
+    print(
+        "Previous High:",
+        swing_structure["previous_high"]
+    )
+
+    print(
+        "Latest High:",
+        swing_structure["latest_high"]
+    )
+
+    print(
+        "Previous Low:",
+        swing_structure["previous_low"]
+    )
+
+    print(
+        "Latest Low:",
+        swing_structure["latest_low"]
+    )
+
+    print(
+        "High Structure:",
+        swing_structure["high_structure"]
+    )
+
+    print(
+        "Low Structure:",
+        swing_structure["low_structure"]
+    )
+
+    print(
+        "Structure:",
+        swing_current_structure
+    )
+
+    print(
+        "Trend:",
+        swing_trend
+    )
+
+    print("====================================\n")
+    
     # --------------------------------------------------------
     # TERMINAL DEBUG
     # --------------------------------------------------------
@@ -1369,47 +1495,6 @@ def analyze_candle_sequence(candles):
 
     print("=" * 70)
     print("\n")
-
-    # --------------------------------------------------------
-    # STREAMLIT DEBUG DISPLAY
-    # --------------------------------------------------------
-    #
-    # This is the part that makes the actual data appear
-    # on your Streamlit page.
-    #
-    # --------------------------------------------------------
-
-    st.subheader("🔎 Detected Swing Points")
-
-    st.write(
-        f"**Swing Highs Detected:** {swing_high_count}"
-    )
-
-    st.write(
-        f"**Swing Lows Detected:** {swing_low_count}"
-    )
-
-    if swing_highs:
-        st.write("### Swing High Data")
-        st.dataframe(
-            pd.DataFrame(swing_highs),
-            use_container_width=True
-        )
-    else:
-        st.warning(
-            "No swing highs were detected."
-        )
-
-    if swing_lows:
-        st.write("### Swing Low Data")
-        st.dataframe(
-            pd.DataFrame(swing_lows),
-            use_container_width=True
-        )
-    else:
-        st.warning(
-            "No swing lows were detected."
-        )
 
     # ========================================================
     # CENTRES
@@ -1814,10 +1899,10 @@ def analyze_candle_sequence(candles):
             recent_ll,
 
         "trend":
-            trend,
-
+            swing_trend,
+        
         "current_structure":
-            current_structure,
+            swing_current_structure,
 
         "current_direction":
             direction,
@@ -2131,6 +2216,155 @@ def detect_swings(candles, lookback=2):
             swing_lows
     }
 
+# ============================================================
+# SWING STRUCTURE CLASSIFICATION
+# ============================================================
+
+def classify_swing_structure(swing_highs, swing_lows):
+
+    """
+    Classify the most recent swing structure.
+
+    Pixel coordinates:
+        Smaller Y = higher price
+        Larger Y = lower price
+
+    We compare the two most recent swing highs
+    and the two most recent swing lows.
+
+    Results can include:
+        HIGHER HIGH
+        LOWER HIGH
+        HIGHER LOW
+        LOWER LOW
+    """
+
+    result = {
+        "previous_high": None,
+        "latest_high": None,
+        "previous_low": None,
+        "latest_low": None,
+        "high_structure": "INSUFFICIENT DATA",
+        "low_structure": "INSUFFICIENT DATA",
+        "structure": "INSUFFICIENT DATA",
+        "trend": "UNKNOWN"
+    }
+
+    # --------------------------------------------------------
+    # NEED AT LEAST TWO HIGHS AND TWO LOWS
+    # --------------------------------------------------------
+
+    if len(swing_highs) < 2 or len(swing_lows) < 2:
+        return result
+
+    # --------------------------------------------------------
+    # MOST RECENT TWO SWING HIGHS
+    # --------------------------------------------------------
+
+    previous_high = swing_highs[-2]
+    latest_high = swing_highs[-1]
+
+    result["previous_high"] = previous_high
+    result["latest_high"] = latest_high
+
+    # --------------------------------------------------------
+    # MOST RECENT TWO SWING LOWS
+    # --------------------------------------------------------
+
+    previous_low = swing_lows[-2]
+    latest_low = swing_lows[-1]
+
+    result["previous_low"] = previous_low
+    result["latest_low"] = latest_low
+
+    # ========================================================
+    # HIGH STRUCTURE
+    # ========================================================
+
+    # Smaller Y = higher price
+
+    if latest_high["price"] < previous_high["price"]:
+
+        result["high_structure"] = "HIGHER HIGH"
+
+    elif latest_high["price"] > previous_high["price"]:
+
+        result["high_structure"] = "LOWER HIGH"
+
+    else:
+
+        result["high_structure"] = "EQUAL HIGH"
+
+    # ========================================================
+    # LOW STRUCTURE
+    # ========================================================
+
+    # Larger Y = lower price
+
+    if latest_low["price"] < previous_low["price"]:
+
+        result["low_structure"] = "HIGHER LOW"
+
+    elif latest_low["price"] > previous_low["price"]:
+
+        result["low_structure"] = "LOWER LOW"
+
+    else:
+
+        result["low_structure"] = "EQUAL LOW"
+
+    # ========================================================
+    # COMBINE STRUCTURE
+    # ========================================================
+
+    result["structure"] = (
+        result["high_structure"]
+        + " + "
+        + result["low_structure"]
+    )
+
+    # ========================================================
+    # DETERMINE TREND
+    # ========================================================
+
+    if (
+        result["high_structure"] == "HIGHER HIGH"
+        and
+        result["low_structure"] == "HIGHER LOW"
+    ):
+
+        result["trend"] = "BULLISH"
+
+    elif (
+        result["high_structure"] == "LOWER HIGH"
+        and
+        result["low_structure"] == "LOWER LOW"
+    ):
+
+        result["trend"] = "BEARISH"
+
+    elif (
+        result["high_structure"] == "LOWER HIGH"
+        and
+        result["low_structure"] == "HIGHER LOW"
+    ):
+
+        result["trend"] = "CONSOLIDATION"
+
+    elif (
+        result["high_structure"] == "HIGHER HIGH"
+        and
+        result["low_structure"] == "LOWER LOW"
+    ):
+
+        result["trend"] = "EXPANSION"
+
+    else:
+
+        result["trend"] = "TRANSITION"
+
+    return result
+    
 # ============================================================
 # ANNOTATION
 # ============================================================
@@ -2479,6 +2713,11 @@ if "candles" in st.session_state:
 
     spacing_analysis = st.session_state[
         "spacing_analysis"
+    ]
+
+
+    sequence_analysis = st.session_state[
+        "sequence_analysis"
     ]
     
     # ========================================================
