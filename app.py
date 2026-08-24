@@ -2009,7 +2009,7 @@ def analyze_candle_sequence(candles):
 
         "current_confidence":
             round(
-                current_confidence,
+                current["confidence"],
                 1
             )
     }
