@@ -1411,6 +1411,33 @@ def analyze_candle_sequence(candles):
 
     swing_high_count = len(swing_highs)
     swing_low_count = len(swing_lows)
+
+    # --------------------------------------------------------
+    # CLASSIFY SWING STRUCTURE
+    # --------------------------------------------------------
+
+    swing_structure = classify_swing_structure(
+        swing_highs,
+        swing_lows
+    )
+
+    swing_highs = swing_structure["swing_highs"]
+    swing_lows = swing_structure["swing_lows"]
+
+    swing_high_count = len(swing_highs)
+    swing_low_count = len(swing_lows)
+
+    higher_highs = swing_structure["higher_highs"]
+    higher_lows = swing_structure["higher_lows"]
+
+    lower_highs = swing_structure["lower_highs"]
+    lower_lows = swing_structure["lower_lows"]
+
+    swing_trend = swing_structure["trend"]
+
+    swing_current_structure = (
+        swing_structure["current_structure"]
+    )
     
     # --------------------------------------------------------
     # CLASSIFY SWING STRUCTURE
@@ -2221,6 +2248,206 @@ def detect_swings(candles, lookback=2):
 # ============================================================
 
 def classify_swing_structure(swing_highs, swing_lows):
+    """
+    Classify detected swing points as:
+
+        HH = Higher High
+        LH = Lower High
+        HL = Higher Low
+        LL = Lower Low
+
+    Pixel coordinates:
+        Smaller Y = higher market price
+        Larger Y = lower market price
+    """
+
+    classified_highs = []
+    classified_lows = []
+
+    # ========================================================
+    # CLASSIFY SWING HIGHS
+    # ========================================================
+
+    for i, swing in enumerate(swing_highs):
+
+        item = swing.copy()
+
+        if i == 0:
+
+            item["structure"] = "INITIAL HIGH"
+
+        else:
+
+            previous = swing_highs[i - 1]
+
+            # Smaller pixel Y = higher price
+            if swing["price"] < previous["price"]:
+
+                item["structure"] = "HH"
+
+            elif swing["price"] > previous["price"]:
+
+                item["structure"] = "LH"
+
+            else:
+
+                item["structure"] = "EQUAL HIGH"
+
+        classified_highs.append(item)
+
+    # ========================================================
+    # CLASSIFY SWING LOWS
+    # ========================================================
+
+    for i, swing in enumerate(swing_lows):
+
+        item = swing.copy()
+
+        if i == 0:
+
+            item["structure"] = "INITIAL LOW"
+
+        else:
+
+            previous = swing_lows[i - 1]
+
+            # Larger pixel Y = lower price
+            if swing["price"] < previous["price"]:
+
+                item["structure"] = "HL"
+
+            elif swing["price"] > previous["price"]:
+
+                item["structure"] = "LL"
+
+            else:
+
+                item["structure"] = "EQUAL LOW"
+
+        classified_lows.append(item)
+
+    # ========================================================
+    # COUNT STRUCTURE
+    # ========================================================
+
+    higher_highs = sum(
+        1
+        for swing in classified_highs
+        if swing["structure"] == "HH"
+    )
+
+    lower_highs = sum(
+        1
+        for swing in classified_highs
+        if swing["structure"] == "LH"
+    )
+
+    higher_lows = sum(
+        1
+        for swing in classified_lows
+        if swing["structure"] == "HL"
+    )
+
+    lower_lows = sum(
+        1
+        for swing in classified_lows
+        if swing["structure"] == "LL"
+    )
+
+    # ========================================================
+    # DETERMINE STRUCTURAL BIAS
+    # ========================================================
+
+    bullish_score = higher_highs + higher_lows
+    bearish_score = lower_highs + lower_lows
+
+    if bullish_score > bearish_score:
+
+        trend = "BULLISH"
+
+    elif bearish_score > bullish_score:
+
+        trend = "BEARISH"
+
+    else:
+
+        trend = "NEUTRAL"
+
+    # ========================================================
+    # CURRENT STRUCTURE
+    # ========================================================
+
+    if (
+        higher_highs > 0
+        and
+        higher_lows > 0
+        and
+        higher_highs >= lower_highs
+        and
+        higher_lows >= lower_lows
+    ):
+
+        current_structure = "HIGHER HIGH + HIGHER LOW"
+
+    elif (
+        lower_highs > 0
+        and
+        lower_lows > 0
+        and
+        lower_highs >= higher_highs
+        and
+        lower_lows >= higher_lows
+    ):
+
+        current_structure = "LOWER HIGH + LOWER LOW"
+
+    elif bullish_score > bearish_score:
+
+        current_structure = "BULLISH STRUCTURE"
+
+    elif bearish_score > bullish_score:
+
+        current_structure = "BEARISH STRUCTURE"
+
+    else:
+
+        current_structure = "MIXED STRUCTURE"
+
+    return {
+        "count": count,
+        "sequence_integrity": sequence_integrity,
+        "ohlc_validity": ohlc_validity,
+        "duplicate_centres": duplicate_centres,
+        "spacing_consistency": spacing_consistency,
+    
+        "higher_highs": higher_highs,
+        "higher_lows": higher_lows,
+        "lower_highs": lower_highs,
+        "lower_lows": lower_lows,
+    
+        "trend": trend,
+        "current_structure": current_structure,
+    
+        # Raw swing counts
+        "swing_highs": swing_high_count,
+        "swing_lows": swing_low_count,
+    
+        # Actual classified swing points
+        "classified_swing_highs": swing_highs,
+        "classified_swing_lows": swing_lows,
+    
+        # Swing classifications
+        "swing_higher_highs": higher_highs,
+        "swing_higher_lows": higher_lows,
+        "swing_lower_highs": lower_highs,
+        "swing_lower_lows": lower_lows
+    }
+
+# ============================================================
+# SWING STRUCTURE CLASSIFICATION
+# ============================================================
+
+def classify_swing_structure(swing_highs, swing_lows):
 
     """
     Classify the most recent swing structure.
@@ -2778,7 +3005,6 @@ if "candles" in st.session_state:
         possible_missing_count
     )
 
-
     # ========================================================
     # ANNOTATED IMAGE
     # ========================================================
@@ -2890,7 +3116,6 @@ if "candles" in st.session_state:
         st.warning(
             "No candles survived the validation filters."
         )
-
 
     # ========================================================
     # SPACING ANALYSIS
