@@ -2568,37 +2568,49 @@ def detect_bos_choch(
     lookback=2
 ):
     """
-    Detect structural BOS and CHoCH using actual price
-    movement through confirmed swing levels.
+    BOS / CHoCH STRUCTURAL ENGINE - VERSION 4
 
-    IMPORTANT:
-    Candle coordinates are PIXELS.
-
+    Pixel coordinates:
         Smaller Y = higher market price
         Larger Y = lower market price
 
-    Logic:
+    STRUCTURAL MODEL
+    ----------------
 
-    BULLISH STRUCTURE
-        - Close above a protected swing high
-          = BULLISH BOS
-        - Close below a protected swing low
-          = BEARISH CHoCH
+    BULLISH:
 
-    BEARISH STRUCTURE
-        - Close below a protected swing low
-          = BEARISH BOS
-        - Close above a protected swing high
-          = BULLISH CHoCH
+        HH -> HL -> break HH = BULLISH BOS
 
-    This is a diagnostic structural model.
-    It is NOT a trading signal generator.
+        If price later breaks the protected HL
+        = BEARISH CHoCH
+
+
+    BEARISH:
+
+        LL -> LH -> break LL = BEARISH BOS
+
+        If price later breaks the protected LH
+        = BULLISH CHoCH
+
+
+    IMPORTANT:
+
+    - A HH is NOT automatically a BOS.
+    - A LL is NOT automatically a BOS.
+    - Price must actually close through the level.
+    - BOS requires a retracement first.
+    - CHoCH breaks the protected opposite swing.
+    - Each structural level can trigger only once.
     """
+
+    # ========================================================
+    # RESULT
+    # ========================================================
 
     events = []
 
     # ========================================================
-    # COMBINE SWING DATA
+    # COMBINE SWINGS
     # ========================================================
 
     all_swings = []
@@ -2641,7 +2653,7 @@ def detect_bos_choch(
     # NOT ENOUGH DATA
     # ========================================================
 
-    if len(all_swings) < 2 or len(candles) < 3:
+    if len(candles) < 3 or len(all_swings) < 2:
 
         return {
             "events": [],
@@ -2650,346 +2662,71 @@ def detect_bos_choch(
         }
 
     # ========================================================
-    # DETERMINE INITIAL BIAS
-    #
-    # We do NOT automatically call every HH bullish BOS
-    # or every LL bearish BOS.
-    #
-    # We first establish the prevailing structural direction.
+    # DETERMINE INITIAL STRUCTURAL BIAS
     # ========================================================
 
-    bias = "UNKNOWN"
-
-    for swing in all_swings:
-
-        structure = swing["structure"]
-
-        if structure == "HH":
-
-            bias = "BULLISH"
-            break
-
-        elif structure == "LL":
-
-            bias = "BEARISH"
-            break
-
-    # ========================================================
-    # IF NO HH/LL HAS ESTABLISHED A DIRECTION
-    # USE THE CLASSIFIED SWING COUNTS
-    # ========================================================
-
-    if bias == "UNKNOWN":
-
-        hh_count = sum(
-            1
-            for swing in swing_highs
-            if swing.get("structure") == "HH"
-        )
-
-        hl_count = sum(
-            1
-            for swing in swing_lows
-            if swing.get("structure") == "HL"
-        )
-
-        lh_count = sum(
-            1
-            for swing in swing_highs
-            if swing.get("structure") == "LH"
-        )
-
-        ll_count = sum(
-            1
-            for swing in swing_lows
-            if swing.get("structure") == "LL"
-        )
-# ============================================================
-# BOS / CHoCH DETECTION
-# ============================================================
-
-def detect_bos_choch(
-    candles,
-    swing_highs,
-    swing_lows,
-    lookback=2
-):
-    """
-    BOS / CHoCH STRUCTURAL ENGINE - VERSION 3
-
-    Pixel coordinates:
-        Smaller Y = higher market price
-        Larger Y = lower market price
-
-    STRUCTURAL RULES
-    ----------------
-
-    BULLISH STRUCTURE:
-
-        HH
-          \
-           HL
-            \
-             price breaks HH
-                    ↓
-               BULLISH BOS
-
-        If price breaks the protected HL:
-                    ↓
-               BEARISH CHoCH
-
-
-    BEARISH STRUCTURE:
-
-        LH
-          \
-           LL
-            \
-             price breaks LL
-                    ↓
-               BEARISH BOS
-
-        If price breaks the protected LH:
-                    ↓
-               BULLISH CHoCH
-
-
-    IMPORTANT:
-
-    1. HH or LL by itself is NOT a BOS.
-    2. Price must actually close through the structural level.
-    3. A continuation BOS requires a completed retracement.
-    4. CHoCH breaks the protected opposite-side structure.
-    5. A structural level can only trigger one event.
-    """
-
-    # ========================================================
-    # INITIAL RESULT
-    # ========================================================
-
-    events = []
-
-    # ========================================================
-    # BUILD COMBINED SWING LIST
-    # ========================================================
-
-    all_swings = []
-
-    for swing in swing_highs:
-
-        all_swings.append({
-            "index": int(
-                swing["index"]
-            ),
-
-            "price": float(
-                swing["price"]
-            ),
-
-            "x": swing.get("x"),
-
-            "type": "HIGH",
-
-            "structure": swing.get(
-                "structure",
-                "UNKNOWN"
-            )
-        })
-
-    for swing in swing_lows:
-
-        all_swings.append({
-            "index": int(
-                swing["index"]
-            ),
-
-            "price": float(
-                swing["price"]
-            ),
-
-            "x": swing.get("x"),
-
-            "type": "LOW",
-
-            "structure": swing.get(
-                "structure",
-                "UNKNOWN"
-            )
-        })
-
-    # ========================================================
-    # CHRONOLOGICAL ORDER
-    # ========================================================
-
-    all_swings.sort(
-        key=lambda swing:
-        swing["index"]
+    hh_count = sum(
+        1
+        for swing in swing_highs
+        if swing.get("structure") == "HH"
     )
 
-    # ========================================================
-    # NOT ENOUGH DATA
-    # ========================================================
+    hl_count = sum(
+        1
+        for swing in swing_lows
+        if swing.get("structure") == "HL"
+    )
 
-    if (
-        len(candles) < 3
-        or
-        len(all_swings) < 3
-    ):
+    lh_count = sum(
+        1
+        for swing in swing_highs
+        if swing.get("structure") == "LH"
+    )
 
-        return {
-            "events": [],
-            "current_bias": "UNKNOWN",
-            "last_event": None
-        }
+    ll_count = sum(
+        1
+        for swing in swing_lows
+        if swing.get("structure") == "LL"
+    )
 
-    # ========================================================
-    # INITIAL STRUCTURAL BIAS
-    #
-    # Determine the earliest meaningful directional sequence.
-    # ========================================================
+    bullish_score = (
+        hh_count + hl_count
+    )
 
-    bias = "UNKNOWN"
+    bearish_score = (
+        lh_count + ll_count
+    )
 
-    recent_high = None
-    recent_low = None
+    if bullish_score > bearish_score:
 
-    for swing in all_swings:
+        bias = "BULLISH"
 
-        if swing["type"] == "HIGH":
+    elif bearish_score > bullish_score:
 
-            recent_high = swing
+        bias = "BEARISH"
 
-        elif swing["type"] == "LOW":
+    else:
 
-            recent_low = swing
-
-        # ----------------------------------------------------
-        # Bullish structure
-        # ----------------------------------------------------
-
-        if (
-            recent_high is not None
-            and
-            recent_low is not None
-        ):
-
-            if (
-                recent_high["structure"]
-                == "HH"
-                and
-                recent_low["structure"]
-                == "HL"
-            ):
-
-                bias = "BULLISH"
-                break
-
-            # ------------------------------------------------
-            # Bearish structure
-            # ------------------------------------------------
-
-            if (
-                recent_high["structure"]
-                == "LH"
-                and
-                recent_low["structure"]
-                == "LL"
-            ):
-
-                bias = "BEARISH"
-                break
+        bias = "UNKNOWN"
 
     # ========================================================
-    # FALLBACK BIAS
+    # STATE
     # ========================================================
-
-    if bias == "UNKNOWN":
-
-        hh_count = sum(
-            1
-            for swing in swing_highs
-            if swing.get("structure") == "HH"
-        )
-
-        hl_count = sum(
-            1
-            for swing in swing_lows
-            if swing.get("structure") == "HL"
-        )
-
-        lh_count = sum(
-            1
-            for swing in swing_highs
-            if swing.get("structure") == "LH"
-        )
-
-        ll_count = sum(
-            1
-            for swing in swing_lows
-            if swing.get("structure") == "LL"
-        )
-
-        bullish_score = (
-            hh_count + hl_count
-        )
-
-        bearish_score = (
-            lh_count + ll_count
-        )
-
-        if bullish_score > bearish_score:
-
-            bias = "BULLISH"
-
-        elif bearish_score > bullish_score:
-
-            bias = "BEARISH"
-
-    # ========================================================
-    # STATE VARIABLES
-    # ========================================================
-
-    latest_high = None
-    latest_low = None
-
-    # --------------------------------------------------------
-    # Bullish continuation needs:
-    #
-    # 1. A reference HH
-    # 2. Then a retracement HL
-    # 3. Then price must break that HH
-    # --------------------------------------------------------
-
-    bullish_reference_high = None
-    bullish_retracement_low = None
-
-    # --------------------------------------------------------
-    # Bearish continuation needs:
-    #
-    # 1. A reference LL
-    # 2. Then a retracement LH
-    # 3. Then price must break that LL
-    # --------------------------------------------------------
-
-    bearish_reference_low = None
-    bearish_retracement_high = None
-
-    # --------------------------------------------------------
-    # Protected levels for CHoCH
-    # --------------------------------------------------------
 
     protected_high = None
     protected_low = None
 
-    # ========================================================
-    # PREVENT REPEATED BREAKS
-    # ========================================================
+    bullish_reference_high = None
+    bullish_retracement_low = None
+
+    bearish_reference_low = None
+    bearish_retracement_high = None
 
     broken_highs = set()
     broken_lows = set()
 
     # ========================================================
-    # HELPER TO ADD EVENTS
+    # EVENT CREATOR
     # ========================================================
 
     def add_event(
@@ -3027,7 +2764,7 @@ def detect_bos_choch(
         })
 
     # ========================================================
-    # PROCESS MARKET FROM LEFT TO RIGHT
+    # PROCESS MARKET LEFT -> RIGHT
     # ========================================================
 
     swing_pointer = 0
@@ -3045,96 +2782,55 @@ def detect_bos_choch(
         )
 
         # ====================================================
-        # REGISTER SWINGS THAT HAVE ALREADY FORMED
+        # REGISTER SWINGS THAT HAVE FORMED
         # ====================================================
 
         while (
-            swing_pointer
-            < len(all_swings)
+            swing_pointer < len(all_swings)
             and
             all_swings[
                 swing_pointer
-            ]["index"]
-            < candle_index
+            ]["index"] < candle_index
         ):
 
             swing = all_swings[
                 swing_pointer
             ]
 
+            swing_type = swing["type"]
+            structure = swing["structure"]
+
             # =================================================
-            # HIGH SWING
+            # SWING HIGH
             # =================================================
 
-            if swing["type"] == "HIGH":
+            if swing_type == "HIGH":
 
-                latest_high = swing
+                if structure == "HH":
 
-                structure = (
-                    swing["structure"]
-                )
+                    bullish_reference_high = swing
 
-                # ---------------------------------------------
-                # BEARISH RETRACEMENT
-                #
-                # LH after a LL gives us a complete bearish leg.
-                # ---------------------------------------------
-
-                if structure == "LH":
+                elif structure == "LH":
 
                     bearish_retracement_high = swing
 
-                    # During bearish structure, this is the
-                    # protected high.
                     if bias == "BEARISH":
 
                         protected_high = swing
 
-                # ---------------------------------------------
-                # BULLISH REFERENCE HIGH
-                #
-                # HH becomes a level that can later be broken
-                # for bullish BOS.
-                # ---------------------------------------------
-
-                elif structure == "HH":
-
-                    bullish_reference_high = swing
-
             # =================================================
-            # LOW SWING
+            # SWING LOW
             # =================================================
 
-            elif swing["type"] == "LOW":
-
-                latest_low = swing
-
-                structure = (
-                    swing["structure"]
-                )
-
-                # ---------------------------------------------
-                # BULLISH RETRACEMENT
-                #
-                # HL after an HH gives us a complete bullish leg.
-                # ---------------------------------------------
+            elif swing_type == "LOW":
 
                 if structure == "HL":
 
                     bullish_retracement_low = swing
 
-                    # During bullish structure, this is the
-                    # protected low.
                     if bias == "BULLISH":
 
                         protected_low = swing
-
-                # ---------------------------------------------
-                # BEARISH REFERENCE LOW
-                #
-                # LL becomes a level that can later be broken
-                # for bearish BOS.
-                # ---------------------------------------------
 
                 elif structure == "LL":
 
@@ -3149,21 +2845,21 @@ def detect_bos_choch(
         if bias == "BULLISH":
 
             # =================================================
-            # BEARISH CHoCH
+            # 1. BEARISH CHoCH
             #
-            # Close below protected Higher Low.
+            # Price closes BELOW protected HL.
             #
-            # Pixel rule:
+            # Pixel:
             # larger Y = lower price
             # =================================================
 
             if protected_low is not None:
 
-                level_index = (
+                level_index = int(
                     protected_low["index"]
                 )
 
-                level_price = (
+                level_price = float(
                     protected_low["price"]
                 )
 
@@ -3174,8 +2870,7 @@ def detect_bos_choch(
                 if (
                     broke_protected_low
                     and
-                    level_index
-                    not in broken_lows
+                    level_index not in broken_lows
                 ):
 
                     add_event(
@@ -3200,67 +2895,59 @@ def detect_bos_choch(
                     )
 
                     # -----------------------------------------
-                    # STRUCTURE HAS CHANGED.
+                    # Change structural regime
                     # -----------------------------------------
 
                     bias = "BEARISH"
 
                     protected_low = None
 
-                    # Reset bullish continuation state.
                     bullish_reference_high = None
                     bullish_retracement_low = None
 
                     continue
 
             # =================================================
-            # BULLISH BOS
+            # 2. BULLISH BOS
             #
-            # REQUIRE BOTH:
+            # Need:
             #
-            # 1. A bullish HH reference
-            # 2. A later HL retracement
+            # HH
+            # ↓
+            # HL
+            # ↓
+            # close above HH
             #
-            # Only then can price breaking the HH become BOS.
+            # Pixel:
+            # smaller Y = higher price
             # =================================================
 
             if (
-                bullish_reference_high
-                is not None
+                bullish_reference_high is not None
                 and
-                bullish_retracement_low
-                is not None
+                bullish_retracement_low is not None
                 and
-                bullish_retracement_low[
-                    "index"
-                ]
+                bullish_retracement_low["index"]
                 >
-                bullish_reference_high[
-                    "index"
-                ]
+                bullish_reference_high["index"]
             ):
 
-                level_index = (
-                    bullish_reference_high[
-                        "index"
-                    ]
+                level_index = int(
+                    bullish_reference_high["index"]
                 )
 
-                level_price = (
-                    bullish_reference_high[
-                        "price"
-                    ]
+                level_price = float(
+                    bullish_reference_high["price"]
                 )
 
-                broke_reference_high = (
+                broke_high = (
                     close_price < level_price
                 )
 
                 if (
-                    broke_reference_high
+                    broke_high
                     and
-                    level_index
-                    not in broken_highs
+                    level_index not in broken_highs
                 ):
 
                     add_event(
@@ -3284,12 +2971,6 @@ def detect_bos_choch(
                         level_index
                     )
 
-                    # -----------------------------------------
-                    # This HH has now been broken.
-                    #
-                    # The next HH can become the new reference.
-                    # -----------------------------------------
-
                     bullish_reference_high = None
 
                     continue
@@ -3301,21 +2982,21 @@ def detect_bos_choch(
         elif bias == "BEARISH":
 
             # =================================================
-            # BULLISH CHoCH
+            # 1. BULLISH CHoCH
             #
-            # Close above protected Lower High.
+            # Price closes ABOVE protected LH.
             #
-            # Pixel rule:
+            # Pixel:
             # smaller Y = higher price
             # =================================================
 
             if protected_high is not None:
 
-                level_index = (
+                level_index = int(
                     protected_high["index"]
                 )
 
-                level_price = (
+                level_price = float(
                     protected_high["price"]
                 )
 
@@ -3326,8 +3007,7 @@ def detect_bos_choch(
                 if (
                     broke_protected_high
                     and
-                    level_index
-                    not in broken_highs
+                    level_index not in broken_highs
                 ):
 
                     add_event(
@@ -3352,67 +3032,59 @@ def detect_bos_choch(
                     )
 
                     # -----------------------------------------
-                    # STRUCTURE HAS CHANGED.
+                    # Change structural regime
                     # -----------------------------------------
 
                     bias = "BULLISH"
 
                     protected_high = None
 
-                    # Reset bearish continuation state.
                     bearish_reference_low = None
                     bearish_retracement_high = None
 
                     continue
 
             # =================================================
-            # BEARISH BOS
+            # 2. BEARISH BOS
             #
-            # REQUIRE BOTH:
+            # Need:
             #
-            # 1. A bearish LL reference
-            # 2. A later LH retracement
+            # LL
+            # ↓
+            # LH
+            # ↓
+            # close below LL
             #
-            # Only then can price breaking the LL become BOS.
+            # Pixel:
+            # larger Y = lower price
             # =================================================
 
             if (
-                bearish_reference_low
-                is not None
+                bearish_reference_low is not None
                 and
-                bearish_retracement_high
-                is not None
+                bearish_retracement_high is not None
                 and
-                bearish_retracement_high[
-                    "index"
-                ]
+                bearish_retracement_high["index"]
                 >
-                bearish_reference_low[
-                    "index"
-                ]
+                bearish_reference_low["index"]
             ):
 
-                level_index = (
-                    bearish_reference_low[
-                        "index"
-                    ]
+                level_index = int(
+                    bearish_reference_low["index"]
                 )
 
-                level_price = (
-                    bearish_reference_low[
-                        "price"
-                    ]
+                level_price = float(
+                    bearish_reference_low["price"]
                 )
 
-                broke_reference_low = (
+                broke_low = (
                     close_price > level_price
                 )
 
                 if (
-                    broke_reference_low
+                    broke_low
                     and
-                    level_index
-                    not in broken_lows
+                    level_index not in broken_lows
                 ):
 
                     add_event(
@@ -3436,12 +3108,6 @@ def detect_bos_choch(
                         level_index
                     )
 
-                    # -----------------------------------------
-                    # This LL has now been broken.
-                    #
-                    # Wait for the next bearish structural leg.
-                    # -----------------------------------------
-
                     bearish_reference_low = None
 
                     continue
@@ -3451,12 +3117,12 @@ def detect_bos_choch(
     # ========================================================
 
     events.sort(
-        key=lambda event:
-        event["candle_index"]
+        key=lambda e:
+        e["candle_index"]
     )
 
     # ========================================================
-    # DETERMINE LAST EVENT
+    # LAST EVENT
     # ========================================================
 
     last_event = (
@@ -3466,24 +3132,19 @@ def detect_bos_choch(
     )
 
     # ========================================================
-    # FINAL BIAS CONSISTENCY
-    #
-    # If the last structural event was a CHoCH or BOS,
-    # its direction becomes the final structural bias.
+    # FINAL BIAS
     # ========================================================
 
     if last_event is not None:
 
-        event_direction = (
-            last_event["direction"]
-        )
-
-        if event_direction in (
+        if last_event["direction"] in (
             "BULLISH",
             "BEARISH"
         ):
 
-            bias = event_direction
+            bias = (
+                last_event["direction"]
+            )
 
     # ========================================================
     # DEBUG
@@ -3491,16 +3152,29 @@ def detect_bos_choch(
 
     print("\n")
     print("=" * 70)
-    print("BOS / CHoCH STRUCTURAL ANALYSIS V3")
+    print("BOS / CHoCH STRUCTURAL ANALYSIS V4")
     print("=" * 70)
 
     print(
-        "Final structural bias:",
+        "Initial bias:",
+        (
+            "BULLISH"
+            if bullish_score > bearish_score
+            else
+            "BEARISH"
+            if bearish_score > bullish_score
+            else
+            "UNKNOWN"
+        )
+    )
+
+    print(
+        "Final bias:",
         bias
     )
 
     print(
-        "Total BOS / CHoCH events:",
+        "Total events:",
         len(events)
     )
 
@@ -3533,6 +3207,7 @@ def detect_bos_choch(
         "last_event":
             last_event
     }
+
 # ============================================================
 # ANNOTATION
 # ============================================================
