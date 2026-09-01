@@ -2568,29 +2568,37 @@ def detect_bos_choch(
     lookback=2
 ):
     """
-    Detect structural BOS and CHoCH events.
+    Detect structural BOS and CHoCH using actual price
+    movement through confirmed swing levels.
 
     IMPORTANT:
-    Candle coordinates are pixels.
+    Candle coordinates are PIXELS.
 
-    Smaller Y = higher market price.
-    Larger Y = lower market price.
+        Smaller Y = higher market price
+        Larger Y = lower market price
 
-    BOS:
-        Break in the direction of the existing structure.
+    Logic:
 
-    CHoCH:
-        Break against the existing structure.
+    BULLISH STRUCTURE
+        - Close above a protected swing high
+          = BULLISH BOS
+        - Close below a protected swing low
+          = BEARISH CHoCH
 
-    The engine uses the latest meaningful swing levels
-    rather than treating every HH/LL classification as
-    an automatic BOS/CHoCH.
+    BEARISH STRUCTURE
+        - Close below a protected swing low
+          = BEARISH BOS
+        - Close above a protected swing high
+          = BULLISH CHoCH
+
+    This is a diagnostic structural model.
+    It is NOT a trading signal generator.
     """
 
     events = []
 
     # ========================================================
-    # COMBINE SWINGS
+    # COMBINE SWING DATA
     # ========================================================
 
     all_swings = []
@@ -2598,7 +2606,7 @@ def detect_bos_choch(
     for swing in swing_highs:
 
         all_swings.append({
-            "index": swing["index"],
+            "index": int(swing["index"]),
             "price": float(swing["price"]),
             "x": swing.get("x"),
             "type": "HIGH",
@@ -2611,7 +2619,7 @@ def detect_bos_choch(
     for swing in swing_lows:
 
         all_swings.append({
-            "index": swing["index"],
+            "index": int(swing["index"]),
             "price": float(swing["price"]),
             "x": swing.get("x"),
             "type": "LOW",
@@ -2626,10 +2634,14 @@ def detect_bos_choch(
     # ========================================================
 
     all_swings.sort(
-        key=lambda swing: swing["index"]
+        key=lambda s: s["index"]
     )
 
-    if len(all_swings) < 2:
+    # ========================================================
+    # NOT ENOUGH DATA
+    # ========================================================
+
+    if len(all_swings) < 2 or len(candles) < 3:
 
         return {
             "events": [],
@@ -2638,7 +2650,12 @@ def detect_bos_choch(
         }
 
     # ========================================================
-    # DETERMINE INITIAL STRUCTURAL BIAS
+    # DETERMINE INITIAL BIAS
+    #
+    # We do NOT automatically call every HH bullish BOS
+    # or every LL bearish BOS.
+    #
+    # We first establish the prevailing structural direction.
     # ========================================================
 
     bias = "UNKNOWN"
@@ -2652,55 +2669,178 @@ def detect_bos_choch(
             bias = "BULLISH"
             break
 
-        if structure == "LL":
+        elif structure == "LL":
 
             bias = "BEARISH"
             break
 
     # ========================================================
-    # TRACK STRUCTURAL LEVELS
+    # IF NO HH/LL HAS ESTABLISHED A DIRECTION
+    # USE THE CLASSIFIED SWING COUNTS
     # ========================================================
 
-    protected_high = None
-    protected_low = None
+    if bias == "UNKNOWN":
+
+        hh_count = sum(
+            1
+            for swing in swing_highs
+            if swing.get("structure") == "HH"
+        )
+
+        hl_count = sum(
+            1
+            for swing in swing_lows
+            if swing.get("structure") == "HL"
+        )
+
+        lh_count = sum(
+            1
+            for swing in swing_highs
+            if swing.get("structure") == "LH"
+        )
+
+        ll_count = sum(
+            1
+            for swing in swing_lows
+            if swing.get("structure") == "LL"
+        )
+
+        bullish_structure_score = (
+            hh_count + hl_count
+        )
+
+        bearish_structure_score = (
+            lh_count + ll_count
+        )
+
+        if (
+            bullish_structure_score
+            > bearish_structure_score
+        ):
+
+            bias = "BULLISH"
+
+        elif (
+            bearish_structure_score
+            > bullish_structure_score
+        ):
+
+            bias = "BEARISH"
 
     # ========================================================
-    # PROCESS SWINGS
+    # HELPER: ADD EVENT
     # ========================================================
 
-    for swing in all_swings:
+    def add_event(
+        candle_index,
+        price,
+        event,
+        direction,
+        swing_type,
+        level_type
+    ):
 
-        structure = swing["structure"]
+        events.append({
+
+            "candle_index":
+                int(candle_index),
+
+            "price":
+                float(price),
+
+            "event":
+                event,
+
+            "direction":
+                direction,
+
+            "swing_type":
+                swing_type,
+
+            "level_type":
+                level_type
+        })
+
+    # ========================================================
+    # TRACK WHICH SWING LEVELS HAVE ALREADY BEEN BROKEN
+    #
+    # This prevents the same swing level from generating
+    # multiple BOS/CHoCH events.
+    # ========================================================
+
+    broken_highs = set()
+    broken_lows = set()
+
+    # ========================================================
+    # PROCESS CANDLES IN TIME ORDER
+    # ========================================================
+
+    for candle_index in range(
+        len(candles)
+    ):
+
+        candle = candles[candle_index]
 
         # ----------------------------------------------------
-        # HIGH SWINGS
+        # USE CLOSE PRICE
+        #
+        # Smaller Y = higher market price.
+        # Therefore:
+        #
+        # close < high_level
+        # means price closed ABOVE that level.
+        #
+        # close > low_level
+        # means price closed BELOW that level.
         # ----------------------------------------------------
 
-        if swing["type"] == "HIGH":
+        close_price = float(
+            candle["close"]
+        )
 
-            if structure in (
-                "INITIAL HIGH",
-                "HH",
-                "LH"
-            ):
+        # ====================================================
+        # FIND SWING LEVELS THAT EXISTED BEFORE THIS CANDLE
+        # ====================================================
 
-                # Keep the latest confirmed swing high.
-                protected_high = swing
+        previous_highs = [
+            swing
+            for swing in all_swings
+            if (
+                swing["type"] == "HIGH"
+                and
+                swing["index"] < candle_index
+            )
+        ]
 
-        # ----------------------------------------------------
-        # LOW SWINGS
-        # ----------------------------------------------------
+        previous_lows = [
+            swing
+            for swing in all_swings
+            if (
+                swing["type"] == "LOW"
+                and
+                swing["index"] < candle_index
+            )
+        ]
 
-        elif swing["type"] == "LOW":
+        # ====================================================
+        # MOST RECENT SWING HIGH
+        # ====================================================
 
-            if structure in (
-                "INITIAL LOW",
-                "HL",
-                "LL"
-            ):
+        protected_high = (
+            previous_highs[-1]
+            if previous_highs
+            else None
+        )
 
-                # Keep the latest confirmed swing low.
-                protected_low = swing
+        # ====================================================
+        # MOST RECENT SWING LOW
+        # ====================================================
+
+        protected_low = (
+            previous_lows[-1]
+            if previous_lows
+            else None
+        )
 
         # ====================================================
         # BULLISH STRUCTURE
@@ -2709,76 +2849,102 @@ def detect_bos_choch(
         if bias == "BULLISH":
 
             # ------------------------------------------------
-            # Bullish continuation
+            # BULLISH BOS
             #
-            # A new HH confirms continuation.
+            # Price closes above the most recent swing high.
             # ------------------------------------------------
 
-            if (
-                swing["type"] == "HIGH"
-                and
-                structure == "HH"
-            ):
+            if protected_high is not None:
 
-                # Avoid treating the very first HH
-                # as a continuation event.
-                if events:
+                high_index = (
+                    protected_high["index"]
+                )
 
-                    events.append({
+                high_price = (
+                    protected_high["price"]
+                )
 
-                        "candle_index":
-                            swing["index"],
+                bullish_break = (
+                    close_price < high_price
+                )
 
-                        "price":
-                            swing["price"],
+                if (
+                    bullish_break
+                    and
+                    high_index
+                    not in broken_highs
+                ):
 
-                        "event":
-                            "BULLISH BOS",
+                    add_event(
 
-                        "direction":
-                            "BULLISH",
+                        candle_index,
 
-                        "swing_type":
-                            "HH",
+                        close_price,
 
-                        "x":
-                            swing.get("x")
-                    })
+                        "BULLISH BOS",
+
+                        "BULLISH",
+
+                        "HH",
+
+                        "SWING HIGH"
+                    )
+
+                    broken_highs.add(
+                        high_index
+                    )
 
             # ------------------------------------------------
-            # Bearish structural change
+            # BEARISH CHoCH
             #
-            # LL against bullish structure = CHoCH.
+            # Price closes below the protected swing low.
             # ------------------------------------------------
 
-            elif (
-                swing["type"] == "LOW"
-                and
-                structure == "LL"
-            ):
+            if protected_low is not None:
 
-                events.append({
+                low_index = (
+                    protected_low["index"]
+                )
 
-                    "candle_index":
-                        swing["index"],
+                low_price = (
+                    protected_low["price"]
+                )
 
-                    "price":
-                        swing["price"],
+                bearish_break = (
+                    close_price > low_price
+                )
 
-                    "event":
+                if (
+                    bearish_break
+                    and
+                    low_index
+                    not in broken_lows
+                ):
+
+                    add_event(
+
+                        candle_index,
+
+                        close_price,
+
                         "BEARISH CHoCH",
 
-                    "direction":
                         "BEARISH",
 
-                    "swing_type":
                         "LL",
 
-                    "x":
-                        swing.get("x")
-                })
+                        "SWING LOW"
+                    )
 
-                bias = "BEARISH"
+                    broken_lows.add(
+                        low_index
+                    )
+
+                    # ----------------------------------------
+                    # Structural direction has changed.
+                    # ----------------------------------------
+
+                    bias = "BEARISH"
 
         # ====================================================
         # BEARISH STRUCTURE
@@ -2787,70 +2953,139 @@ def detect_bos_choch(
         elif bias == "BEARISH":
 
             # ------------------------------------------------
-            # Bearish continuation
+            # BEARISH BOS
+            #
+            # Price closes below the most recent swing low.
             # ------------------------------------------------
 
-            if (
-                swing["type"] == "LOW"
-                and
-                structure == "LL"
-            ):
+            if protected_low is not None:
 
-                if events:
+                low_index = (
+                    protected_low["index"]
+                )
 
-                    events.append({
+                low_price = (
+                    protected_low["price"]
+                )
 
-                        "candle_index":
-                            swing["index"],
+                bearish_break = (
+                    close_price > low_price
+                )
 
-                        "price":
-                            swing["price"],
+                if (
+                    bearish_break
+                    and
+                    low_index
+                    not in broken_lows
+                ):
 
-                        "event":
-                            "BEARISH BOS",
+                    add_event(
 
-                        "direction":
-                            "BEARISH",
+                        candle_index,
 
-                        "swing_type":
-                            "LL",
+                        close_price,
 
-                        "x":
-                            swing.get("x")
-                    })
+                        "BEARISH BOS",
+
+                        "BEARISH",
+
+                        "LL",
+
+                        "SWING LOW"
+                    )
+
+                    broken_lows.add(
+                        low_index
+                    )
 
             # ------------------------------------------------
-            # Bullish structural change
+            # BULLISH CHoCH
+            #
+            # Price closes above the protected swing high.
             # ------------------------------------------------
 
-            elif (
-                swing["type"] == "HIGH"
-                and
-                structure == "HH"
-            ):
+            if protected_high is not None:
 
-                events.append({
+                high_index = (
+                    protected_high["index"]
+                )
 
-                    "candle_index":
-                        swing["index"],
+                high_price = (
+                    protected_high["price"]
+                )
 
-                    "price":
-                        swing["price"],
+                bullish_break = (
+                    close_price < high_price
+                )
 
-                    "event":
+                if (
+                    bullish_break
+                    and
+                    high_index
+                    not in broken_highs
+                ):
+
+                    add_event(
+
+                        candle_index,
+
+                        close_price,
+
                         "BULLISH CHoCH",
 
-                    "direction":
                         "BULLISH",
 
-                    "swing_type":
                         "HH",
 
-                    "x":
-                        swing.get("x")
-                })
+                        "SWING HIGH"
+                    )
 
-                bias = "BULLISH"
+                    broken_highs.add(
+                        high_index
+                    )
+
+                    # ----------------------------------------
+                    # Structural direction has changed.
+                    # ----------------------------------------
+
+                    bias = "BULLISH"
+
+    # ========================================================
+    # REMOVE DUPLICATE EVENTS AT SAME CANDLE
+    #
+    # A single candle should not normally produce both a
+    # bullish and bearish structural event.
+    # ========================================================
+
+    cleaned_events = []
+
+    seen = set()
+
+    for event in events:
+
+        key = (
+            event["candle_index"],
+            event["event"]
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        cleaned_events.append(
+            event
+        )
+
+    events = cleaned_events
+
+    # ========================================================
+    # SORT EVENTS
+    # ========================================================
+
+    events.sort(
+        key=lambda event: event["candle_index"]
+    )
 
     # ========================================================
     # LAST EVENT
@@ -2861,6 +3096,34 @@ def detect_bos_choch(
         if events
         else None
     )
+
+    # ========================================================
+    # DEBUG
+    # ========================================================
+
+    print("\n")
+    print("=" * 70)
+    print("BOS / CHoCH STRUCTURAL ANALYSIS")
+    print("=" * 70)
+
+    print(
+        "Initial / final structural bias:",
+        bias
+    )
+
+    print(
+        "BOS / CHoCH events:",
+        len(events)
+    )
+
+    for event in events:
+
+        print(
+            event
+        )
+
+    print("=" * 70)
+    print("\n")
 
     # ========================================================
     # RETURN
