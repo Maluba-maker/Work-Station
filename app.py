@@ -2566,15 +2566,6 @@ def detect_bos_choch(
     swing_highs,
     swing_lows,
     lookback=2
-# ============================================================
-# BOS / CHoCH DETECTION
-# ============================================================
-
-def detect_bos_choch(
-    candles,
-    swing_highs,
-    swing_lows,
-    lookback=2
 ):
     """
     Detect Break of Structure (BOS)
