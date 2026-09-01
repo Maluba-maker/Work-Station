@@ -2293,7 +2293,24 @@ def detect_swings(candles, lookback=2):
 # SWING STRUCTURE CLASSIFICATION
 # ============================================================
 
-def classify_swing_structure(swing_highs, swing_lows):
+# Minimum pixel movement required before two swing points
+# are considered structurally different.
+#
+# IMPORTANT:
+# These are screenshot pixel coordinates.
+# Smaller Y = higher market price.
+# Larger Y = lower market price.
+#
+# A difference smaller than this is treated as essentially
+# equal so screenshot noise does not create fake HH/LH/HL/LL.
+#
+STRUCTURE_MIN_DISTANCE = 5.0
+
+
+def classify_swing_structure(
+    swing_highs,
+    swing_lows
+):
 
     """
     Classify detected swing points as:
@@ -2302,16 +2319,43 @@ def classify_swing_structure(swing_highs, swing_lows):
         LH = Lower High
         HL = Higher Low
         LL = Lower Low
+        EQUAL HIGH
+        EQUAL LOW
 
     Pixel coordinates:
 
         Smaller Y = higher market price
         Larger Y = lower market price
+
+    IMPORTANT:
+
+    A small pixel difference is NOT automatically treated
+    as meaningful market structure.
+
+    Example:
+
+        Previous high = 504
+        Latest high   = 503
+
+        Difference = 1 pixel
+
+    With STRUCTURE_MIN_DISTANCE = 5:
+
+        Result = EQUAL HIGH
+
+    But:
+
+        Previous high = 504
+        Latest high   = 457
+
+        Difference = 47 pixels
+
+        Result = HH
     """
 
-    # --------------------------------------------------------
-    # COPY THE ORIGINAL SWING DATA
-    # --------------------------------------------------------
+    # ========================================================
+    # COPY ORIGINAL SWING DATA
+    # ========================================================
 
     classified_highs = []
 
@@ -2321,65 +2365,171 @@ def classify_swing_structure(swing_highs, swing_lows):
     # CLASSIFY SWING HIGHS
     # ========================================================
 
-    for i, swing in enumerate(swing_highs):
+    for i, swing in enumerate(
+        swing_highs
+    ):
 
         item = swing.copy()
 
+        # ----------------------------------------------------
+        # FIRST SWING HIGH
+        # ----------------------------------------------------
+
         if i == 0:
 
-            item["structure"] = "INITIAL HIGH"
+            item["structure"] = (
+                "INITIAL HIGH"
+            )
 
         else:
 
-            previous = swing_highs[i - 1]
+            previous = swing_highs[
+                i - 1
+            ]
 
-            # Smaller Y = higher price
+            current_price = float(
+                swing["price"]
+            )
 
-            if swing["price"] < previous["price"]:
+            previous_price = float(
+                previous["price"]
+            )
+
+            difference = (
+                current_price
+                - previous_price
+            )
+
+            # ------------------------------------------------
+            # Smaller Y = higher market price
+            #
+            # Therefore:
+            #
+            # current 503
+            # previous 504
+            #
+            # means price moved HIGHER.
+            #
+            # ------------------------------------------------
+
+            if (
+                difference < 0
+                and
+                abs(difference)
+                >= STRUCTURE_MIN_DISTANCE
+            ):
 
                 item["structure"] = "HH"
 
-            elif swing["price"] > previous["price"]:
+            elif (
+                difference > 0
+                and
+                abs(difference)
+                >= STRUCTURE_MIN_DISTANCE
+            ):
 
                 item["structure"] = "LH"
 
             else:
 
-                item["structure"] = "EQUAL HIGH"
+                item["structure"] = (
+                    "EQUAL HIGH"
+                )
 
-        classified_highs.append(item)
+            # Store the actual pixel difference
+            item["structure_distance"] = round(
+                abs(difference),
+                1
+            )
+
+        classified_highs.append(
+            item
+        )
 
     # ========================================================
     # CLASSIFY SWING LOWS
     # ========================================================
 
-    for i, swing in enumerate(swing_lows):
+    for i, swing in enumerate(
+        swing_lows
+    ):
 
         item = swing.copy()
 
+        # ----------------------------------------------------
+        # FIRST SWING LOW
+        # ----------------------------------------------------
+
         if i == 0:
 
-            item["structure"] = "INITIAL LOW"
+            item["structure"] = (
+                "INITIAL LOW"
+            )
 
         else:
 
-            previous = swing_lows[i - 1]
+            previous = swing_lows[
+                i - 1
+            ]
 
-            # Larger Y = lower price
+            current_price = float(
+                swing["price"]
+            )
 
-            if swing["price"] < previous["price"]:
+            previous_price = float(
+                previous["price"]
+            )
+
+            difference = (
+                current_price
+                - previous_price
+            )
+
+            # ------------------------------------------------
+            # Larger Y = lower market price
+            #
+            # Therefore:
+            #
+            # current 527
+            # previous 654
+            #
+            # means price moved HIGHER.
+            #
+            # ------------------------------------------------
+
+            if (
+                difference < 0
+                and
+                abs(difference)
+                >= STRUCTURE_MIN_DISTANCE
+            ):
 
                 item["structure"] = "HL"
 
-            elif swing["price"] > previous["price"]:
+            elif (
+                difference > 0
+                and
+                abs(difference)
+                >= STRUCTURE_MIN_DISTANCE
+            ):
 
                 item["structure"] = "LL"
 
             else:
 
-                item["structure"] = "EQUAL LOW"
+                item["structure"] = (
+                    "EQUAL LOW"
+                )
 
-        classified_lows.append(item)
+            # Store the actual pixel difference
+            item["structure_distance"] = round(
+                abs(difference),
+                1
+            )
+
+        classified_lows.append(
+            item
+        )
 
     # ========================================================
     # COUNT STRUCTURE
@@ -2414,13 +2564,13 @@ def classify_swing_structure(swing_highs, swing_lows):
     # ========================================================
 
     bullish_score = (
-        higher_highs +
-        higher_lows
+        higher_highs
+        + higher_lows
     )
 
     bearish_score = (
-        lower_highs +
-        lower_lows
+        lower_highs
+        + lower_lows
     )
 
     if bullish_score > bearish_score:
@@ -2491,8 +2641,13 @@ def classify_swing_structure(swing_highs, swing_lows):
 
     if len(classified_highs) >= 2:
 
-        previous_high = classified_highs[-2]
-        latest_high = classified_highs[-1]
+        previous_high = (
+            classified_highs[-2]
+        )
+
+        latest_high = (
+            classified_highs[-1]
+        )
 
     else:
 
@@ -2501,8 +2656,13 @@ def classify_swing_structure(swing_highs, swing_lows):
 
     if len(classified_lows) >= 2:
 
-        previous_low = classified_lows[-2]
-        latest_low = classified_lows[-1]
+        previous_low = (
+            classified_lows[-2]
+        )
+
+        latest_low = (
+            classified_lows[-1]
+        )
 
     else:
 
@@ -2515,35 +2675,42 @@ def classify_swing_structure(swing_highs, swing_lows):
 
     return {
 
-        # Actual classified swing data
-        "swing_highs": classified_highs,
+        "swing_highs":
+            classified_highs,
 
-        "swing_lows": classified_lows,
+        "swing_lows":
+            classified_lows,
 
-        # Counts
-        "higher_highs": higher_highs,
+        "higher_highs":
+            higher_highs,
 
-        "higher_lows": higher_lows,
+        "higher_lows":
+            higher_lows,
 
-        "lower_highs": lower_highs,
+        "lower_highs":
+            lower_highs,
 
-        "lower_lows": lower_lows,
+        "lower_lows":
+            lower_lows,
 
-        # Overall structure
-        "trend": trend,
+        "trend":
+            trend,
 
-        "current_structure": current_structure,
+        "current_structure":
+            current_structure,
 
-        # Recent swing information
-        "previous_high": previous_high,
+        "previous_high":
+            previous_high,
 
-        "latest_high": latest_high,
+        "latest_high":
+            latest_high,
 
-        "previous_low": previous_low,
+        "previous_low":
+            previous_low,
 
-        "latest_low": latest_low,
+        "latest_low":
+            latest_low,
 
-        # Detailed latest structure
         "high_structure": (
             latest_high["structure"]
             if latest_high is not None
