@@ -5978,6 +5978,317 @@ if "candles" in st.session_state:
             "Market state cannot be evaluated until "
             "sequence analysis is available."
         )
+    
+    # ============================================================
+    # 1️⃣2️⃣ CURRENT CANDLE CONTEXT
+    # ============================================================
+    
+    st.header("Step 12 — Current Candle Context")
+    
+    if "sequence_analysis" in st.session_state:
+    
+        sequence = st.session_state["sequence_analysis"]
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE DATA
+        # --------------------------------------------------------
+    
+        current_direction = sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        )
+    
+        body_percentage = sequence.get(
+            "body_percentage",
+            0.0
+        )
+    
+        upper_wick_percentage = sequence.get(
+            "upper_wick_percentage",
+            0.0
+        )
+    
+        lower_wick_percentage = sequence.get(
+            "lower_wick_percentage",
+            0.0
+        )
+    
+        current_confidence = sequence.get(
+            "current_confidence",
+            0.0
+        )
+    
+        structural_bias = sequence.get(
+            "bos_choch_bias",
+            "UNKNOWN"
+        )
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE STRENGTH
+        # --------------------------------------------------------
+    
+        if body_percentage >= 70:
+    
+            candle_strength = "STRONG"
+    
+        elif body_percentage >= 40:
+    
+            candle_strength = "MODERATE"
+    
+        elif body_percentage >= 20:
+    
+            candle_strength = "WEAK"
+    
+        else:
+    
+            candle_strength = "VERY WEAK"
+    
+        # --------------------------------------------------------
+        # WICK CHARACTER
+        # --------------------------------------------------------
+    
+        if (
+            upper_wick_percentage >= 40
+            and
+            upper_wick_percentage > lower_wick_percentage
+        ):
+    
+            wick_character = "UPPER-WICK REJECTION"
+    
+        elif (
+            lower_wick_percentage >= 40
+            and
+            lower_wick_percentage > upper_wick_percentage
+        ):
+    
+            wick_character = "LOWER-WICK REJECTION"
+    
+        elif (
+            upper_wick_percentage >= 30
+            and
+            lower_wick_percentage >= 30
+        ):
+    
+            wick_character = "TWO-SIDED REJECTION"
+    
+        else:
+    
+            wick_character = "NO MAJOR REJECTION"
+    
+        # --------------------------------------------------------
+        # CANDLE / STRUCTURE RELATIONSHIP
+        # --------------------------------------------------------
+    
+        if (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            structural_relationship = (
+                "CANDLE SUPPORTS BULLISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            structural_relationship = (
+                "CANDLE SUPPORTS BEARISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            structural_relationship = (
+                "BEARISH CANDLE AGAINST BULLISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            structural_relationship = (
+                "BULLISH CANDLE AGAINST BEARISH STRUCTURE"
+            )
+    
+        else:
+    
+            structural_relationship = (
+                "STRUCTURAL RELATIONSHIP UNDEFINED"
+            )
+    
+        # --------------------------------------------------------
+        # MOMENTUM INTERPRETATION
+        # --------------------------------------------------------
+    
+        if (
+            candle_strength == "STRONG"
+            and
+            wick_character == "NO MAJOR REJECTION"
+        ):
+    
+            momentum_state = "STRONG DIRECTIONAL MOMENTUM"
+    
+        elif candle_strength == "STRONG":
+    
+            momentum_state = "STRONG MOVE WITH REJECTION"
+    
+        elif candle_strength == "MODERATE":
+    
+            momentum_state = "MODERATE MOMENTUM"
+    
+        elif candle_strength in (
+            "WEAK",
+            "VERY WEAK"
+        ):
+    
+            momentum_state = "LOW MOMENTUM"
+    
+        else:
+    
+            momentum_state = "UNDEFINED"
+    
+        # --------------------------------------------------------
+        # DISPLAY PRIMARY METRICS
+        # --------------------------------------------------------
+    
+        col1, col2, col3, col4 = st.columns(4)
+    
+        col1.metric(
+            "Direction",
+            current_direction
+        )
+    
+        col2.metric(
+            "Candle Strength",
+            candle_strength
+        )
+    
+        col3.metric(
+            "Wick Character",
+            wick_character
+        )
+    
+        col4.metric(
+            "Detection Confidence",
+            f"{current_confidence:.1f}%"
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # CANDLE PROPORTIONS
+        # --------------------------------------------------------
+    
+        st.subheader("Candle Composition")
+    
+        col1, col2, col3 = st.columns(3)
+    
+        col1.metric(
+            "Body",
+            f"{body_percentage:.1f}%"
+        )
+    
+        col2.metric(
+            "Upper Wick",
+            f"{upper_wick_percentage:.1f}%"
+        )
+    
+        col3.metric(
+            "Lower Wick",
+            f"{lower_wick_percentage:.1f}%"
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # INTERPRETATION
+        # --------------------------------------------------------
+    
+        st.subheader("Candle Interpretation")
+    
+        st.write(
+            f"**Momentum:** `{momentum_state}`"
+        )
+    
+        st.write(
+            f"**Structural Relationship:** "
+            f"`{structural_relationship}`"
+        )
+    
+        # --------------------------------------------------------
+        # CONTEXT WARNING / CONFIRMATION
+        # --------------------------------------------------------
+    
+        if (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            st.warning(
+                "The current candle is bearish, "
+                "but the validated structural bias remains "
+                "bullish. The candle alone does not invalidate "
+                "the bullish structure."
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            st.warning(
+                "The current candle is bullish, "
+                "but the validated structural bias remains "
+                "bearish. The candle alone does not invalidate "
+                "the bearish structure."
+            )
+    
+        elif (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            st.success(
+                "The current candle is aligned with "
+                "the validated bullish structure."
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            st.success(
+                "The current candle is aligned with "
+                "the validated bearish structure."
+            )
+    
+        else:
+    
+            st.info(
+                "There is not enough information to establish "
+                "a candle-to-structure relationship."
+            )
+    
+    else:
+    
+        st.info(
+            "Current candle context cannot be evaluated "
+            "until sequence analysis is available."
+        )
     # ========================================================
     # INTERPRETATION GUIDE
     # ========================================================
