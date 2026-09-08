@@ -1458,6 +1458,33 @@ def analyze_candle_sequence(candles):
     )
 
     # ========================================================
+    # CURRENT STRUCTURAL BIAS
+    # ========================================================
+
+    current_structure_analysis = derive_current_structural_bias(
+        swing_highs,
+        swing_lows,
+        bos_choch_bias,
+        last_bos_choch
+    )
+
+    structural_bias = current_structure_analysis["bias"]
+    structural_sequence = current_structure_analysis["sequence"]
+    structural_sequence_index = current_structure_analysis["sequence_index"]
+
+    print("\n")
+    print("=" * 70)
+    print("CURRENT STRUCTURAL BIAS")
+    print("=" * 70)
+    print("BOS / CHoCH bias:", bos_choch_bias)
+    print("Last event:", last_bos_choch)
+    print("Current sequence:", structural_sequence)
+    print("Sequence index:", structural_sequence_index)
+    print("Final current structural bias:", structural_bias)
+    print("=" * 70)
+    print("\n")
+
+    # ========================================================
     # STEP 9 — STRUCTURE VALIDATION
     # ========================================================
     
@@ -1975,6 +2002,9 @@ def analyze_candle_sequence(candles):
         "current_structure":
             current_structure,
 
+        "swing_current_structure":
+            swing_current_structure,
+
         "swing_highs":
             swing_highs,
 
@@ -1993,6 +2023,18 @@ def analyze_candle_sequence(candles):
 
         "last_bos_choch":
             last_bos_choch,
+
+        # Current structural state is based on the most recent
+        # completed HH->HL / LL->LH sequence, not a lifetime
+        # count of all historical swings.
+        "structural_bias":
+            structural_bias,
+
+        "structural_sequence":
+            structural_sequence,
+
+        "structural_sequence_index":
+            structural_sequence_index,
 
         # ====================================================
         # CURRENT CANDLE
@@ -2736,6 +2778,166 @@ def classify_swing_structure(
             else "INSUFFICIENT DATA"
         )
     }
+
+# ============================================================
+# CURRENT STRUCTURAL BIAS
+# ============================================================
+
+def derive_current_structural_bias(
+    swing_highs,
+    swing_lows,
+    bos_choch_bias="UNKNOWN",
+    last_event=None
+):
+    """
+    Derive the CURRENT market-structure bias from the most
+    recent completed swing sequence.
+
+    IMPORTANT:
+        Do not determine the current bias by counting every
+        HH/HL/LH/LL in the entire chart. Older structure must
+        not outweigh the most recent confirmed sequence.
+
+    A bullish sequence requires:
+        HH -> HL
+
+    A bearish sequence requires:
+        LL -> LH
+
+    If both exist, the sequence that completed most recently
+    wins. A later completed swing sequence can therefore update
+    a stale BOS/CHoCH state without allowing a single candle
+    to flip the bias.
+    """
+
+    candidates = []
+
+    highs = [
+        s for s in swing_highs
+        if s.get("structure") in ("HH", "LH")
+    ]
+
+    lows = [
+        s for s in swing_lows
+        if s.get("structure") in ("HL", "LL")
+    ]
+
+    # --------------------------------------------------------
+    # Bullish completed sequence: HH followed by HL
+    # --------------------------------------------------------
+
+    for high in highs:
+
+        if high.get("structure") != "HH":
+            continue
+
+        later_lows = [
+            low for low in lows
+            if low["index"] > high["index"]
+        ]
+
+        if later_lows:
+
+            # Pair the HH with the FIRST confirmed low that
+            # follows it. Do not skip over later swings.
+            low = later_lows[0]
+
+            if low.get("structure") == "HL":
+
+                candidates.append({
+                    "bias": "BULLISH",
+                    "index": int(low["index"]),
+                    "reference_index": int(high["index"]),
+                    "sequence": "HH -> HL"
+                })
+
+    # --------------------------------------------------------
+    # Bearish completed sequence: LL followed by LH
+    # --------------------------------------------------------
+
+    for low in lows:
+
+        if low.get("structure") != "LL":
+            continue
+
+        later_highs = [
+            high for high in highs
+            if high["index"] > low["index"]
+        ]
+
+        if later_highs:
+
+            # Pair the LL with the FIRST confirmed high that
+            # follows it. Do not skip over later swings.
+            high = later_highs[0]
+
+            if high.get("structure") == "LH":
+
+                candidates.append({
+                    "bias": "BEARISH",
+                    "index": int(high["index"]),
+                    "reference_index": int(low["index"]),
+                    "sequence": "LL -> LH"
+                })
+
+    # --------------------------------------------------------
+    # No complete sequence
+    # --------------------------------------------------------
+
+    if not candidates:
+
+        return {
+            "bias": str(bos_choch_bias).upper(),
+            "sequence": "NO COMPLETE NEW SEQUENCE",
+            "sequence_index": None
+        }
+
+    # --------------------------------------------------------
+    # MOST RECENT COMPLETED SEQUENCE WINS
+    # --------------------------------------------------------
+
+    latest = max(
+        candidates,
+        key=lambda item: item["index"]
+    )
+
+    sequence_index = latest["index"]
+
+    # A completed swing sequence that formed after the last
+    # BOS/CHoCH event represents newer structural information.
+    if last_event is not None:
+
+        event_index = int(
+            last_event.get("candle_index", -1)
+        )
+
+        if sequence_index > event_index:
+
+            return {
+                "bias": latest["bias"],
+                "sequence": latest["sequence"],
+                "sequence_index": sequence_index
+            }
+
+    # Otherwise retain the event engine's confirmed bias when
+    # it already has one.
+    if str(bos_choch_bias).upper() in (
+        "BULLISH",
+        "BEARISH"
+    ):
+
+        return {
+            "bias": str(bos_choch_bias).upper(),
+            "sequence": latest["sequence"],
+            "sequence_index": sequence_index
+        }
+
+    return {
+        "bias": latest["bias"],
+        "sequence": latest["sequence"],
+        "sequence_index": sequence_index
+    }
+
 
 # ============================================================
 # BOS / CHoCH DETECTION
@@ -5653,7 +5855,7 @@ if "candles" in st.session_state:
                 "The sequence is not reliable enough "
                 "for predictive analysis."
             )
-    
+
     # ============================================================
     # 11️⃣ MARKET STATE DIAGNOSTIC
     # ============================================================
@@ -5673,13 +5875,13 @@ if "candles" in st.session_state:
         # --------------------------------------------------------
     
         structural_bias = sequence.get(
-            "bos_choch_bias",
-            "UNKNOWN"
+            "structural_bias",
+            sequence.get("bos_choch_bias", "UNKNOWN")
         )
     
         current_structure = sequence.get(
-            "current_structure",
-            "UNKNOWN"
+            "swing_current_structure",
+            sequence.get("current_structure", "UNKNOWN")
         )
     
         current_direction = sequence.get(
@@ -5723,6 +5925,37 @@ if "candles" in st.session_state:
             latest_event = "NONE"
             latest_event_index = None
     
+        # --------------------------------------------------------
+        # STRUCTURE DECISION TRACE
+        # --------------------------------------------------------
+
+        st.subheader("Structure Decision Trace")
+
+        latest_high = swing_highs[-1] if swing_highs else None
+        latest_low = swing_lows[-1] if swing_lows else None
+
+        trace_col1, trace_col2, trace_col3 = st.columns(3)
+
+        trace_col1.write(
+            f"**Latest Swing High:** `{latest_high.get('structure', 'NONE') if latest_high else 'NONE'}`"
+        )
+
+        trace_col2.write(
+            f"**Latest Swing Low:** `{latest_low.get('structure', 'NONE') if latest_low else 'NONE'}`"
+        )
+
+        trace_col3.write(
+            f"**Current Swing Sequence:** `{sequence.get('structural_sequence', 'UNKNOWN')}`"
+        )
+
+        st.write(
+            f"**BOS / CHoCH Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
+        )
+
+        st.write(
+            f"**Current Structural Bias:** `{sequence.get('structural_bias', 'UNKNOWN')}`"
+        )
+
         # --------------------------------------------------------
         # STRUCTURAL STATE
         # --------------------------------------------------------
@@ -5777,16 +6010,32 @@ if "candles" in st.session_state:
         # STRUCTURAL CONFIRMATION
         # --------------------------------------------------------
     
-        bullish_structure = (
-            sequence.get("higher_highs", 0) > 0
-            and
-            sequence.get("higher_lows", 0) > 0
+        # IMPORTANT: confirmation must use the MOST RECENT
+        # swing structure, not lifetime HH/HL/LH/LL counts.
+        # Historical bullish swings must not confirm a bearish
+        # current bias (and vice versa).
+        latest_high_structure = (
+            swing_highs[-1].get("structure", "")
+            if swing_highs
+            else ""
         )
-    
-        bearish_structure = (
-            sequence.get("lower_highs", 0) > 0
+
+        latest_low_structure = (
+            swing_lows[-1].get("structure", "")
+            if swing_lows
+            else ""
+        )
+
+        bullish_structure = (
+            latest_high_structure == "HH"
             and
-            sequence.get("lower_lows", 0) > 0
+            latest_low_structure == "HL"
+        )
+
+        bearish_structure = (
+            latest_high_structure == "LH"
+            and
+            latest_low_structure == "LL"
         )
     
         if (
@@ -6019,8 +6268,8 @@ if "candles" in st.session_state:
         )
     
         structural_bias = sequence.get(
-            "bos_choch_bias",
-            "UNKNOWN"
+            "structural_bias",
+            sequence.get("bos_choch_bias", "UNKNOWN")
         )
     
         # --------------------------------------------------------
@@ -6339,10 +6588,13 @@ if "candles" in st.session_state:
     
         structural_bias = str(
             sequence.get(
-                "bos_choch_bias",
+                "structural_bias",
                 sequence.get(
-                    "trend",
-                    "UNKNOWN"
+                    "bos_choch_bias",
+                    sequence.get(
+                        "trend",
+                        "UNKNOWN"
+                    )
                 )
             )
         ).upper()
@@ -6374,8 +6626,14 @@ if "candles" in st.session_state:
     
         current_structure = str(
             sequence.get(
-                "current_structure",
-                "UNKNOWN"
+                "swing_current_structure",
+                sequence.get(
+                    "structural_sequence",
+                    sequence.get(
+                        "current_structure",
+                        "UNKNOWN"
+                    )
+                )
             )
         ).upper()
     
