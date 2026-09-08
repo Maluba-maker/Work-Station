@@ -3597,30 +3597,35 @@ def detect_bos_choch(
             last_event
     }
 # ============================================================
-# ANNOTATION
+# STRUCTURAL CHART ANNOTATION
 # ============================================================
 
 def annotate_candles(
     image,
     candles,
-    spacing_analysis=None
+    spacing_analysis=None,
+    sequence_analysis=None
 ):
 
     annotated = image.copy()
 
-    # --------------------------------------------------------
-    # Candle annotations
-    # --------------------------------------------------------
+    # ========================================================
+    # 1. CANDLE ANNOTATIONS
+    # ========================================================
 
     for index, candle in enumerate(
         candles,
         start=1
     ):
 
-        x = candle["x"]
-        y = candle["y"]
-        w = candle["width"]
-        h = candle["height"]
+        x = int(candle["x"])
+        y = int(candle["y"])
+        w = int(candle["width"])
+        h = int(candle["height"])
+
+        # ----------------------------------------------------
+        # Candle colour
+        # ----------------------------------------------------
 
         if candle["color"] == "GREEN":
 
@@ -3638,7 +3643,10 @@ def annotate_candles(
                 60
             )
 
-        # Bounding box
+        # ----------------------------------------------------
+        # Candle bounding box
+        # ----------------------------------------------------
+
         cv2.rectangle(
             annotated,
             (x, y),
@@ -3647,7 +3655,10 @@ def annotate_candles(
             2
         )
 
+        # ----------------------------------------------------
         # Candle number
+        # ----------------------------------------------------
+
         cv2.putText(
             annotated,
             str(index),
@@ -3665,7 +3676,10 @@ def annotate_candles(
             cv2.LINE_AA
         )
 
+        # ----------------------------------------------------
         # Confidence
+        # ----------------------------------------------------
+
         confidence_text = (
             f"{candle['confidence']:.0f}%"
         )
@@ -3688,9 +3702,346 @@ def annotate_candles(
         )
 
     # ========================================================
-    # MISSING-CANDLE MARKERS
-    #
-    # Draw ONLY after all candle boxes are complete.
+    # 2. SWING STRUCTURE
+    # ========================================================
+
+    if sequence_analysis:
+
+        swing_highs = sequence_analysis.get(
+            "swing_highs",
+            []
+        )
+
+        swing_lows = sequence_analysis.get(
+            "swing_lows",
+            []
+        )
+
+        # ----------------------------------------------------
+        # SWING HIGHS
+        # ----------------------------------------------------
+
+        for swing in swing_highs:
+
+            swing_index = int(
+                swing["index"]
+            )
+
+            if swing_index >= len(candles):
+                continue
+
+            candle = candles[
+                swing_index
+            ]
+
+            x = int(
+                candle["x"]
+                + candle["width"] / 2
+            )
+
+            y = int(
+                swing["price"]
+            )
+
+            structure = swing.get(
+                "structure",
+                "UNKNOWN"
+            )
+
+            # Ignore unreliable classifications
+            if structure in (
+                "UNKNOWN",
+                "EQUAL HIGH"
+            ):
+                continue
+
+            # Structure label
+            cv2.putText(
+                annotated,
+                structure,
+                (
+                    max(5, x - 12),
+                    max(18, y - 12)
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.50,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA
+            )
+
+            # Small marker
+            cv2.circle(
+                annotated,
+                (x, y),
+                4,
+                (255, 255, 255),
+                -1
+            )
+
+        # ----------------------------------------------------
+        # SWING LOWS
+        # ----------------------------------------------------
+
+        for swing in swing_lows:
+
+            swing_index = int(
+                swing["index"]
+            )
+
+            if swing_index >= len(candles):
+                continue
+
+            candle = candles[
+                swing_index
+            ]
+
+            x = int(
+                candle["x"]
+                + candle["width"] / 2
+            )
+
+            y = int(
+                swing["price"]
+            )
+
+            structure = swing.get(
+                "structure",
+                "UNKNOWN"
+            )
+
+            # Ignore unreliable classifications
+            if structure in (
+                "UNKNOWN",
+                "EQUAL LOW"
+            ):
+                continue
+
+            # Structure label
+            cv2.putText(
+                annotated,
+                structure,
+                (
+                    max(5, x - 12),
+                    min(
+                        image.shape[0] - 10,
+                        y + 22
+                    )
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.50,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA
+            )
+
+            # Small marker
+            cv2.circle(
+                annotated,
+                (x, y),
+                4,
+                (255, 255, 255),
+                -1
+            )
+
+    # ========================================================
+    # 3. BOS / CHoCH LEVELS
+    # ========================================================
+
+    if sequence_analysis:
+
+        bos_events = sequence_analysis.get(
+            "bos_choch_events",
+            []
+        )
+
+        for event in bos_events:
+
+            candle_index = int(
+                event["candle_index"]
+            )
+
+            level_index = int(
+                event["level_index"]
+            )
+
+            level_price = int(
+                event["level_price"]
+            )
+
+            event_name = event.get(
+                "event",
+                "STRUCTURE"
+            )
+
+            # ------------------------------------------------
+            # Safety checks
+            # ------------------------------------------------
+
+            if candle_index >= len(candles):
+                continue
+
+            if level_index >= len(candles):
+                continue
+
+            # ------------------------------------------------
+            # X positions
+            # ------------------------------------------------
+
+            event_candle = candles[
+                candle_index
+            ]
+
+            level_candle = candles[
+                level_index
+            ]
+
+            event_x = int(
+                event_candle["x"]
+                + event_candle["width"] / 2
+            )
+
+            level_x = int(
+                level_candle["x"]
+                + level_candle["width"] / 2
+            )
+
+            # ------------------------------------------------
+            # Event colour
+            # ------------------------------------------------
+
+            if event["direction"] == "BULLISH":
+
+                event_color = (
+                    0,
+                    255,
+                    0
+                )
+
+            else:
+
+                event_color = (
+                    255,
+                    80,
+                    80
+                )
+
+            # ------------------------------------------------
+            # Structural level line
+            #
+            # Draw from the originating swing to the
+            # candle that broke the level.
+            # ------------------------------------------------
+
+            cv2.line(
+                annotated,
+                (
+                    level_x,
+                    level_price
+                ),
+                (
+                    event_x,
+                    level_price
+                ),
+                event_color,
+                2
+            )
+
+            # ------------------------------------------------
+            # Vertical marker at breaking candle
+            # ------------------------------------------------
+
+            cv2.line(
+                annotated,
+                (
+                    event_x,
+                    max(
+                        0,
+                        level_price - 15
+                    )
+                ),
+                (
+                    event_x,
+                    min(
+                        image.shape[0] - 1,
+                        level_price + 15
+                    )
+                ),
+                event_color,
+                2
+            )
+
+            # ------------------------------------------------
+            # Event label
+            # ------------------------------------------------
+
+            label = (
+                f"{event_name}"
+            )
+
+            label_y = (
+                level_price - 20
+                if event["direction"] == "BULLISH"
+                else
+                level_price + 35
+            )
+
+            label_y = max(
+                18,
+                min(
+                    image.shape[0] - 8,
+                    label_y
+                )
+            )
+
+            cv2.putText(
+                annotated,
+                label,
+                (
+                    max(
+                        5,
+                        event_x - 45
+                    ),
+                    label_y
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                event_color,
+                2,
+                cv2.LINE_AA
+            )
+
+            # ------------------------------------------------
+            # Level information
+            # ------------------------------------------------
+
+            level_label = (
+                f"L{level_index} "
+                f"{level_price:.0f}"
+            )
+
+            cv2.putText(
+                annotated,
+                level_label,
+                (
+                    max(
+                        5,
+                        level_x
+                    ),
+                    max(
+                        18,
+                        level_price - 5
+                    )
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.35,
+                event_color,
+                1,
+                cv2.LINE_AA
+            )
+
+    # ========================================================
+    # 4. POSSIBLE MISSING CANDLES
     # ========================================================
 
     if spacing_analysis:
@@ -3708,7 +4059,6 @@ def annotate_candles(
                 "confidence"
             ]
 
-            # Yellow
             marker_color = (
                 255,
                 255,
@@ -3730,7 +4080,6 @@ def annotate_candles(
                 1
             )
 
-            # Label
             label = (
                 "POSSIBLE MISSING "
                 f"{confidence:.0f}%"
