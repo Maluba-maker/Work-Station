@@ -1457,6 +1457,17 @@ def analyze_candle_sequence(candles):
         bos_choch_analysis["last_event"]
     )
 
+    # ========================================================
+    # STEP 9 — STRUCTURE VALIDATION
+    # ========================================================
+    
+    structure_validation = validate_structure(
+        candles,
+        swing_highs,
+        swing_lows,
+        bos_choch_events,
+        bos_choch_bias
+    )
     # --------------------------------------------------------
     # GET STRUCTURE COUNTS
     # --------------------------------------------------------
@@ -2012,7 +2023,9 @@ def analyze_candle_sequence(candles):
             round(
                 current["confidence"],
                 1
-            )
+            ),
+        "structure_validation":
+            structure_validation
     }
 
 # ============================================================
@@ -3596,6 +3609,579 @@ def detect_bos_choch(
         "last_event":
             last_event
     }
+
+# ============================================================
+# STEP 9 — STRUCTURE VALIDATION
+# ============================================================
+
+def validate_structure(
+    candles,
+    swing_highs,
+    swing_lows,
+    bos_events,
+    bos_bias
+):
+    """
+    STRUCTURE VALIDATION ENGINE - STEP 9
+
+    Purpose:
+        Validate the structure produced by the swing
+        and BOS / CHoCH engines.
+
+    IMPORTANT:
+        Candle/swing coordinates are PIXEL coordinates.
+
+        Smaller Y = higher market price
+        Larger Y = lower market price
+
+    This function does NOT create new structure.
+    It only checks whether the existing structure
+    is internally consistent.
+    """
+
+    checks = []
+    score_components = []
+
+    # ========================================================
+    # BASIC DATA CHECK
+    # ========================================================
+
+    if not candles:
+
+        return {
+            "validation_score": 0.0,
+            "status": "NO DATA",
+            "checks": [],
+            "swing_high_validity": 0.0,
+            "swing_low_validity": 0.0,
+            "event_validity": 0.0,
+            "protected_level_validity": 0.0,
+            "bias_consistency": 0.0,
+            "ready_for_next_step": False
+        }
+
+    # ========================================================
+    # HELPER
+    # ========================================================
+
+    def add_check(
+        name,
+        passed,
+        detail
+    ):
+
+        checks.append({
+            "check": name,
+            "status": "PASS" if passed else "FAIL",
+            "detail": detail
+        })
+
+        score_components.append(
+            100.0 if passed else 0.0
+        )
+
+    # ========================================================
+    # 1. SWING HIGH VALIDATION
+    # ========================================================
+
+    high_checks = []
+
+    previous_high = None
+
+    for swing in swing_highs:
+
+        structure = swing.get(
+            "structure",
+            "UNKNOWN"
+        )
+
+        if previous_high is None:
+
+            previous_high = swing
+            continue
+
+        current_y = float(
+            swing["price"]
+        )
+
+        previous_y = float(
+            previous_high["price"]
+        )
+
+        valid = True
+
+        # ----------------------------------------------------
+        # HIGH STRUCTURE
+        # ----------------------------------------------------
+
+        if structure == "HH":
+
+            # Smaller Y = higher price
+            valid = current_y < previous_y
+
+        elif structure == "LH":
+
+            # Larger Y = lower price
+            valid = current_y > previous_y
+
+        elif structure == "EQUAL HIGH":
+
+            valid = abs(
+                current_y - previous_y
+            ) <= 3.0
+
+        # UNKNOWN is not automatically a failure
+        elif structure == "UNKNOWN":
+
+            valid = True
+
+        high_checks.append(valid)
+
+        previous_high = swing
+
+    if high_checks:
+
+        high_validity = (
+            sum(high_checks)
+            / len(high_checks)
+            * 100
+        )
+
+    else:
+
+        high_validity = 100.0
+
+    add_check(
+        "Swing High Classification",
+        high_validity >= 90,
+        f"{high_validity:.1f}% of classified "
+        "swing highs are geometrically consistent."
+    )
+
+    # ========================================================
+    # 2. SWING LOW VALIDATION
+    # ========================================================
+
+    low_checks = []
+
+    previous_low = None
+
+    for swing in swing_lows:
+
+        structure = swing.get(
+            "structure",
+            "UNKNOWN"
+        )
+
+        if previous_low is None:
+
+            previous_low = swing
+            continue
+
+        current_y = float(
+            swing["price"]
+        )
+
+        previous_y = float(
+            previous_low["price"]
+        )
+
+        valid = True
+
+        # ----------------------------------------------------
+        # LOW STRUCTURE
+        # ----------------------------------------------------
+
+        if structure == "HL":
+
+            # Smaller Y = higher price
+            valid = current_y < previous_y
+
+        elif structure == "LL":
+
+            # Larger Y = lower price
+            valid = current_y > previous_y
+
+        elif structure == "EQUAL LOW":
+
+            valid = abs(
+                current_y - previous_y
+            ) <= 3.0
+
+        elif structure == "UNKNOWN":
+
+            valid = True
+
+        low_checks.append(valid)
+
+        previous_low = swing
+
+    if low_checks:
+
+        low_validity = (
+            sum(low_checks)
+            / len(low_checks)
+            * 100
+        )
+
+    else:
+
+        low_validity = 100.0
+
+    add_check(
+        "Swing Low Classification",
+        low_validity >= 90,
+        f"{low_validity:.1f}% of classified "
+        "swing lows are geometrically consistent."
+    )
+
+    # ========================================================
+    # 3. BOS / CHoCH EVENT VALIDATION
+    # ========================================================
+
+    event_checks = []
+
+    protected_checks = []
+
+    used_levels = set()
+
+    for event in bos_events:
+
+        event_type = event.get(
+            "event",
+            ""
+        )
+
+        direction = event.get(
+            "direction",
+            ""
+        )
+
+        event_price = float(
+            event.get(
+                "price",
+                0
+            )
+        )
+
+        level_price = float(
+            event.get(
+                "level_price",
+                event_price
+            )
+        )
+
+        level_index = event.get(
+            "level_index"
+        )
+
+        level_type = event.get(
+            "level_type",
+            ""
+        )
+
+        break_distance = float(
+            event.get(
+                "break_distance",
+                0
+            )
+        )
+
+        valid_break = True
+
+        # ----------------------------------------------------
+        # BULLISH BREAK
+        #
+        # Price must move UP through level.
+        # Pixel Y therefore becomes smaller.
+        # ----------------------------------------------------
+
+        if direction == "BULLISH":
+
+            valid_break = (
+                event_price < level_price
+                and
+                break_distance > 0
+            )
+
+        # ----------------------------------------------------
+        # BEARISH BREAK
+        #
+        # Price must move DOWN through level.
+        # Pixel Y therefore becomes larger.
+        # ----------------------------------------------------
+
+        elif direction == "BEARISH":
+
+            valid_break = (
+                event_price > level_price
+                and
+                break_distance > 0
+            )
+
+        event_checks.append(
+            valid_break
+        )
+
+        # ----------------------------------------------------
+        # PROTECTED LEVEL VALIDATION
+        # ----------------------------------------------------
+
+        if "CHoCH" in event_type:
+
+            protected_valid = (
+                "PROTECTED"
+                in level_type.upper()
+            )
+
+            protected_checks.append(
+                protected_valid
+            )
+
+        # ----------------------------------------------------
+        # DUPLICATE LEVEL CHECK
+        # ----------------------------------------------------
+
+        if level_index is not None:
+
+            if level_index in used_levels:
+
+                valid_break = False
+
+            used_levels.add(
+                level_index
+            )
+
+    # ========================================================
+    # EVENT SCORE
+    # ========================================================
+
+    if event_checks:
+
+        event_validity = (
+            sum(event_checks)
+            / len(event_checks)
+            * 100
+        )
+
+    else:
+
+        event_validity = 100.0
+
+    add_check(
+        "BOS / CHoCH Break Direction",
+        event_validity >= 90,
+        f"{event_validity:.1f}% of structural "
+        "breaks move through their level correctly."
+    )
+
+    # ========================================================
+    # PROTECTED LEVEL SCORE
+    # ========================================================
+
+    if protected_checks:
+
+        protected_validity = (
+            sum(protected_checks)
+            / len(protected_checks)
+            * 100
+        )
+
+    else:
+
+        protected_validity = 100.0
+
+    add_check(
+        "Protected Level Usage",
+        protected_validity >= 90,
+        f"{protected_validity:.1f}% of CHoCH "
+        "events use a protected structural level."
+    )
+
+    # ========================================================
+    # 4. BIAS CONSISTENCY
+    # ========================================================
+
+    bias_checks = []
+
+    if bos_events:
+
+        for event in bos_events:
+
+            direction = event.get(
+                "direction",
+                "UNKNOWN"
+            )
+
+            event_type = event.get(
+                "event",
+                ""
+            )
+
+            # ------------------------------------------------
+            # EVENT TYPE / DIRECTION MUST AGREE
+            # ------------------------------------------------
+
+            if "BULLISH" in event_type:
+
+                bias_checks.append(
+                    direction == "BULLISH"
+                )
+
+            elif "BEARISH" in event_type:
+
+                bias_checks.append(
+                    direction == "BEARISH"
+                )
+
+    if bias_checks:
+
+        bias_consistency = (
+            sum(bias_checks)
+            / len(bias_checks)
+            * 100
+        )
+
+    else:
+
+        bias_consistency = 100.0
+
+    add_check(
+        "Bias / Event Consistency",
+        bias_consistency >= 90,
+        f"{bias_consistency:.1f}% of events "
+        "agree with their stated direction."
+    )
+
+    # ========================================================
+    # 5. LATEST EVENT CONSISTENCY
+    # ========================================================
+
+    latest_event_valid = True
+
+    if bos_events:
+
+        latest = bos_events[-1]
+
+        latest_direction = latest.get(
+            "direction",
+            "UNKNOWN"
+        )
+
+        latest_event_valid = (
+            latest_direction == bos_bias
+        )
+
+    add_check(
+        "Latest Event / Bias",
+        latest_event_valid,
+        "Latest structural event agrees with "
+        "the current structural bias."
+        if latest_event_valid
+        else
+        "Latest structural event conflicts with "
+        "the current structural bias."
+    )
+
+    # ========================================================
+    # FINAL SCORE
+    # ========================================================
+
+    if score_components:
+
+        validation_score = round(
+            float(
+                np.mean(
+                    score_components
+                )
+            ),
+            1
+        )
+
+    else:
+
+        validation_score = 0.0
+
+    # ========================================================
+    # FINAL STATUS
+    # ========================================================
+
+    if validation_score >= 95:
+
+        status = "STRONG"
+
+    elif validation_score >= 85:
+
+        status = "USABLE"
+
+    elif validation_score >= 70:
+
+        status = "QUESTIONABLE"
+
+    else:
+
+        status = "FAILED"
+
+    # ========================================================
+    # NEXT-STEP GATE
+    # ========================================================
+
+    ready_for_next_step = (
+        validation_score >= 90
+        and
+        high_validity >= 90
+        and
+        low_validity >= 90
+        and
+        event_validity >= 90
+        and
+        protected_validity >= 90
+    )
+
+    return {
+        "validation_score":
+            validation_score,
+
+        "status":
+            status,
+
+        "checks":
+            checks,
+
+        "swing_high_validity":
+            round(
+                high_validity,
+                1
+            ),
+
+        "swing_low_validity":
+            round(
+                low_validity,
+                1
+            ),
+
+        "event_validity":
+            round(
+                event_validity,
+                1
+            ),
+
+        "protected_level_validity":
+            round(
+                protected_validity,
+                1
+            ),
+
+        "bias_consistency":
+            round(
+                bias_consistency,
+                1
+            ),
+
+        "ready_for_next_step":
+            ready_for_next_step
+    }
+
 # ============================================================
 # STRUCTURAL CHART ANNOTATION
 # ============================================================
@@ -4888,7 +5474,126 @@ if "candles" in st.session_state:
                 use_container_width=True,
                 hide_index=True
             )
+
+        # ========================================================
+        # STEP 9 — STRUCTURE VALIDATION
+        # ========================================================
         
+        st.subheader(
+            "9️⃣ Structure Validation"
+        )
+        
+        structure_validation = sequence.get(
+            "structure_validation",
+            None
+        )
+        
+        if structure_validation:
+        
+            # ----------------------------------------------------
+            # TOP METRICS
+            # ----------------------------------------------------
+        
+            col1, col2, col3, col4 = st.columns(4)
+        
+            col1.metric(
+                "Structure Quality",
+                f"{structure_validation['validation_score']:.1f}%"
+            )
+        
+            col2.metric(
+                "Swing High Validity",
+                f"{structure_validation['swing_high_validity']:.1f}%"
+            )
+        
+            col3.metric(
+                "Swing Low Validity",
+                f"{structure_validation['swing_low_validity']:.1f}%"
+            )
+        
+            col4.metric(
+                "BOS / CHoCH Validity",
+                f"{structure_validation['event_validity']:.1f}%"
+            )
+        
+            # ----------------------------------------------------
+            # SECOND ROW
+            # ----------------------------------------------------
+        
+            col1, col2, col3 = st.columns(3)
+        
+            col1.metric(
+                "Protected Levels",
+                f"{structure_validation['protected_level_validity']:.1f}%"
+            )
+        
+            col2.metric(
+                "Bias Consistency",
+                f"{structure_validation['bias_consistency']:.1f}%"
+            )
+        
+            col3.metric(
+                "Status",
+                structure_validation["status"]
+            )
+        
+            st.divider()
+        
+            # ----------------------------------------------------
+            # VALIDATION CHECKS
+            # ----------------------------------------------------
+        
+            st.write(
+                "**Validation Checks**"
+            )
+        
+            validation_df = pd.DataFrame(
+                structure_validation["checks"]
+            )
+        
+            st.dataframe(
+                validation_df,
+                use_container_width=True,
+                hide_index=True
+            )
+        
+            # ----------------------------------------------------
+            # FINAL INTERPRETATION
+            # ----------------------------------------------------
+        
+            if structure_validation[
+                "ready_for_next_step"
+            ]:
+        
+                st.success(
+                    "Structure validation passed. "
+                    "The current swing and BOS / CHoCH "
+                    "structure is internally consistent "
+                    "enough to proceed to the next diagnostic stage."
+                )
+        
+            elif structure_validation[
+                "validation_score"
+            ] >= 85:
+        
+                st.warning(
+                    "Structure is usable for diagnostics, "
+                    "but some structural inconsistencies "
+                    "remain. Do not generate trading signals yet."
+                )
+        
+            else:
+        
+                st.error(
+                    "Structure validation failed. "
+                    "Do NOT proceed to signal generation."
+                )
+        
+        else:
+        
+            st.info(
+                "Structure validation is not available."
+            )
         # --------------------------------------------------------
         # CURRENT CANDLE
         # --------------------------------------------------------
