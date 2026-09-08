@@ -4369,7 +4369,8 @@ if "candles" in st.session_state:
     annotated = annotate_candles(
         chart,
         candles,
-        spacing_analysis
+        spacing_analysis,
+        sequence_analysis
     )
 
     st.image(
