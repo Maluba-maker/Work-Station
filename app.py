@@ -3239,6 +3239,23 @@ def detect_bos_choch(
     # a BOS confirms the new direction.
     initial_confirmed_bias = bias
 
+    # --------------------------------------------------------
+    # CONFIRMED STRUCTURAL BIAS
+    #
+    # This is separate from the internal working bias.
+    #
+    # A CHoCH changes the working direction, but does NOT
+    # confirm a new structural bias.
+    #
+    # A BOS is required to confirm the new direction.
+    # --------------------------------------------------------
+    
+    confirmed_bias = bias
+    
+    # Tracks an unconfirmed structural transition caused
+    # by a CHoCH.
+    transition_bias = "NONE"
+    
     # ========================================================
     # STRUCTURAL STATE
     # ========================================================
@@ -3513,17 +3530,29 @@ def detect_bos_choch(
                         level_index
                     )
 
-                    # -----------------------------------------
-                    # STRUCTURAL REVERSAL
-                    # -----------------------------------------
 
+                    # ---------------------------------------------------------
+                    # STRUCTURAL TRANSITION
+                    #
+                    # A bearish CHoCH means the bullish structure has been
+                    # challenged, but bearish structure is NOT confirmed yet.
+                    #
+                    # The internal working bias changes so that the engine can
+                    # search for:
+                    #
+                    #     LL -> LH -> bearish BOS
+                    #
+                    # But confirmed_bias remains BULLISH until that BOS occurs.
+                    # ---------------------------------------------------------
+                    
                     bias = "BEARISH"
-
+                    
+                    transition_bias = "BEARISH"
+                    
                     protected_low = None
-
+                    
                     bullish_reference_high = None
                     bullish_retracement_low = None
-
                     # Do NOT manufacture a bearish BOS.
                     # We now wait for a genuine:
                     #
@@ -3590,10 +3619,17 @@ def detect_bos_choch(
                         level_price
                     )
 
+                    # ---------------------------------------------------------
+                    # BULLISH BOS CONFIRMS BULLISH STRUCTURE
+                    # ---------------------------------------------------------
+                    
+                    confirmed_bias = "BULLISH"
+                    transition_bias = "NONE"
+                    
                     broken_highs.add(
                         level_index
                     )
-
+                    
                     # -----------------------------------------
                     # HH consumed.
                     #
@@ -3661,14 +3697,25 @@ def detect_bos_choch(
                         level_index
                     )
 
-                    # -----------------------------------------
-                    # STRUCTURAL REVERSAL
-                    # -----------------------------------------
-
+                    # ---------------------------------------------------------
+                    # STRUCTURAL TRANSITION
+                    #
+                    # A bullish CHoCH means bearish structure has been
+                    # challenged, but bullish structure is NOT confirmed yet.
+                    #
+                    # We now wait for:
+                    #
+                    #     HH -> HL -> bullish BOS
+                    #
+                    # before changing confirmed_bias.
+                    # ---------------------------------------------------------
+                    
                     bias = "BULLISH"
-
+                    
+                    transition_bias = "BULLISH"
+                    
                     protected_high = None
-
+                    
                     bearish_reference_low = None
                     bearish_retracement_high = None
 
@@ -3739,6 +3786,13 @@ def detect_bos_choch(
                         level_price
                     )
 
+                    # ---------------------------------------------------------
+                    # BEARISH BOS CONFIRMS BEARISH STRUCTURE
+                    # ---------------------------------------------------------
+                    
+                    confirmed_bias = "BEARISH"
+                    transition_bias = "NONE"
+                    
                     broken_lows.add(
                         level_index
                     )
@@ -3777,14 +3831,19 @@ def detect_bos_choch(
     )
 
     # ========================================================
-    # FINAL BIAS
+    # FINAL CONFIRMED STRUCTURAL BIAS
     # ========================================================
-
-    if last_event is not None:
-
-        bias = last_event[
-            "direction"
-        ]
+    #
+    # NEVER use the last event's direction here.
+    #
+    # A CHoCH is a transition.
+    # A BOS is confirmation.
+    #
+    # Therefore the final structural bias comes from
+    # confirmed_bias, not last_event.
+    # ========================================================
+    
+    bias = confirmed_bias
 
     # ========================================================
     # DEBUG OUTPUT
@@ -3827,10 +3886,16 @@ def detect_bos_choch(
     return {
         "events":
             events,
-
+    
         "current_bias":
             bias,
-
+    
+        "confirmed_bias":
+            confirmed_bias,
+    
+        "transition_bias":
+            transition_bias,
+    
         "last_event":
             last_event
     }
