@@ -1384,6 +1384,13 @@ def analyze_candle_sequence(candles):
             "swing_highs": [],
             "swing_lows": [],
 
+            "bos_choch_bias": "UNKNOWN",
+            "transition_bias": "NONE",
+            "last_bos_choch": None,
+            "structural_bias": "UNKNOWN",
+            "structural_sequence": "NO COMPLETE NEW SEQUENCE",
+            "structural_sequence_index": None,
+
             "current_direction": "UNKNOWN",
             "body_percentage": 0.0,
             "upper_wick_percentage": 0.0,
@@ -1476,7 +1483,11 @@ def analyze_candle_sequence(candles):
     print("=" * 70)
     print("CURRENT STRUCTURAL BIAS")
     print("=" * 70)
-    print("BOS / CHoCH bias:", bos_choch_bias)
+    print("Confirmed BOS bias:", bos_choch_bias)
+    print(
+        "Transition bias:",
+        bos_choch_analysis.get("transition_bias", "NONE")
+    )
     print("Last event:", last_bos_choch)
     print("Current sequence:", structural_sequence)
     print("Sequence index:", structural_sequence_index)
@@ -2020,6 +2031,12 @@ def analyze_candle_sequence(candles):
 
         "bos_choch_bias":
             bos_choch_bias,
+
+        "transition_bias":
+            bos_choch_analysis.get(
+                "transition_bias",
+                "NONE"
+            ),
 
         "last_bos_choch":
             last_bos_choch,
@@ -3215,6 +3232,12 @@ def detect_bos_choch(
 
         elif bearish_score > bullish_score:
             bias = "BEARISH"
+
+    # Preserve the initial confirmed structural direction.
+    # The working "bias" variable may later flip internally
+    # after a CHoCH, but that flip is only a transition until
+    # a BOS confirms the new direction.
+    initial_confirmed_bias = bias
 
     # ========================================================
     # STRUCTURAL STATE
@@ -5949,7 +5972,15 @@ if "candles" in st.session_state:
         )
 
         st.write(
-            f"**BOS / CHoCH Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
+            f"**Confirmed BOS Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
+        )
+
+        st.write(
+            f"**Latest Event:** `{latest_event}`"
+        )
+
+        st.write(
+            f"**Transition Bias:** `{sequence.get('transition_bias', 'NONE')}`"
         )
 
         st.write(
