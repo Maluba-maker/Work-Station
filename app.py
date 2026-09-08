@@ -5653,60 +5653,13 @@ if "candles" in st.session_state:
                 "The sequence is not reliable enough "
                 "for predictive analysis."
             )
-    # ========================================================
-    # INTERPRETATION GUIDE
-    # ========================================================
-
-    st.header(
-        "🔟 How to Read the Scores"
-    )
-
-    st.markdown(
-        """
-**Geometry Score**
-
-Measures whether the detected object has a
-plausible candle-like shape.
-
-**Colour Confidence**
-
-Measures how strongly the detected pixels support
-the assigned RED or GREEN classification.
-
-**Structure Score**
-
-Measures how well the candle fits the surrounding
-candle sequence in terms of size and spacing.
-
-**Final Confidence**
-
-Weighted combination of:
-
-- Geometry: 40%
-- Colour: 25%
-- Structure: 25%
-- Detection support: 10%
-
-**Spacing**
-
-- **Normal:** spacing is consistent with the local sequence.
-- **Suspicious Gap:** spacing is unusual but not strong enough
-  to claim a missing candle.
-- **Possible Missing Candle:** a large gap is supported by
-  normal neighbouring spacing.
-
-A "Possible Missing Candle" is still a hypothesis.
-It is NOT treated as an actual candle.
-"""
-    )
-
-
+    
     # ============================================================
     # 11️⃣ MARKET STATE DIAGNOSTIC
     # ============================================================
     
     st.header(
-        "1️⃣1️⃣ Market State Diagnostic"
+        "Step 11 — Market State Diagnostic"
     )
     
     if "sequence_analysis" in st.session_state:
@@ -6025,6 +5978,54 @@ It is NOT treated as an actual candle.
             "Market state cannot be evaluated until "
             "sequence analysis is available."
         )
+    # ========================================================
+    # INTERPRETATION GUIDE
+    # ========================================================
+
+    st.header(
+        "🔟 How to Read the Scores"
+    )
+
+    st.markdown(
+        """
+**Geometry Score**
+
+Measures whether the detected object has a
+plausible candle-like shape.
+
+**Colour Confidence**
+
+Measures how strongly the detected pixels support
+the assigned RED or GREEN classification.
+
+**Structure Score**
+
+Measures how well the candle fits the surrounding
+candle sequence in terms of size and spacing.
+
+**Final Confidence**
+
+Weighted combination of:
+
+- Geometry: 40%
+- Colour: 25%
+- Structure: 25%
+- Detection support: 10%
+
+**Spacing**
+
+- **Normal:** spacing is consistent with the local sequence.
+- **Suspicious Gap:** spacing is unusual but not strong enough
+  to claim a missing candle.
+- **Possible Missing Candle:** a large gap is supported by
+  normal neighbouring spacing.
+
+A "Possible Missing Candle" is still a hypothesis.
+It is NOT treated as an actual candle.
+"""
+    )
+
+
     # ========================================================
     # IMPORTANT
     # ========================================================
