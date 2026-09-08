@@ -5701,6 +5701,330 @@ It is NOT treated as an actual candle.
     )
 
 
+    # ============================================================
+    # 11️⃣ MARKET STATE DIAGNOSTIC
+    # ============================================================
+    
+    st.header(
+        "1️⃣1️⃣ Market State Diagnostic"
+    )
+    
+    if "sequence_analysis" in st.session_state:
+    
+        sequence = st.session_state[
+            "sequence_analysis"
+        ]
+    
+        # --------------------------------------------------------
+        # EXTRACT STRUCTURAL INFORMATION
+        # --------------------------------------------------------
+    
+        structural_bias = sequence.get(
+            "bos_choch_bias",
+            "UNKNOWN"
+        )
+    
+        current_structure = sequence.get(
+            "current_structure",
+            "UNKNOWN"
+        )
+    
+        current_direction = sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        )
+    
+        last_event = sequence.get(
+            "last_bos_choch",
+            None
+        )
+    
+        swing_highs = sequence.get(
+            "swing_highs",
+            []
+        )
+    
+        swing_lows = sequence.get(
+            "swing_lows",
+            []
+        )
+    
+        # --------------------------------------------------------
+        # DETERMINE LATEST STRUCTURAL EVENT
+        # --------------------------------------------------------
+    
+        if last_event:
+    
+            latest_event = last_event.get(
+                "event",
+                "NONE"
+            )
+    
+            latest_event_index = last_event.get(
+                "candle_index",
+                None
+            )
+    
+        else:
+    
+            latest_event = "NONE"
+            latest_event_index = None
+    
+        # --------------------------------------------------------
+        # STRUCTURAL STATE
+        # --------------------------------------------------------
+    
+        if structural_bias == "BULLISH":
+    
+            if latest_event == "BULLISH BOS":
+    
+                market_state = (
+                    "BULLISH CONTINUATION"
+                )
+    
+            elif latest_event == "BULLISH CHoCH":
+    
+                market_state = (
+                    "BULLISH STRUCTURAL SHIFT"
+                )
+    
+            else:
+    
+                market_state = (
+                    "BULLISH STRUCTURE"
+                )
+    
+        elif structural_bias == "BEARISH":
+    
+            if latest_event == "BEARISH BOS":
+    
+                market_state = (
+                    "BEARISH CONTINUATION"
+                )
+    
+            elif latest_event == "BEARISH CHoCH":
+    
+                market_state = (
+                    "BEARISH STRUCTURAL SHIFT"
+                )
+    
+            else:
+    
+                market_state = (
+                    "BEARISH STRUCTURE"
+                )
+    
+        else:
+    
+            market_state = (
+                "UNDEFINED / MIXED"
+            )
+    
+        # --------------------------------------------------------
+        # STRUCTURAL CONFIRMATION
+        # --------------------------------------------------------
+    
+        bullish_structure = (
+            sequence.get("higher_highs", 0) > 0
+            and
+            sequence.get("higher_lows", 0) > 0
+        )
+    
+        bearish_structure = (
+            sequence.get("lower_highs", 0) > 0
+            and
+            sequence.get("lower_lows", 0) > 0
+        )
+    
+        if (
+            structural_bias == "BULLISH"
+            and bullish_structure
+        ):
+    
+            structure_confirmation = (
+                "CONFIRMED BULLISH"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and bearish_structure
+        ):
+    
+            structure_confirmation = (
+                "CONFIRMED BEARISH"
+            )
+    
+        elif structural_bias == "UNKNOWN":
+    
+            structure_confirmation = (
+                "INSUFFICIENT STRUCTURE"
+            )
+    
+        else:
+    
+            structure_confirmation = (
+                "STRUCTURAL CONFLICT"
+            )
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE RELATIONSHIP
+        # --------------------------------------------------------
+    
+        if (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            candle_alignment = (
+                "ALIGNED WITH BIAS"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            candle_alignment = (
+                "ALIGNED WITH BIAS"
+            )
+    
+        elif (
+            structural_bias in (
+                "BULLISH",
+                "BEARISH"
+            )
+        ):
+    
+            candle_alignment = (
+                "COUNTER-DIRECTION CANDLE"
+            )
+    
+        else:
+    
+            candle_alignment = (
+                "NO CLEAR ALIGNMENT"
+            )
+    
+        # --------------------------------------------------------
+        # DISPLAY
+        # --------------------------------------------------------
+    
+        col1, col2, col3, col4 = st.columns(4)
+    
+        col1.metric(
+            "Market State",
+            market_state
+        )
+    
+        col2.metric(
+            "Structural Bias",
+            structural_bias
+        )
+    
+        col3.metric(
+            "Structure",
+            structure_confirmation
+        )
+    
+        col4.metric(
+            "Candle Alignment",
+            candle_alignment
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # STRUCTURAL DETAILS
+        # --------------------------------------------------------
+    
+        st.subheader(
+            "Structural Interpretation"
+        )
+    
+        st.write(
+            f"**Current Structure:** "
+            f"`{current_structure}`"
+        )
+    
+        st.write(
+            f"**Latest Structural Event:** "
+            f"`{latest_event}`"
+        )
+    
+        if latest_event_index is not None:
+    
+            st.write(
+                f"**Event Candle:** "
+                f"`{latest_event_index}`"
+            )
+    
+        st.write(
+            f"**Current Candle:** "
+            f"`{current_direction}`"
+        )
+    
+        # --------------------------------------------------------
+        # STRUCTURE QUALITY
+        # --------------------------------------------------------
+    
+        structure_quality = (
+            sequence.get(
+                "sequence_integrity",
+                0.0
+            )
+        )
+    
+        st.write(
+            f"**Structure Quality:** "
+            f"`{structure_quality:.1f}%`"
+        )
+    
+        # --------------------------------------------------------
+        # FINAL DIAGNOSTIC MESSAGE
+        # --------------------------------------------------------
+    
+        if (
+            structure_quality >= 95
+            and
+            structure_confirmation
+            in (
+                "CONFIRMED BULLISH",
+                "CONFIRMED BEARISH"
+            )
+            and
+            candle_alignment
+            == "ALIGNED WITH BIAS"
+        ):
+    
+            st.success(
+                "The current market structure, "
+                "structural bias, and current candle "
+                "are aligned."
+            )
+    
+        elif structure_quality >= 95:
+    
+            st.warning(
+                "Structure is well reconstructed, "
+                "but the current candle is not fully "
+                "aligned with the prevailing structural bias."
+            )
+    
+        else:
+    
+            st.error(
+                "Structure quality is not strong enough "
+                "for higher-level interpretation."
+            )
+    
+    else:
+    
+        st.info(
+            "Market state cannot be evaluated until "
+            "sequence analysis is available."
+        )
     # ========================================================
     # IMPORTANT
     # ========================================================
