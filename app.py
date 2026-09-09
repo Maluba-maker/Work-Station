@@ -4939,10 +4939,6 @@ top_signal_col, top_upload_col = st.columns(
 
 with top_signal_col:
 
-    st.header(
-        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-    )
-
     st.subheader("🎯 Signal")
 
     signal_placeholder = st.empty()
@@ -7579,8 +7575,13 @@ if "candles" in st.session_state:
         "🔟 How to Read the Scores"
     )
 
+     st.header(
+        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+    )
+    
     st.markdown(
         """
+
 **Geometry Score**
 
 Measures whether the detected object has a
