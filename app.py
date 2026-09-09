@@ -7575,7 +7575,7 @@ if "candles" in st.session_state:
         "🔟 How to Read the Scores"
     )
 
-     st.header(
+    st.header(
         "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
     )
     
