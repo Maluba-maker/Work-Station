@@ -1479,6 +1479,19 @@ def analyze_candle_sequence(candles):
     structural_sequence = current_structure_analysis["sequence"]
     structural_sequence_index = current_structure_analysis["sequence_index"]
 
+    # ========================================================
+    # CANONICAL CURRENT STRUCTURE
+    # ========================================================
+    # From this point onward, downstream diagnostics must use the
+    # same structural interpretation as the BOS/CHoCH engine.
+    # Do not allow the older lifetime swing-count description to
+    # overwrite a confirmed reversal.
+    canonical_current_structure = structural_sequence_to_label(
+        structural_bias,
+        structural_sequence,
+        last_bos_choch
+    )
+
     print("\n")
     print("=" * 70)
     print("CURRENT STRUCTURAL BIAS")
@@ -2010,10 +2023,16 @@ def analyze_candle_sequence(candles):
         "trend":
             trend,
 
+        # Canonical current structure used by all downstream
+        # interpretation. The raw lifetime-count structure remains
+        # available under swing_classification_structure for audit.
         "current_structure":
-            current_structure,
+            canonical_current_structure,
 
         "swing_current_structure":
+            canonical_current_structure,
+
+        "swing_classification_structure":
             swing_current_structure,
 
         "swing_highs":
@@ -2795,6 +2814,59 @@ def classify_swing_structure(
             else "INSUFFICIENT DATA"
         )
     }
+
+# ============================================================
+# CONSISTENT STRUCTURAL LABEL
+# ============================================================
+
+def structural_sequence_to_label(
+    structural_bias,
+    structural_sequence,
+    last_event=None
+):
+    """
+    Return the single canonical human-readable description of
+    the CURRENT structural state used by downstream diagnostics.
+
+    The older swing classifier calculates a lifetime/count-based
+    ``current_structure``. That value is useful as raw swing data,
+    but it can contradict the confirmed BOS/CHoCH state after a
+    structural reversal.
+
+    Downstream diagnostics must therefore use the BOS/CHoCH-derived
+    structural state instead of independently rebuilding structure.
+    """
+
+    bias = str(structural_bias).upper()
+    sequence = str(structural_sequence).upper()
+
+    # A completed sequence is the strongest direct description.
+    if sequence == "HH -> HL":
+        return "HIGHER HIGH + HIGHER LOW"
+
+    if sequence == "LL -> LH":
+        return "LOWER LOW + LOWER HIGH"
+
+    # If there is no completed sequence, use a confirmed BOS as the
+    # structural anchor rather than falling back to lifetime counts.
+    event_name = ""
+    if last_event:
+        event_name = str(last_event.get("event", "")).upper()
+
+    if "BULLISH BOS" == event_name:
+        return "HIGHER HIGH + HIGHER LOW"
+
+    if "BEARISH BOS" == event_name:
+        return "LOWER LOW + LOWER HIGH"
+
+    if bias == "BULLISH":
+        return "BULLISH STRUCTURE"
+
+    if bias == "BEARISH":
+        return "BEARISH STRUCTURE"
+
+    return "MIXED / INSUFFICIENT STRUCTURE"
+
 
 # ============================================================
 # CURRENT STRUCTURAL BIAS
@@ -5967,9 +6039,12 @@ if "candles" in st.session_state:
             sequence.get("bos_choch_bias", "UNKNOWN")
         )
     
+        # Use the canonical structure produced by the BOS/CHoCH
+        # state machine. Never fall back to the old lifetime-count
+        # swing structure here.
         current_structure = sequence.get(
-            "swing_current_structure",
-            sequence.get("current_structure", "UNKNOWN")
+            "current_structure",
+            "UNKNOWN"
         )
     
         current_direction = sequence.get(
@@ -6720,16 +6795,13 @@ if "candles" in st.session_state:
             None
         )
     
+        # Use the same canonical current structure shown by the
+        # BOS/CHoCH diagnostics. This prevents the setup layer from
+        # using a different structural definition.
         current_structure = str(
             sequence.get(
-                "swing_current_structure",
-                sequence.get(
-                    "structural_sequence",
-                    sequence.get(
-                        "current_structure",
-                        "UNKNOWN"
-                    )
-                )
+                "current_structure",
+                "UNKNOWN"
             )
         ).upper()
     
