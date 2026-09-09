@@ -90,57 +90,12 @@ st.caption(
 )
 
 # ============================================================
-# TOP TRADE SETUP / SIGNAL + UPLOAD LAYOUT
+# TOP TRADE SETUP / SIGNAL DISPLAY
 # ============================================================
-# The compact signal panel is populated later, after the existing
-# diagnostic pipeline has calculated the setup. The chart uploader
-# is rendered here beside it. No detection or signal logic is moved.
-top_signal_col, top_upload_col = st.columns(
-    [1, 1],
-    gap="large"
-)
-
-trade_setup_placeholder = top_signal_col.empty()
-
-with top_upload_col:
-
-    st.header("1️⃣ Upload Chart")
-
-    uploaded = st.file_uploader(
-        "Upload your Pocket Option chart",
-        type=[
-            "png",
-            "jpg",
-            "jpeg"
-        ],
-        key="chart_upload"
-    )
-
-    if uploaded is not None:
-
-        image = load_image(
-            uploaded
-        )
-
-        h, w = image.shape[:2]
-
-        st.write(
-            f"**Image size:** {w} × {h} px"
-        )
-
-if uploaded is None:
-
-    st.info(
-        "Upload a screenshot to begin."
-    )
-
-    st.stop()
-
-# Reuse the image dimensions below in the existing pipeline.
-image = load_image(
-    uploaded
-)
-h, w = image.shape[:2]
+# The diagnostic is calculated later, after the chart and
+# structure engine have run, but rendered here so it appears
+# at the top of the application.
+trade_setup_placeholder = st.empty()
 
 
 # ============================================================
@@ -4973,8 +4928,35 @@ def annotate_candles(
 # MAIN UI
 # ============================================================
 
-# The chart uploader is rendered at the top beside the compact
-# signal panel. Keep the processing pipeline below unchanged.
+st.header("1️⃣ Upload Chart")
+
+uploaded = st.file_uploader(
+    "Upload your Pocket Option chart",
+    type=[
+        "png",
+        "jpg",
+        "jpeg"
+    ]
+)
+
+if uploaded is None:
+
+    st.info(
+        "Upload a screenshot to begin."
+    )
+
+    st.stop()
+
+
+image = load_image(
+    uploaded
+)
+
+h, w = image.shape[:2]
+
+st.write(
+    f"**Image size:** {w} × {h} px"
+)
 
 # ============================================================
 # CROP
@@ -7159,6 +7141,10 @@ if "candles" in st.session_state:
         # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
         # ============================================================
 
+        st.header(
+            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+        )
+
         # ------------------------------------------------------------
         # RUN DIAGNOSTIC
         # ------------------------------------------------------------
@@ -7349,54 +7335,48 @@ if "candles" in st.session_state:
         )
 
         # ============================================================
-        # COMPACT TOP SIGNAL DISPLAY
+        # SIGNAL DISPLAY
         # ============================================================
 
-        with trade_setup_placeholder.container():
+        st.subheader("🎯 Signal")
 
-            st.header(
-                "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-            )
+        signal_value = signal_result["signal"]
 
-            st.subheader("🎯 Signal")
+        if signal_value == "BUY":
+            st.success("🟢 BUY")
 
-            signal_value = signal_result["signal"]
+        elif signal_value == "SELL":
+            st.error("🔴 SELL")
 
-            if signal_value == "BUY":
-                st.success("🟢 BUY")
+        else:
+            st.warning("⚪ NO SIGNAL")
 
-            elif signal_value == "SELL":
-                st.error("🔴 SELL")
+        signal_col1, signal_col2, signal_col3 = st.columns(3)
 
-            else:
-                st.warning("⚪ NO SIGNAL")
+        signal_col1.write(
+            "**Trigger:** "
+            f"`{signal_result['trigger']}`"
+        )
 
-            signal_col1, signal_col2, signal_col3 = st.columns(3)
+        signal_col2.write(
+            "**Latest Event:** "
+            f"`{signal_result['event']}`"
+        )
 
-            signal_col1.write(
-                "**Trigger:** "
-                f"`{signal_result['trigger']}`"
-            )
+        event_age_display = (
+            f"{signal_result['event_age']} candles"
+            if signal_result["event_age"] is not None
+            else "— candles"
+        )
 
-            signal_col2.write(
-                "**Latest Event:** "
-                f"`{signal_result['event']}`"
-            )
+        signal_col3.write(
+            "**Event Age:** "
+            f"`{event_age_display}`"
+        )
 
-            event_age_display = (
-                f"{signal_result['event_age']} candles"
-                if signal_result["event_age"] is not None
-                else "— candles"
-            )
-
-            signal_col3.write(
-                "**Event Age:** "
-                f"`{event_age_display}`"
-            )
-
-            with st.expander("🔎 Signal decision audit"):
-                for reason in signal_result["reasons"]:
-                    st.write(f"• {reason}")
+        with st.expander("🔎 Signal decision audit"):
+            for reason in signal_result["reasons"]:
+                st.write(f"• {reason}")
 
         st.divider()
 
