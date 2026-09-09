@@ -4935,6 +4935,10 @@ top_signal_col, top_upload_col = st.columns(
 
 with top_signal_col:
 
+    st.header(
+        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+    )
+
     st.subheader("🎯 Signal")
 
     signal_placeholder = st.empty()
@@ -4954,60 +4958,6 @@ with top_upload_col:
             "jpeg"
         ]
     )
-
-# ============================================================
-# TOP SIGNAL DISPLAY
-# ============================================================
-
-if "signal_result" in st.session_state:
-
-    signal_result = st.session_state["signal_result"]
-
-    signal_value = signal_result["signal"]
-
-    with signal_placeholder.container():
-
-        if signal_value == "BUY":
-            st.success("🟢 BUY")
-
-        elif signal_value == "SELL":
-            st.error("🔴 SELL")
-
-        else:
-            st.warning("⚪ NO SIGNAL")
-
-    with signal_details_placeholder.container():
-
-        signal_col1, signal_col2, signal_col3 = st.columns(3)
-
-        signal_col1.write(
-            "**Trigger:** "
-            f"`{signal_result['trigger']}`"
-        )
-
-        signal_col2.write(
-            "**Latest Event:** "
-            f"`{signal_result['event']}`"
-        )
-
-        event_age_display = (
-            f"{signal_result['event_age']} candles"
-            if signal_result["event_age"] is not None
-            else "— candles"
-        )
-
-        signal_col3.write(
-            "**Event Age:** "
-            f"`{event_age_display}`"
-        )
-
-        with st.expander("🔎 Signal decision audit"):
-
-            for reason in signal_result["reasons"]:
-
-                st.write(
-                    f"• {reason}"
-                )
 
 if uploaded is None:
 
@@ -7403,9 +7353,67 @@ if "candles" in st.session_state:
             sequence,
             setup_analysis
         )
-        
-        st.session_state["signal_result"] = signal_result
-        
+
+       # ============================================================
+       # ============================================================
+       # SIGNAL DISPLAY — TOP PANEL
+       # ============================================================
+    
+       signal_value = signal_result["signal"]
+    
+       with signal_placeholder.container():
+    
+           if signal_value == "BUY":
+               st.success(
+                   "🟢 BUY"
+               )
+    
+           elif signal_value == "SELL":
+               st.error(
+                   "🔴 SELL"
+               )
+    
+           else:
+               st.warning(
+                   "⚪ NO SIGNAL"
+               )
+    
+    
+       with signal_details_placeholder.container():
+    
+           signal_col1, signal_col2, signal_col3 = st.columns(3)
+    
+           signal_col1.write(
+               "**Trigger:** "
+               f"`{signal_result['trigger']}`"
+           )
+    
+           signal_col2.write(
+               "**Latest Event:** "
+               f"`{signal_result['event']}`"
+           )
+    
+           event_age_display = (
+               f"{signal_result['event_age']} candles"
+               if signal_result["event_age"] is not None
+               else "— candles"
+           )
+    
+           signal_col3.write(
+               "**Event Age:** "
+               f"`{event_age_display}`"
+           )
+    
+           with st.expander(
+               "🔎 Signal decision audit"
+           ):
+    
+               for reason in signal_result["reasons"]:
+    
+                   st.write(
+                       f"• {reason}"
+                   )
+
         # ============================================================
         # TOP METRICS
         # ============================================================
@@ -7437,6 +7445,8 @@ if "candles" in st.session_state:
             "Confluence Score",
             f"{setup_analysis['confluence_score']:.1f}%"
         )
+
+        st.divider()
 
         # ============================================================
         # SETUP DIAGNOSTIC
@@ -7567,10 +7577,9 @@ if "candles" in st.session_state:
     st.header(
         "🔟 How to Read the Scores"
     )
-    
+
     st.markdown(
         """
-
 **Geometry Score**
 
 Measures whether the detected object has a
