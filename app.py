@@ -86,7 +86,7 @@ with st.sidebar:
 st.title("🔹 Maluz Signal Engine V2.5")
 st.caption(
     "Vision Diagnostic • Candle Geometry • OHLC Reconstruction "
-    "• Structural Validation • Signal Engine"
+    "• Structural Validation • NO TRADING SIGNALS"
 )
 
 # ============================================================
@@ -5563,52 +5563,173 @@ if "candles" in st.session_state:
         # STRUCTURE
         # --------------------------------------------------------
     
-        st.subheader("Market Structure Diagnostic")
-
-        # Compact primary view; detailed evidence stays in one audit panel.
+        st.subheader(
+            "Market Structure Diagnostic"
+        )
+    
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Higher Highs", sequence["higher_highs"])
-        col2.metric("Higher Lows", sequence["higher_lows"])
-        col3.metric("Lower Highs", sequence["lower_highs"])
-        col4.metric("Lower Lows", sequence["lower_lows"])
+    
+        col1.metric(
+            "Higher Highs",
+            sequence["higher_highs"]
+        )
+    
+        col2.metric(
+            "Higher Lows",
+            sequence["higher_lows"]
+        )
+    
+        col3.metric(
+            "Lower Highs",
+            sequence["lower_highs"]
+        )
+    
+        col4.metric(
+            "Lower Lows",
+            sequence["lower_lows"]
+        )
+    
+        st.write(
+            f"**Current Trend:** "
+            f"`{sequence['trend']}`"
+        )
+    
+        st.write(
+            f"**Current Structure:** "
+            f"`{sequence['current_structure']}`"
+        )
 
+        st.subheader("Swing Structure Diagnostic")
+
+        swing_highs = sequence_analysis.get(
+            "swing_highs",
+            []
+        )
+        
+        swing_lows = sequence_analysis.get(
+            "swing_lows",
+            []
+        )
+        
         col1, col2 = st.columns(2)
-        col1.write(f"**Trend:** `{sequence['trend']}`")
-        col2.write(f"**Current Structure:** `{sequence['current_structure']}`")
-
-        swing_highs = sequence.get("swing_highs", [])
-        swing_lows = sequence.get("swing_lows", [])
-        bos_events = sequence.get("bos_choch_events", [])
-
-        with st.expander("🔍 Structure audit — swings & BOS / CHoCH", expanded=False):
-            audit1, audit2, audit3 = st.columns(3)
-            audit1.metric("Swing Highs", len(swing_highs))
-            audit2.metric("Swing Lows", len(swing_lows))
-            audit3.metric("BOS / CHoCH Events", len(bos_events))
+        
+        with col1:
+            st.metric(
+                "Swing Highs",
+                len(swing_highs)
+            )
+        
+        with col2:
+            st.metric(
+                "Swing Lows",
+                len(swing_lows)
+            )
+        
+        with st.expander("🔍 Swing structure audit", expanded=False):
 
             if swing_highs:
-                st.write("**Detected Swing Highs**")
-                st.dataframe(pd.DataFrame(swing_highs), use_container_width=True, hide_index=True)
+                swing_high_df = pd.DataFrame(
+                    swing_highs
+                )
+
+                st.write("Detected Swing Highs")
+                st.dataframe(
+                    swing_high_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
 
             if swing_lows:
-                st.write("**Detected Swing Lows**")
-                st.dataframe(pd.DataFrame(swing_lows), use_container_width=True, hide_index=True)
-
-            st.write(f"**BOS / CHoCH Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`")
-
-            last_event = sequence.get("last_bos_choch")
-            if last_event:
-                st.write(
-                    f"**Latest Event:** `{last_event.get('event', 'NONE')}` "
-                    f"at candle `{last_event.get('candle_index', 'NONE')}` "
-                    f"(price `{last_event.get('price', 'NONE')}`)"
+                swing_low_df = pd.DataFrame(
+                    swing_lows
                 )
+
+                st.write("Detected Swing Lows")
+                st.dataframe(
+                    swing_low_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+        # ========================================================
+        # BOS / CHoCH DIAGNOSTIC
+        # ========================================================
+
+        st.subheader(
+            "BOS / CHoCH Diagnostic"
+        )
+
+        with st.expander("🔍 BOS / CHoCH audit details", expanded=False):
+
+            bos_events = sequence.get(
+                "bos_choch_events",
+                []
+            )
+
+            bos_bias = sequence.get(
+                "bos_choch_bias",
+                "UNKNOWN"
+            )
+
+            last_event = sequence.get(
+                "last_bos_choch",
+                None
+            )
+
+            # --------------------------------------------------------
+            # CURRENT STRUCTURAL BIAS
+            # --------------------------------------------------------
+
+            st.write(
+                f"**Structural Bias:** `{bos_bias}`"
+            )
+
+            # --------------------------------------------------------
+            # LAST EVENT
+            # --------------------------------------------------------
+
+            if last_event:
+
+                st.write(
+                    f"**Latest Event:** "
+                    f"`{last_event['event']}`"
+                )
+
+                st.write(
+                    f"**Candle Index:** "
+                    f"`{last_event['candle_index']}`"
+                )
+
+                st.write(
+                    f"**Price Coordinate:** "
+                    f"`{last_event['price']}`"
+                )
+
             else:
-                st.info("No BOS or CHoCH detected yet.")
+
+                st.info(
+                    "No BOS or CHoCH detected yet."
+                )
+
+            # --------------------------------------------------------
+            # EVENT TABLE
+            # --------------------------------------------------------
 
             if bos_events:
-                st.write("**Detected BOS / CHoCH Events**")
-                st.dataframe(pd.DataFrame(bos_events), use_container_width=True, hide_index=True)
+
+                bos_df = pd.DataFrame(
+                    bos_events
+                )
+
+                st.write(
+                    "Detected BOS / CHoCH Events"
+                )
+
+                st.dataframe(
+                    bos_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
 
         # ========================================================
         # STEP 9 — STRUCTURE VALIDATION
@@ -5792,49 +5913,133 @@ if "candles" in st.session_state:
     # ============================================================
     # 11️⃣ MARKET STATE DIAGNOSTIC
     # ============================================================
-
-    st.header("Step 11 — Market State Diagnostic")
-
+    
+    st.header(
+        "Step 11 — Market State Diagnostic"
+    )
+    
     if "sequence_analysis" in st.session_state:
-        sequence = st.session_state["sequence_analysis"]
+    
+        sequence = st.session_state[
+            "sequence_analysis"
+        ]
+    
+        # --------------------------------------------------------
+        # EXTRACT STRUCTURAL INFORMATION
+        # --------------------------------------------------------
+    
+        structural_bias = sequence.get(
+            "structural_bias",
+            sequence.get("bos_choch_bias", "UNKNOWN")
+        )
+    
+        # Use the canonical structure produced by the BOS/CHoCH
+        # state machine. Never fall back to the old lifetime-count
+        # swing structure here.
+        current_structure = sequence.get(
+            "current_structure",
+            "UNKNOWN"
+        )
+    
+        current_direction = sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        )
+    
+        last_event = sequence.get(
+            "last_bos_choch",
+            None
+        )
+    
+        swing_highs = sequence.get(
+            "swing_highs",
+            []
+        )
+    
+        swing_lows = sequence.get(
+            "swing_lows",
+            []
+        )
+    
+        # --------------------------------------------------------
+        # DETERMINE LATEST STRUCTURAL EVENT
+        # --------------------------------------------------------
+    
+        if last_event:
+    
+            latest_event = last_event.get(
+                "event",
+                "NONE"
+            )
+    
+            latest_event_index = last_event.get(
+                "candle_index",
+                None
+            )
+    
+        else:
+    
+            latest_event = "NONE"
+            latest_event_index = None
+    
+        # --------------------------------------------------------
+        # CANONICAL STRUCTURE DECISION
+        # --------------------------------------------------------
 
-        structural_bias = str(
-            sequence.get("structural_bias", sequence.get("bos_choch_bias", "UNKNOWN"))
-        ).upper()
-        current_direction = str(sequence.get("current_direction", "UNKNOWN")).upper()
-        current_structure = str(sequence.get("current_structure", "UNKNOWN")).upper()
         structural_sequence = str(
-            sequence.get("structural_sequence", "NO COMPLETE NEW SEQUENCE")
+            sequence.get(
+                "structural_sequence",
+                "NO COMPLETE NEW SEQUENCE"
+            )
         ).upper()
 
-        last_event = sequence.get("last_bos_choch")
-        latest_event = str(last_event.get("event", "NONE")).upper() if last_event else "NONE"
-        latest_event_index = last_event.get("candle_index") if last_event else None
+        event_name = (
+            str(last_event.get("event", ""))
+            .upper()
+            if last_event
+            else ""
+        )
+
+        # --------------------------------------------------------
+        # MARKET STATE
+        # --------------------------------------------------------
 
         if structural_bias == "BULLISH":
             if latest_event == "BULLISH BOS":
                 market_state = "BULLISH CONTINUATION"
-            elif latest_event == "BULLISH CHOCH":
+            elif latest_event == "BULLISH CHoCH":
                 market_state = "BULLISH STRUCTURAL SHIFT"
             else:
                 market_state = "BULLISH STRUCTURE"
+
         elif structural_bias == "BEARISH":
             if latest_event == "BEARISH BOS":
                 market_state = "BEARISH CONTINUATION"
-            elif latest_event == "BEARISH CHOCH":
+            elif latest_event == "BEARISH CHoCH":
                 market_state = "BEARISH STRUCTURAL SHIFT"
             else:
                 market_state = "BEARISH STRUCTURE"
+
         else:
             market_state = "UNDEFINED / MIXED"
 
+        # A completed HH -> HL / LL -> LH sequence is the
+        # canonical swing confirmation. A BOS also confirms
+        # the corresponding direction.
         bullish_confirmed = (
             structural_bias == "BULLISH"
-            and (structural_sequence == "HH -> HL" or latest_event == "BULLISH BOS")
+            and (
+                structural_sequence == "HH -> HL"
+                or event_name == "BULLISH BOS"
+            )
         )
+
         bearish_confirmed = (
             structural_bias == "BEARISH"
-            and (structural_sequence == "LL -> LH" or latest_event == "BEARISH BOS")
+            and (
+                structural_sequence == "LL -> LH"
+                or event_name == "BEARISH BOS"
+            )
         )
 
         if bullish_confirmed:
@@ -5846,130 +6051,446 @@ if "candles" in st.session_state:
         else:
             structure_confirmation = "INSUFFICIENT STRUCTURE"
 
+        # --------------------------------------------------------
+        # CURRENT CANDLE RELATIONSHIP
+        # --------------------------------------------------------
+
         if (
-            (structural_bias == "BULLISH" and current_direction == "GREEN")
-            or (structural_bias == "BEARISH" and current_direction == "RED")
+            structural_bias == "BULLISH"
+            and current_direction == "GREEN"
         ):
-            candle_alignment = "ALIGNED"
+            candle_alignment = "ALIGNED WITH BIAS"
+
+        elif (
+            structural_bias == "BEARISH"
+            and current_direction == "RED"
+        ):
+            candle_alignment = "ALIGNED WITH BIAS"
+
         elif structural_bias in ("BULLISH", "BEARISH"):
-            candle_alignment = "COUNTER-DIRECTIONAL"
+            candle_alignment = "COUNTER-DIRECTION CANDLE"
+
         else:
             candle_alignment = "NO CLEAR ALIGNMENT"
 
-        # Short labels prevent Streamlit metric cards from truncating the decision.
+        # --------------------------------------------------------
+        # DISPLAY
+        # --------------------------------------------------------
+
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Market State", market_state)
-        col2.metric("Structural Bias", structural_bias)
-        col3.metric("Structure", structure_confirmation)
-        col4.metric("Candle Alignment", candle_alignment)
+
+        col1.metric(
+            "Market State",
+            market_state
+        )
+
+        col2.metric(
+            "Structural Bias",
+            structural_bias
+        )
+
+        col3.metric(
+            "Structure",
+            structure_confirmation
+        )
+
+        col4.metric(
+            "Candle Alignment",
+            candle_alignment
+        )
 
         st.subheader("Structure Interpretation")
-        trace1, trace2, trace3 = st.columns(3)
-        trace1.write(f"**Sequence:** `{structural_sequence}`")
-        trace2.write(f"**Latest Event:** `{latest_event}`")
-        trace3.write(f"**Event Candle:** `{latest_event_index if latest_event_index is not None else 'NONE'}`")
+
+        trace_col1, trace_col2, trace_col3 = st.columns(3)
+
+        trace_col1.write(
+            f"**Structural Sequence:** `{structural_sequence}`"
+        )
+
+        trace_col2.write(
+            f"**Latest Event:** `{latest_event}`"
+        )
+
+        trace_col3.write(
+            f"**Event Candle:** `{latest_event_index if latest_event_index is not None else 'NONE'}`"
+        )
+
+        structure_quality = float(
+            sequence.get("sequence_integrity", 0.0)
+        )
 
         if (
-            structure_confirmation in ("CONFIRMED BULLISH", "CONFIRMED BEARISH")
-            and candle_alignment == "ALIGNED"
+            structure_confirmation
+            in ("CONFIRMED BULLISH", "CONFIRMED BEARISH")
+            and candle_alignment == "ALIGNED WITH BIAS"
         ):
-            st.success("Current structure and candle direction are aligned.")
+            st.success(
+                "The current structural state and candle direction are aligned."
+            )
         elif structure_confirmation == "STRUCTURE DEVELOPING":
-            st.warning("Directional bias exists, but structural confirmation is still developing.")
+            st.warning(
+                "The directional bias exists, but the latest completed structure "
+                "has not fully confirmed the direction."
+            )
         elif structure_confirmation == "INSUFFICIENT STRUCTURE":
-            st.info("There is not enough completed structure to establish a directional state.")
+            st.info(
+                "There is not enough completed structure to establish a directional state."
+            )
         else:
-            st.warning("The current candle is counter-directional. This does not invalidate structure by itself.")
+            st.warning(
+                "The current candle is counter-directional to the validated structure. "
+                "The candle alone does not invalidate the structure."
+            )
 
-        with st.expander("🔍 Step 11 audit", expanded=False):
-            st.write(f"**Current Structure:** `{current_structure}`")
-            st.write(f"**BOS / CHoCH Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`")
-            st.write(f"**Transition Bias:** `{sequence.get('transition_bias', 'NONE')}`")
-            st.write(f"**Current Candle:** `{current_direction}`")
-            st.write(f"**Sequence Quality:** `{float(sequence.get('sequence_integrity', 0.0)):.1f}%`")
-    else:
-        st.info("Market state cannot be evaluated until sequence analysis is available.")
+        with st.expander("🔍 Raw structure audit", expanded=False):
+            st.write(
+                f"**Latest Swing High:** "
+                f"`{swing_highs[-1].get('structure', 'NONE') if swing_highs else 'NONE'}`"
+            )
+            st.write(
+                f"**Latest Swing Low:** "
+                f"`{swing_lows[-1].get('structure', 'NONE') if swing_lows else 'NONE'}`"
+            )
+            st.write(
+                f"**Confirmed BOS Bias:** "
+                f"`{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
+            )
+            st.write(
+                f"**Transition Bias:** "
+                f"`{sequence.get('transition_bias', 'NONE')}`"
+            )
+            st.write(
+                f"**Current Structural Bias:** "
+                f"`{structural_bias}`"
+            )
+            st.write(
+                f"**Current Structure:** "
+                f"`{current_structure}`"
+            )
+            st.write(
+                f"**Current Candle:** "
+                f"`{current_direction}`"
+            )
+            st.write(
+                f"**Structure Quality:** "
+                f"`{structure_quality:.1f}%`"
+            )
 
+    # ============================================================
     # 1️⃣2️⃣ CURRENT CANDLE CONTEXT
     # ============================================================
-
+    
     st.header("Step 12 — Current Candle Context")
-
+    
     if "sequence_analysis" in st.session_state:
+    
         sequence = st.session_state["sequence_analysis"]
-
-        current_direction = str(sequence.get("current_direction", "UNKNOWN")).upper()
-        body_percentage = float(sequence.get("body_percentage", 0.0))
-        upper_wick_percentage = float(sequence.get("upper_wick_percentage", 0.0))
-        lower_wick_percentage = float(sequence.get("lower_wick_percentage", 0.0))
-        current_confidence = float(sequence.get("current_confidence", 0.0))
-        structural_bias = str(
-            sequence.get("structural_bias", sequence.get("bos_choch_bias", "UNKNOWN"))
-        ).upper()
-
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE DATA
+        # --------------------------------------------------------
+    
+        current_direction = sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        )
+    
+        body_percentage = sequence.get(
+            "body_percentage",
+            0.0
+        )
+    
+        upper_wick_percentage = sequence.get(
+            "upper_wick_percentage",
+            0.0
+        )
+    
+        lower_wick_percentage = sequence.get(
+            "lower_wick_percentage",
+            0.0
+        )
+    
+        current_confidence = sequence.get(
+            "current_confidence",
+            0.0
+        )
+    
+        structural_bias = sequence.get(
+            "structural_bias",
+            sequence.get("bos_choch_bias", "UNKNOWN")
+        )
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE STRENGTH
+        # --------------------------------------------------------
+    
         if body_percentage >= 70:
+
             candle_strength = "STRONG"
+
         elif body_percentage >= 45:
+
             candle_strength = "MODERATE"
+
         elif body_percentage >= 25:
+
             candle_strength = "WEAK"
-        else:
-            candle_strength = "INDECISIVE"
 
-        if upper_wick_percentage >= 40 and upper_wick_percentage > lower_wick_percentage:
-            wick_character = "UPPER-WICK REJECTION"
-        elif lower_wick_percentage >= 40 and lower_wick_percentage > upper_wick_percentage:
-            wick_character = "LOWER-WICK REJECTION"
-        elif upper_wick_percentage >= 30 and lower_wick_percentage >= 30:
-            wick_character = "TWO-SIDED REJECTION"
         else:
-            wick_character = "NO MAJOR REJECTION"
 
-        if candle_strength == "STRONG" and wick_character == "NO MAJOR REJECTION":
-            momentum_state = "STRONG DIRECTIONAL MOMENTUM"
-        elif candle_strength == "STRONG":
-            momentum_state = "STRONG MOVE WITH REJECTION"
-        elif candle_strength == "MODERATE":
-            momentum_state = "MODERATE MOMENTUM"
-        elif candle_strength in ("WEAK", "INDECISIVE"):
-            momentum_state = "LOW MOMENTUM"
-        else:
-            momentum_state = "UNDEFINED"
+            candle_strength = "VERY WEAK"
 
+        # --------------------------------------------------------
+        # WICK CHARACTER
+        # --------------------------------------------------------
+    
         if (
-            (structural_bias == "BULLISH" and current_direction == "GREEN")
-            or (structural_bias == "BEARISH" and current_direction == "RED")
+            upper_wick_percentage >= 40
+            and
+            upper_wick_percentage > lower_wick_percentage
         ):
-            structural_relationship = "ALIGNED WITH STRUCTURE"
-        elif structural_bias in ("BULLISH", "BEARISH"):
-            structural_relationship = "COUNTER-DIRECTIONAL"
+    
+            wick_character = "UPPER-WICK REJECTION"
+    
+        elif (
+            lower_wick_percentage >= 40
+            and
+            lower_wick_percentage > upper_wick_percentage
+        ):
+    
+            wick_character = "LOWER-WICK REJECTION"
+    
+        elif (
+            upper_wick_percentage >= 30
+            and
+            lower_wick_percentage >= 30
+        ):
+    
+            wick_character = "TWO-SIDED REJECTION"
+    
         else:
-            structural_relationship = "UNDEFINED"
-
+    
+            wick_character = "NO MAJOR REJECTION"
+    
+        # --------------------------------------------------------
+        # CANDLE / STRUCTURE RELATIONSHIP
+        # --------------------------------------------------------
+    
+        if (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            structural_relationship = (
+                "CANDLE SUPPORTS BULLISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            structural_relationship = (
+                "CANDLE SUPPORTS BEARISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            structural_relationship = (
+                "BEARISH CANDLE AGAINST BULLISH STRUCTURE"
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            structural_relationship = (
+                "BULLISH CANDLE AGAINST BEARISH STRUCTURE"
+            )
+    
+        else:
+    
+            structural_relationship = (
+                "STRUCTURAL RELATIONSHIP UNDEFINED"
+            )
+    
+        # --------------------------------------------------------
+        # MOMENTUM INTERPRETATION
+        # --------------------------------------------------------
+    
+        if (
+            candle_strength == "STRONG"
+            and
+            wick_character == "NO MAJOR REJECTION"
+        ):
+    
+            momentum_state = "STRONG DIRECTIONAL MOMENTUM"
+    
+        elif candle_strength == "STRONG":
+    
+            momentum_state = "STRONG MOVE WITH REJECTION"
+    
+        elif candle_strength == "MODERATE":
+    
+            momentum_state = "MODERATE MOMENTUM"
+    
+        elif candle_strength in (
+            "WEAK",
+            "VERY WEAK"
+        ):
+    
+            momentum_state = "LOW MOMENTUM"
+    
+        else:
+    
+            momentum_state = "UNDEFINED"
+    
+        # --------------------------------------------------------
+        # DISPLAY PRIMARY METRICS
+        # --------------------------------------------------------
+    
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Direction", current_direction)
-        col2.metric("Strength", candle_strength)
-        col3.metric("Wick", wick_character)
-        col4.metric("Detection Confidence", f"{current_confidence:.1f}%")
-
-        st.write(f"**Momentum:** `{momentum_state}` &nbsp;&nbsp; **Structure:** `{structural_relationship}`")
-
-        if structural_relationship == "ALIGNED WITH STRUCTURE":
-            st.success("The current candle supports the validated structural direction.")
-        elif structural_relationship == "COUNTER-DIRECTIONAL":
-            st.warning("The current candle is moving against structure. The candle alone does not reverse the structural bias.")
+    
+        col1.metric(
+            "Direction",
+            current_direction
+        )
+    
+        col2.metric(
+            "Candle Strength",
+            candle_strength
+        )
+    
+        col3.metric(
+            "Wick Character",
+            wick_character
+        )
+    
+        col4.metric(
+            "Detection Confidence",
+            f"{current_confidence:.1f}%"
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # CANDLE PROPORTIONS
+        # --------------------------------------------------------
+    
+        st.subheader("Candle Composition")
+    
+        col1, col2, col3 = st.columns(3)
+    
+        col1.metric(
+            "Body",
+            f"{body_percentage:.1f}%"
+        )
+    
+        col2.metric(
+            "Upper Wick",
+            f"{upper_wick_percentage:.1f}%"
+        )
+    
+        col3.metric(
+            "Lower Wick",
+            f"{lower_wick_percentage:.1f}%"
+        )
+    
+        st.divider()
+    
+        # --------------------------------------------------------
+        # INTERPRETATION
+        # --------------------------------------------------------
+    
+        st.subheader("Candle Interpretation")
+    
+        st.write(
+            f"**Momentum:** `{momentum_state}`"
+        )
+    
+        st.write(
+            f"**Structural Relationship:** "
+            f"`{structural_relationship}`"
+        )
+    
+        # --------------------------------------------------------
+        # CONTEXT WARNING / CONFIRMATION
+        # --------------------------------------------------------
+    
+        if (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            st.warning(
+                "The current candle is bearish, "
+                "but the validated structural bias remains "
+                "bullish. The candle alone does not invalidate "
+                "the bullish structure."
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            st.warning(
+                "The current candle is bullish, "
+                "but the validated structural bias remains "
+                "bearish. The candle alone does not invalidate "
+                "the bearish structure."
+            )
+    
+        elif (
+            structural_bias == "BULLISH"
+            and
+            current_direction == "GREEN"
+        ):
+    
+            st.success(
+                "The current candle is aligned with "
+                "the validated bullish structure."
+            )
+    
+        elif (
+            structural_bias == "BEARISH"
+            and
+            current_direction == "RED"
+        ):
+    
+            st.success(
+                "The current candle is aligned with "
+                "the validated bearish structure."
+            )
+    
         else:
-            st.info("A reliable candle-to-structure relationship cannot yet be established.")
-
-        with st.expander("🔍 Candle composition audit", expanded=False):
-            comp1, comp2, comp3 = st.columns(3)
-            comp1.metric("Body", f"{body_percentage:.1f}%")
-            comp2.metric("Upper Wick", f"{upper_wick_percentage:.1f}%")
-            comp3.metric("Lower Wick", f"{lower_wick_percentage:.1f}%")
-            st.write(f"**Sequence Integrity:** `{float(sequence.get('sequence_integrity', 0.0)):.1f}%`")
+    
+            st.info(
+                "There is not enough information to establish "
+                "a candle-to-structure relationship."
+            )
+    
     else:
-        st.info("Current candle context cannot be evaluated until sequence analysis is available.")
-
+    
+        st.info(
+            "Current candle context cannot be evaluated "
+            "until sequence analysis is available."
+        )
+    
+    # ============================================================
+    # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
+    # ============================================================
+    
     def diagnose_trade_setup(
         sequence,
         current_direction,
@@ -6537,237 +7058,268 @@ if "candles" in st.session_state:
         }
     
     # ============================================================
-    # SIGNAL ENGINE — V1
-    # ============================================================
-    # This is deliberately stricter than the setup diagnostic.
-    # A valid setup is NOT automatically a BUY/SELL signal.
-    #
-    # V1 is a continuation trigger:
-    #   1. Structure must be confirmed.
-    #   2. Latest structural event must agree with the setup.
-    #   3. The latest event must be recent.
-    #   4. Current candle must agree with direction.
-    #   5. Current candle must have strong body dominance.
-    #   6. Detection and sequence quality must pass minimum levels.
-    #   7. Major rejection blocks the signal.
-    #
-    # If these conditions are not met, the engine returns NO SIGNAL.
-    # ============================================================
-
-    def generate_signal(sequence, setup_analysis):
-
-        current_index = sequence.get("current_candle_index", None)
-        last_event = sequence.get("last_bos_choch")
-
-        try:
-            current_index = int(current_index)
-        except (TypeError, ValueError):
-            current_index = None
-
-        if not last_event or current_index is None:
-            return {
-                "signal": "NO SIGNAL",
-                "trigger": "INSUFFICIENT EVENT DATA",
-                "reasons": ["A current candle index and latest structural event are required."],
-            }
-
-        try:
-            event_index = int(last_event.get("candle_index"))
-        except (TypeError, ValueError):
-            return {
-                "signal": "NO SIGNAL",
-                "trigger": "INVALID EVENT INDEX",
-                "reasons": ["The latest structural event has no valid candle index."],
-            }
-
-        event_age = current_index - event_index
-
-        direction = setup_analysis.get("setup_direction", "NONE")
-        structure_status = setup_analysis.get("structure_status", "")
-        candle_alignment = setup_analysis.get("candle_alignment", "")
-        candle_strength = setup_analysis.get("candle_strength", "")
-        event_alignment = setup_analysis.get("event_alignment", "")
-        rejection_status = setup_analysis.get("rejection_status", "")
-        confidence = float(sequence.get("current_confidence", 0))
-        sequence_integrity = float(sequence.get("sequence_integrity", 0))
-        event_name = str(last_event.get("event", "")).upper()
-
-        reasons = []
-
-        # --------------------------------------------------------
-        # HARD GATES
-        # --------------------------------------------------------
-        if direction not in ("LONG", "SHORT"):
-            reasons.append("No bullish or bearish setup direction.")
-
-        if "CONFIRMED" not in structure_status:
-            reasons.append("Structure is not confirmed.")
-
-        if event_alignment != "ALIGNED":
-            reasons.append("Latest BOS / CHoCH event does not align with the setup direction.")
-
-        # V1 does not chase old structure.
-        if event_age < 0:
-            reasons.append("Latest structural event occurs after the current candle.")
-        elif event_age > 2:
-            reasons.append(f"Latest structural event is {event_age} candles old; trigger is no longer fresh.")
-
-        if candle_alignment != "ALIGNED":
-            reasons.append("Current candle is not aligned with the setup direction.")
-
-        if candle_strength != "STRONG":
-            reasons.append("Current candle does not meet the strong-body trigger threshold.")
-
-        if confidence < 85:
-            reasons.append(f"Current candle detection confidence is only {confidence:.1f}%.")
-
-        if sequence_integrity < 90:
-            reasons.append(f"Sequence integrity is only {sequence_integrity:.1f}%.")
-
-        if rejection_status != "NO MAJOR REJECTION":
-            reasons.append("Major wick rejection blocks the signal.")
-
-        # Require an actual structural break event for V1.
-        if event_name not in ("BULLISH BOS", "BEARISH BOS"):
-            reasons.append("V1 requires a confirmed BOS; CHoCH alone does not trigger an entry.")
-
-        if reasons:
-            return {
-                "signal": "NO SIGNAL",
-                "trigger": "CONDITIONS NOT MET",
-                "event_age": event_age,
-                "event": event_name or "NONE",
-                "reasons": reasons,
-            }
-
-        signal = "BUY" if direction == "LONG" else "SELL"
-
-        return {
-            "signal": signal,
-            "trigger": "FRESH BOS + ALIGNED CONFIRMATION",
-            "event_age": event_age,
-            "event": event_name,
-            "reasons": [
-                "Structure is confirmed.",
-                "Latest BOS agrees with structural direction.",
-                "The BOS is fresh (0–2 candles old).",
-                "Current candle is strongly aligned with the setup.",
-                "Detection and sequence quality meet minimum thresholds.",
-                "No major rejection is present.",
-            ],
-        }
-
-    # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
-
-    st.header("1️⃣3️⃣ Trade Setup / Confluence Diagnostic")
-
+    
+    st.header(
+        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+    )
+    
+    # ------------------------------------------------------------
+    # RUN DIAGNOSTIC
+    # ------------------------------------------------------------
+    
     setup_analysis = diagnose_trade_setup(
+    
         sequence,
-        sequence.get("current_direction", "UNKNOWN"),
-        sequence.get("body_percentage", 0),
-        sequence.get("upper_wick_percentage", 0),
-        sequence.get("lower_wick_percentage", 0),
-        sequence.get("current_confidence", 0)
-    )
-
-    # ========================================================
-    # ACTUAL SIGNAL
-    # ========================================================
-
-    signal_analysis = generate_signal(
-        sequence,
-        setup_analysis
-    )
-
-    st.header("🎯 Signal")
-
-    signal = signal_analysis["signal"]
-
-    if signal == "BUY":
-        st.success("# 🟢 BUY")
-    elif signal == "SELL":
-        st.error("# 🔴 SELL")
-    else:
-        st.warning("# ⚪ NO SIGNAL")
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Trigger", signal_analysis["trigger"])
-    col2.metric("Latest Event", signal_analysis.get("event", "NONE"))
-    col3.metric("Event Age", f'{signal_analysis.get("event_age", "—")} candles')
-
-    with st.expander("🔍 Signal decision audit", expanded=False):
-        for reason in signal_analysis["reasons"]:
-            st.write(f"• {reason}")
-
-    # Diagnostic score only — never present this as a probability of success.
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Setup", setup_analysis["setup_direction"])
-    col2.metric("Structural Bias", setup_analysis["structural_bias"])
-    col3.metric("Candle", setup_analysis["candle_alignment"])
-    col4.metric("Diagnostic Score", f"{setup_analysis['confluence_score']:.1f}%")
-
-    st.caption("Diagnostic score only — not a win probability or prediction of trade outcome.")
-
-    st.subheader("Setup Status")
-    final_status = setup_analysis["final_status"]
-    if final_status.startswith("VALID"):
-        st.success(final_status)
-    elif final_status.startswith("DEVELOPING"):
-        st.warning(final_status)
-    else:
-        st.warning(final_status)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Structure:** `{setup_analysis['structure_status']}`")
-        st.write(f"**Candle Strength:** `{setup_analysis['candle_strength']}`")
-        st.write(f"**Event Alignment:** `{setup_analysis['event_alignment']}`")
-    with col2:
-        st.write(f"**Rejection:** `{setup_analysis['rejection_status']}`")
-        st.write(f"**Detection Confidence:** `{sequence.get('current_confidence', 0):.1f}%`")
-        st.write(f"**Sequence Integrity:** `{sequence.get('sequence_integrity', 0):.1f}%`")
-
-    st.subheader("Why the Setup Has This Status")
-    for reason in setup_analysis["reasons"]:
-        st.write(f"• {reason}")
-
-    if setup_analysis["candle_alignment"] == "COUNTER-DIRECTIONAL":
-        st.info(
-            "A counter-directional candle does not by itself reverse market structure. "
-            "A structural reversal requires a confirmed break of the protected structural level."
+    
+        sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        ),
+    
+        sequence.get(
+            "body_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "upper_wick_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "lower_wick_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "current_confidence",
+            0
         )
-
+    )
+    
+    # ============================================================
+    # TOP METRICS
+    # ============================================================
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    col1.metric(
+        "Setup Direction",
+        setup_analysis[
+            "setup_direction"
+        ]
+    )
+    
+    col2.metric(
+        "Structural Bias",
+        setup_analysis[
+            "structural_bias"
+        ]
+    )
+    
+    col3.metric(
+        "Candle Alignment",
+        setup_analysis[
+            "candle_alignment"
+        ]
+    )
+    
+    col4.metric(
+        "Confluence Score",
+        f"{setup_analysis['confluence_score']:.1f}%"
+    )
+    
+    st.divider()
+    
+    # ============================================================
+    # SETUP DIAGNOSTIC
+    # ============================================================
+    
+    st.subheader(
+        "Setup Diagnostic"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+    
+        st.write(
+            "**Structure Status:** "
+            f"`{setup_analysis['structure_status']}`"
+        )
+    
+        st.write(
+            "**Candle Strength:** "
+            f"`{setup_analysis['candle_strength']}`"
+        )
+    
+        st.write(
+            "**Structural Event Alignment:** "
+            f"`{setup_analysis['event_alignment']}`"
+        )
+    
+    with col2:
+    
+        st.write(
+            "**Rejection Status:** "
+            f"`{setup_analysis['rejection_status']}`"
+        )
+    
+        st.write(
+            "**Current Candle:** "
+            f"`{sequence.get('current_direction', 'UNKNOWN')}`"
+        )
+    
+        st.write(
+            "**Detection Confidence:** "
+            f"`{sequence.get('current_confidence', 0):.1f}%`"
+        )
+    
+    # ============================================================
+    # FINAL STATUS
+    # ============================================================
+    
+    st.subheader(
+        "Final Setup Status"
+    )
+    
+    final_status = setup_analysis[
+        "final_status"
+    ]
+    
+    if final_status.startswith(
+        "VALID"
+    ):
+    
+        st.success(
+            final_status
+        )
+    
+    elif final_status.startswith(
+        "DEVELOPING"
+    ):
+    
+        st.warning(
+            final_status
+        )
+    
+    elif final_status.startswith(
+        "WAIT"
+    ):
+    
+        st.warning(
+            final_status
+        )
+    
+    else:
+    
+        st.info(
+            final_status
+        )
+    
+    # ============================================================
+    # REASONING
+    # ============================================================
+    
+    st.subheader(
+        "Diagnostic Reasoning"
+    )
+    
+    for reason in setup_analysis[
+        "reasons"
+    ]:
+    
+        st.write(
+            f"• {reason}"
+        )
+    
+    # ============================================================
+    # IMPORTANT INTERPRETATION
+    # ============================================================
+    
+    if (
+        setup_analysis[
+            "candle_alignment"
+        ]
+        ==
+        "COUNTER-DIRECTIONAL"
+    ):
+    
+        st.info(
+            "The current candle is moving against the "
+            "validated structural direction. This does NOT "
+            "by itself invalidate the structure. A structural "
+            "reversal requires a confirmed break of the "
+            "protected structural level."
+        )
     # ========================================================
-    # STEP 14 — INTERPRETATION GUIDE
+    # INTERPRETATION GUIDE
     # ========================================================
 
-    st.header("1️⃣5️⃣ How to Read the Diagnostics")
+    st.header(
+        "1️⃣4️⃣ How to Read the Scores"
+    )
 
-    with st.expander("📘 Score definitions", expanded=False):
-        st.markdown(
-            """
-**Geometry Score** — how closely a detected object resembles a candle.
+    st.markdown(
+        """
+**Geometry Score**
 
-**Colour Confidence** — how strongly the detected pixels support RED or GREEN.
+Measures whether the detected object has a
+plausible candle-like shape.
 
-**Structure Score** — how well the candle fits the surrounding sequence in size and spacing.
+**Colour Confidence**
 
-**Final Confidence** — weighted combination of geometry, colour, structure, and detection support.
+Measures how strongly the detected pixels support
+the assigned RED or GREEN classification.
+
+**Structure Score**
+
+Measures how well the candle fits the surrounding
+candle sequence in terms of size and spacing.
+
+**Final Confidence**
+
+Weighted combination of:
+
+- Geometry: 40%
+- Colour: 25%
+- Structure: 25%
+- Detection support: 10%
 
 **Spacing**
-- **Normal:** locally consistent spacing.
-- **Suspicious Gap:** unusual spacing without enough evidence to call a missing candle.
-- **Possible Missing Candle:** a large gap supported by normal neighbouring spacing.
 
-A possible missing candle is a hypothesis, not an inserted candle.
+- **Normal:** spacing is consistent with the local sequence.
+- **Suspicious Gap:** spacing is unusual but not strong enough
+  to claim a missing candle.
+- **Possible Missing Candle:** a large gap is supported by
+  normal neighbouring spacing.
 
-**Diagnostic Score** — measures rule-based confluence inside this diagnostic. It is **not** a probability of a winning trade.
+A "Possible Missing Candle" is still a hypothesis.
+It is NOT treated as an actual candle.
 """
-        )
+    )
+
+
+    # ========================================================
+    # IMPORTANT
+    # ========================================================
 
     st.warning(
-        "This version is diagnostic only. It does not generate BUY or SELL signals. "
-        "Validate the extraction and structure engine across independent screenshots before using the output for trading decisions."
+        """
+IMPORTANT:
+
+This version does NOT generate BUY or SELL signals.
+
+The purpose of V2.3 is still to determine whether
+a screenshot can be converted into a reliable candle
+sequence.
+
+Do not use the output as a trading signal yet.
+
+The extraction layer must be validated against
+multiple independent screenshots before we build
+any trading logic on top of it.
+"""
     )
