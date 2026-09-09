@@ -90,46 +90,15 @@ st.caption(
 )
 
 # ============================================================
-# TOP SIGNAL + UPLOAD LAYOUT
+# TOP TRADE SETUP / SIGNAL + UPLOAD LAYOUT
 # ============================================================
-# The signal is calculated later, after the chart/structure engine
-# has run, but its final display is rendered into the left-hand
-# container below so the user sees the trading decision first.
-# The chart uploader stays visible beside it.
+# These placeholders are created at the top, while their content
+# is populated later after the existing diagnostic pipeline runs.
+# No detection or signal logic is changed here.
+top_signal_col, top_upload_col = st.columns([1, 1])
 
-top_signal_placeholder, top_upload_placeholder = st.columns(
-    [1, 1],
-    gap="large"
-)
-
-with top_upload_placeholder:
-    st.header("1️⃣ Upload Chart")
-
-    uploaded = st.file_uploader(
-        "Upload your Pocket Option chart",
-        type=[
-            "png",
-            "jpg",
-            "jpeg"
-        ],
-        key="top_chart_uploader"
-    )
-
-if uploaded is None:
-    st.info("Upload a screenshot to begin.")
-    st.stop()
-
-image = load_image(uploaded)
-h, w = image.shape[:2]
-
-with top_upload_placeholder:
-    st.write(
-        f"**Image size:** {w} × {h} px"
-    )
-
-# This is intentionally left empty until the diagnostic has been
-# calculated later in the pipeline.
-trade_setup_placeholder = top_signal_placeholder.empty()
+trade_setup_placeholder = top_signal_col.empty()
+upload_chart_placeholder = top_upload_col.empty()
 
 
 # ============================================================
@@ -4962,9 +4931,37 @@ def annotate_candles(
 # MAIN UI
 # ============================================================
 
-# The upload control is intentionally rendered at the top beside
-# the signal panel. The rest of the processing pipeline continues
-# below without changing its logic.
+with upload_chart_placeholder.container():
+
+    st.header("1️⃣ Upload Chart")
+
+    uploaded = st.file_uploader(
+        "Upload your Pocket Option chart",
+        type=[
+            "png",
+            "jpg",
+            "jpeg"
+        ]
+    )
+
+    if uploaded is None:
+
+        st.info(
+            "Upload a screenshot to begin."
+        )
+
+        st.stop()
+
+
+    image = load_image(
+        uploaded
+    )
+
+    h, w = image.shape[:2]
+
+    st.write(
+        f"**Image size:** {w} × {h} px"
+    )
 
 # ============================================================
 # CROP
@@ -7149,10 +7146,6 @@ if "candles" in st.session_state:
         # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
         # ============================================================
 
-        # The full diagnostic remains in the normal pipeline below,
-        # but the compact Signal panel is rendered into the top-left
-        # placeholder so it sits beside Upload Chart.
-
         # ------------------------------------------------------------
         # RUN DIAGNOSTIC
         # ------------------------------------------------------------
@@ -7345,13 +7338,17 @@ if "candles" in st.session_state:
         # ============================================================
         # TOP SIGNAL DISPLAY
         # ============================================================
-
-        signal_value = signal_result["signal"]
-
+        # Only the compact signal portion is rendered at the top.
+        # The existing detailed Trade Setup diagnostics remain below.
         with trade_setup_placeholder.container():
 
-            st.header("1️⃣3️⃣ Trade Setup / Confluence Diagnostic")
+            st.header(
+                "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+            )
+
             st.subheader("🎯 Signal")
+
+            signal_value = signal_result["signal"]
 
             if signal_value == "BUY":
                 st.success("🟢 BUY")
@@ -7390,10 +7387,12 @@ if "candles" in st.session_state:
                     st.write(f"• {reason}")
 
         # ============================================================
-        # DETAILED SETUP DIAGNOSTICS
+        # STEP 13 — DETAILED TRADE SETUP / CONFLUENCE DIAGNOSTIC
         # ============================================================
 
-        st.divider()
+        st.header(
+            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+        )
 
         # ============================================================
         # TOP METRICS
