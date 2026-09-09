@@ -1492,21 +1492,7 @@ def analyze_candle_sequence(candles):
         last_bos_choch
     )
 
-    print("\n")
-    print("=" * 70)
-    print("CURRENT STRUCTURAL BIAS")
-    print("=" * 70)
-    print("Confirmed BOS bias:", bos_choch_bias)
-    print(
-        "Transition bias:",
-        bos_choch_analysis.get("transition_bias", "NONE")
-    )
-    print("Last event:", last_bos_choch)
-    print("Current sequence:", structural_sequence)
-    print("Sequence index:", structural_sequence_index)
-    print("Final current structural bias:", structural_bias)
-    print("=" * 70)
-    print("\n")
+    # Debug output removed for production UI.
 
     # ========================================================
     # STEP 9 — STRUCTURE VALIDATION
@@ -1555,81 +1541,13 @@ def analyze_candle_sequence(candles):
     # STRUCTURE DEBUG
     # --------------------------------------------------------
 
-    print("\n")
-    print("=" * 70)
-    print("SWING STRUCTURE")
-    print("=" * 70)
-
-    print(
-        "Swing highs:",
-        swing_high_count
-    )
-
-    print(
-        "Swing lows:",
-        swing_low_count
-    )
-
-    print(
-        "Higher highs:",
-        higher_highs
-    )
-
-    print(
-        "Higher lows:",
-        higher_lows
-    )
-
-    print(
-        "Lower highs:",
-        lower_highs
-    )
-
-    print(
-        "Lower lows:",
-        lower_lows
-    )
-
-    print(
-        "Trend:",
-        swing_trend
-    )
-
-    print(
-        "Current structure:",
-        swing_current_structure
-    )
-
-    print("=" * 70)
-    print("\n")
+    # Debug output removed for production UI.
     
     # --------------------------------------------------------
     # TERMINAL DEBUG
     # --------------------------------------------------------
 
-    print("\n")
-    print("=" * 70)
-    print("SWING ANALYSIS")
-    print("=" * 70)
-
-    print("Total candles:", count)
-    print("Swing highs:", swing_high_count)
-    print("Swing lows:", swing_low_count)
-
-    print("-" * 70)
-    print("SWING HIGH DATA")
-
-    for swing in swing_highs:
-        print(swing)
-
-    print("-" * 70)
-    print("SWING LOW DATA")
-
-    for swing in swing_lows:
-        print(swing)
-
-    print("=" * 70)
-    print("\n")
+    # Debug output removed for production UI.
 
     # ========================================================
     # CENTRES
@@ -3921,35 +3839,7 @@ def detect_bos_choch(
     # DEBUG OUTPUT
     # ========================================================
 
-    print("\n")
-    print("=" * 70)
-    print("BOS / CHoCH STRUCTURAL ANALYSIS V6")
-    print("=" * 70)
-
-    print(
-        "Final bias:",
-        bias
-    )
-
-    print(
-        "Total events:",
-        len(events)
-    )
-
-    print("-" * 70)
-
-    for event in events:
-
-        print(
-            f"Candle {event['candle_index']} | "
-            f"{event['event']} | "
-            f"Level {event['level_index']} | "
-            f"Level price {event['level_price']} | "
-            f"Break distance {event['break_distance']}"
-        )
-
-    print("=" * 70)
-    print("\n")
+    # Debug output removed for production UI.
 
     # ========================================================
     # RETURN
@@ -5632,7 +5522,7 @@ if "candles" in st.session_state:
     # ============================================================
     
     st.header(
-        "1️⃣1️⃣ Candle Sequence Validation"
+        "🔟 Candle Sequence Validation"
     )
     
     if "sequence_analysis" in st.session_state:
@@ -5735,31 +5625,33 @@ if "candles" in st.session_state:
                 len(swing_lows)
             )
         
-        if swing_highs:
-            swing_high_df = pd.DataFrame(
-                swing_highs
-            )
-        
-            st.write("Detected Swing Highs")
-            st.dataframe(
-                swing_high_df,
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        if swing_lows:
-            swing_low_df = pd.DataFrame(
-                swing_lows
-            )
-        
-            st.write("Detected Swing Lows")
-            st.dataframe(
-                swing_low_df,
-                use_container_width=True,
-                hide_index=True
-            )
-        
-                # ========================================================
+        with st.expander("🔍 Swing structure audit", expanded=False):
+
+            if swing_highs:
+                swing_high_df = pd.DataFrame(
+                    swing_highs
+                )
+
+                st.write("Detected Swing Highs")
+                st.dataframe(
+                    swing_high_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+            if swing_lows:
+                swing_low_df = pd.DataFrame(
+                    swing_lows
+                )
+
+                st.write("Detected Swing Lows")
+                st.dataframe(
+                    swing_low_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+        # ========================================================
         # BOS / CHoCH DIAGNOSTIC
         # ========================================================
 
@@ -5767,82 +5659,84 @@ if "candles" in st.session_state:
             "BOS / CHoCH Diagnostic"
         )
 
-        bos_events = sequence.get(
-            "bos_choch_events",
-            []
-        )
+        with st.expander("🔍 BOS / CHoCH audit details", expanded=False):
 
-        bos_bias = sequence.get(
-            "bos_choch_bias",
-            "UNKNOWN"
-        )
+            bos_events = sequence.get(
+                "bos_choch_events",
+                []
+            )
 
-        last_event = sequence.get(
-            "last_bos_choch",
-            None
-        )
+            bos_bias = sequence.get(
+                "bos_choch_bias",
+                "UNKNOWN"
+            )
 
-        # --------------------------------------------------------
-        # CURRENT STRUCTURAL BIAS
-        # --------------------------------------------------------
+            last_event = sequence.get(
+                "last_bos_choch",
+                None
+            )
 
-        st.write(
-            f"**Structural Bias:** `{bos_bias}`"
-        )
-
-        # --------------------------------------------------------
-        # LAST EVENT
-        # --------------------------------------------------------
-
-        if last_event:
+            # --------------------------------------------------------
+            # CURRENT STRUCTURAL BIAS
+            # --------------------------------------------------------
 
             st.write(
-                f"**Latest Event:** "
-                f"`{last_event['event']}`"
+                f"**Structural Bias:** `{bos_bias}`"
             )
 
-            st.write(
-                f"**Candle Index:** "
-                f"`{last_event['candle_index']}`"
-            )
+            # --------------------------------------------------------
+            # LAST EVENT
+            # --------------------------------------------------------
 
-            st.write(
-                f"**Price Coordinate:** "
-                f"`{last_event['price']}`"
-            )
+            if last_event:
 
-        else:
+                st.write(
+                    f"**Latest Event:** "
+                    f"`{last_event['event']}`"
+                )
 
-            st.info(
-                "No BOS or CHoCH detected yet."
-            )
+                st.write(
+                    f"**Candle Index:** "
+                    f"`{last_event['candle_index']}`"
+                )
 
-        # --------------------------------------------------------
-        # EVENT TABLE
-        # --------------------------------------------------------
+                st.write(
+                    f"**Price Coordinate:** "
+                    f"`{last_event['price']}`"
+                )
 
-        if bos_events:
+            else:
 
-            bos_df = pd.DataFrame(
-                bos_events
-            )
+                st.info(
+                    "No BOS or CHoCH detected yet."
+                )
 
-            st.write(
-                "Detected BOS / CHoCH Events"
-            )
+            # --------------------------------------------------------
+            # EVENT TABLE
+            # --------------------------------------------------------
 
-            st.dataframe(
-                bos_df,
-                use_container_width=True,
-                hide_index=True
-            )
+            if bos_events:
+
+                bos_df = pd.DataFrame(
+                    bos_events
+                )
+
+                st.write(
+                    "Detected BOS / CHoCH Events"
+                )
+
+                st.dataframe(
+                    bos_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
 
         # ========================================================
         # STEP 9 — STRUCTURE VALIDATION
         # ========================================================
         
         st.subheader(
-            "9️⃣ Structure Validation"
+            "Structure Validation"
         )
         
         structure_validation = sequence.get(
@@ -6089,316 +5983,199 @@ if "candles" in st.session_state:
             latest_event_index = None
     
         # --------------------------------------------------------
-        # STRUCTURE DECISION TRACE
+        # CANONICAL STRUCTURE DECISION
         # --------------------------------------------------------
 
-        st.subheader("Structure Decision Trace")
+        structural_sequence = str(
+            sequence.get(
+                "structural_sequence",
+                "NO COMPLETE NEW SEQUENCE"
+            )
+        ).upper()
 
-        latest_high = swing_highs[-1] if swing_highs else None
-        latest_low = swing_lows[-1] if swing_lows else None
-
-        trace_col1, trace_col2, trace_col3 = st.columns(3)
-
-        trace_col1.write(
-            f"**Latest Swing High:** `{latest_high.get('structure', 'NONE') if latest_high else 'NONE'}`"
-        )
-
-        trace_col2.write(
-            f"**Latest Swing Low:** `{latest_low.get('structure', 'NONE') if latest_low else 'NONE'}`"
-        )
-
-        trace_col3.write(
-            f"**Current Swing Sequence:** `{sequence.get('structural_sequence', 'UNKNOWN')}`"
-        )
-
-        st.write(
-            f"**Confirmed BOS Bias:** `{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
-        )
-
-        st.write(
-            f"**Latest Event:** `{latest_event}`"
-        )
-
-        st.write(
-            f"**Transition Bias:** `{sequence.get('transition_bias', 'NONE')}`"
-        )
-
-        st.write(
-            f"**Current Structural Bias:** `{sequence.get('structural_bias', 'UNKNOWN')}`"
+        event_name = (
+            str(last_event.get("event", ""))
+            .upper()
+            if last_event
+            else ""
         )
 
         # --------------------------------------------------------
-        # STRUCTURAL STATE
+        # MARKET STATE
         # --------------------------------------------------------
-    
+
         if structural_bias == "BULLISH":
-    
             if latest_event == "BULLISH BOS":
-    
-                market_state = (
-                    "BULLISH CONTINUATION"
-                )
-    
+                market_state = "BULLISH CONTINUATION"
             elif latest_event == "BULLISH CHoCH":
-    
-                market_state = (
-                    "BULLISH STRUCTURAL SHIFT"
-                )
-    
+                market_state = "BULLISH STRUCTURAL SHIFT"
             else:
-    
-                market_state = (
-                    "BULLISH STRUCTURE"
-                )
-    
+                market_state = "BULLISH STRUCTURE"
+
         elif structural_bias == "BEARISH":
-    
             if latest_event == "BEARISH BOS":
-    
-                market_state = (
-                    "BEARISH CONTINUATION"
-                )
-    
+                market_state = "BEARISH CONTINUATION"
             elif latest_event == "BEARISH CHoCH":
-    
-                market_state = (
-                    "BEARISH STRUCTURAL SHIFT"
-                )
-    
+                market_state = "BEARISH STRUCTURAL SHIFT"
             else:
-    
-                market_state = (
-                    "BEARISH STRUCTURE"
-                )
-    
+                market_state = "BEARISH STRUCTURE"
+
         else:
-    
-            market_state = (
-                "UNDEFINED / MIXED"
-            )
-    
-        # --------------------------------------------------------
-        # STRUCTURAL CONFIRMATION
-        # --------------------------------------------------------
-    
-        # IMPORTANT: confirmation must use the MOST RECENT
-        # swing structure, not lifetime HH/HL/LH/LL counts.
-        # Historical bullish swings must not confirm a bearish
-        # current bias (and vice versa).
-        latest_high_structure = (
-            swing_highs[-1].get("structure", "")
-            if swing_highs
-            else ""
-        )
+            market_state = "UNDEFINED / MIXED"
 
-        latest_low_structure = (
-            swing_lows[-1].get("structure", "")
-            if swing_lows
-            else ""
-        )
-
-        bullish_structure = (
-            latest_high_structure == "HH"
-            and
-            latest_low_structure == "HL"
-        )
-
-        bearish_structure = (
-            latest_high_structure == "LH"
-            and
-            latest_low_structure == "LL"
-        )
-    
-        if (
+        # A completed HH -> HL / LL -> LH sequence is the
+        # canonical swing confirmation. A BOS also confirms
+        # the corresponding direction.
+        bullish_confirmed = (
             structural_bias == "BULLISH"
-            and bullish_structure
-        ):
-    
-            structure_confirmation = (
-                "CONFIRMED BULLISH"
+            and (
+                structural_sequence == "HH -> HL"
+                or event_name == "BULLISH BOS"
             )
-    
-        elif (
+        )
+
+        bearish_confirmed = (
             structural_bias == "BEARISH"
-            and bearish_structure
-        ):
-    
-            structure_confirmation = (
-                "CONFIRMED BEARISH"
+            and (
+                structural_sequence == "LL -> LH"
+                or event_name == "BEARISH BOS"
             )
-    
-        elif structural_bias == "UNKNOWN":
-    
-            structure_confirmation = (
-                "INSUFFICIENT STRUCTURE"
-            )
-    
+        )
+
+        if bullish_confirmed:
+            structure_confirmation = "CONFIRMED BULLISH"
+        elif bearish_confirmed:
+            structure_confirmation = "CONFIRMED BEARISH"
+        elif structural_bias in ("BULLISH", "BEARISH"):
+            structure_confirmation = "STRUCTURE DEVELOPING"
         else:
-    
-            structure_confirmation = (
-                "STRUCTURAL CONFLICT"
-            )
-    
+            structure_confirmation = "INSUFFICIENT STRUCTURE"
+
         # --------------------------------------------------------
         # CURRENT CANDLE RELATIONSHIP
         # --------------------------------------------------------
-    
+
         if (
             structural_bias == "BULLISH"
-            and
-            current_direction == "GREEN"
+            and current_direction == "GREEN"
         ):
-    
-            candle_alignment = (
-                "ALIGNED WITH BIAS"
-            )
-    
+            candle_alignment = "ALIGNED WITH BIAS"
+
         elif (
             structural_bias == "BEARISH"
-            and
-            current_direction == "RED"
+            and current_direction == "RED"
         ):
-    
-            candle_alignment = (
-                "ALIGNED WITH BIAS"
-            )
-    
-        elif (
-            structural_bias in (
-                "BULLISH",
-                "BEARISH"
-            )
-        ):
-    
-            candle_alignment = (
-                "COUNTER-DIRECTION CANDLE"
-            )
-    
+            candle_alignment = "ALIGNED WITH BIAS"
+
+        elif structural_bias in ("BULLISH", "BEARISH"):
+            candle_alignment = "COUNTER-DIRECTION CANDLE"
+
         else:
-    
-            candle_alignment = (
-                "NO CLEAR ALIGNMENT"
-            )
-    
+            candle_alignment = "NO CLEAR ALIGNMENT"
+
         # --------------------------------------------------------
         # DISPLAY
         # --------------------------------------------------------
-    
+
         col1, col2, col3, col4 = st.columns(4)
-    
+
         col1.metric(
             "Market State",
             market_state
         )
-    
+
         col2.metric(
             "Structural Bias",
             structural_bias
         )
-    
+
         col3.metric(
             "Structure",
             structure_confirmation
         )
-    
+
         col4.metric(
             "Candle Alignment",
             candle_alignment
         )
-    
-        st.divider()
-    
-        # --------------------------------------------------------
-        # STRUCTURAL DETAILS
-        # --------------------------------------------------------
-    
-        st.subheader(
-            "Structural Interpretation"
+
+        st.subheader("Structure Interpretation")
+
+        trace_col1, trace_col2, trace_col3 = st.columns(3)
+
+        trace_col1.write(
+            f"**Structural Sequence:** `{structural_sequence}`"
         )
-    
-        st.write(
-            f"**Current Structure:** "
-            f"`{current_structure}`"
+
+        trace_col2.write(
+            f"**Latest Event:** `{latest_event}`"
         )
-    
-        st.write(
-            f"**Latest Structural Event:** "
-            f"`{latest_event}`"
+
+        trace_col3.write(
+            f"**Event Candle:** `{latest_event_index if latest_event_index is not None else 'NONE'}`"
         )
-    
-        if latest_event_index is not None:
-    
-            st.write(
-                f"**Event Candle:** "
-                f"`{latest_event_index}`"
-            )
-    
-        st.write(
-            f"**Current Candle:** "
-            f"`{current_direction}`"
+
+        structure_quality = float(
+            sequence.get("sequence_integrity", 0.0)
         )
-    
-        # --------------------------------------------------------
-        # STRUCTURE QUALITY
-        # --------------------------------------------------------
-    
-        structure_quality = (
-            sequence.get(
-                "sequence_integrity",
-                0.0
-            )
-        )
-    
-        st.write(
-            f"**Structure Quality:** "
-            f"`{structure_quality:.1f}%`"
-        )
-    
-        # --------------------------------------------------------
-        # FINAL DIAGNOSTIC MESSAGE
-        # --------------------------------------------------------
-    
+
         if (
-            structure_quality >= 95
-            and
             structure_confirmation
-            in (
-                "CONFIRMED BULLISH",
-                "CONFIRMED BEARISH"
-            )
-            and
-            candle_alignment
-            == "ALIGNED WITH BIAS"
+            in ("CONFIRMED BULLISH", "CONFIRMED BEARISH")
+            and candle_alignment == "ALIGNED WITH BIAS"
         ):
-    
             st.success(
-                "The current market structure, "
-                "structural bias, and current candle "
-                "are aligned."
+                "The current structural state and candle direction are aligned."
             )
-    
-        elif structure_quality >= 95:
-    
+        elif structure_confirmation == "STRUCTURE DEVELOPING":
             st.warning(
-                "Structure is well reconstructed, "
-                "but the current candle is not fully "
-                "aligned with the prevailing structural bias."
+                "The directional bias exists, but the latest completed structure "
+                "has not fully confirmed the direction."
             )
-    
+        elif structure_confirmation == "INSUFFICIENT STRUCTURE":
+            st.info(
+                "There is not enough completed structure to establish a directional state."
+            )
         else:
-    
-            st.error(
-                "Structure quality is not strong enough "
-                "for higher-level interpretation."
+            st.warning(
+                "The current candle is counter-directional to the validated structure. "
+                "The candle alone does not invalidate the structure."
             )
-    
-    else:
-    
-        st.info(
-            "Market state cannot be evaluated until "
-            "sequence analysis is available."
-        )
-    
+
+        with st.expander("🔍 Raw structure audit", expanded=False):
+            st.write(
+                f"**Latest Swing High:** "
+                f"`{swing_highs[-1].get('structure', 'NONE') if swing_highs else 'NONE'}`"
+            )
+            st.write(
+                f"**Latest Swing Low:** "
+                f"`{swing_lows[-1].get('structure', 'NONE') if swing_lows else 'NONE'}`"
+            )
+            st.write(
+                f"**Confirmed BOS Bias:** "
+                f"`{sequence.get('bos_choch_bias', 'UNKNOWN')}`"
+            )
+            st.write(
+                f"**Transition Bias:** "
+                f"`{sequence.get('transition_bias', 'NONE')}`"
+            )
+            st.write(
+                f"**Current Structural Bias:** "
+                f"`{structural_bias}`"
+            )
+            st.write(
+                f"**Current Structure:** "
+                f"`{current_structure}`"
+            )
+            st.write(
+                f"**Current Candle:** "
+                f"`{current_direction}`"
+            )
+            st.write(
+                f"**Structure Quality:** "
+                f"`{structure_quality:.1f}%`"
+            )
+
     # ============================================================
     # 1️⃣2️⃣ CURRENT CANDLE CONTEXT
     # ============================================================
@@ -6448,21 +6225,21 @@ if "candles" in st.session_state:
         # --------------------------------------------------------
     
         if body_percentage >= 70:
-    
+
             candle_strength = "STRONG"
-    
-        elif body_percentage >= 40:
-    
+
+        elif body_percentage >= 45:
+
             candle_strength = "MODERATE"
-    
-        elif body_percentage >= 20:
-    
+
+        elif body_percentage >= 25:
+
             candle_strength = "WEAK"
-    
+
         else:
-    
+
             candle_strength = "VERY WEAK"
-    
+
         # --------------------------------------------------------
         # WICK CHARACTER
         # --------------------------------------------------------
@@ -6831,49 +6608,53 @@ if "candles" in st.session_state:
         # ========================================================
         # STRUCTURE STATUS
         # ========================================================
-    
-        if structural_bias == "BULLISH":
-    
-            if (
-                "HIGHER HIGH" in current_structure
-                or
-                "BULLISH" in current_structure
-            ):
-    
-                structure_status = (
-                    "BULLISH STRUCTURE CONFIRMED"
-                )
-    
-            else:
-    
-                structure_status = (
-                    "BULLISH BIAS — STRUCTURE DEVELOPING"
-                )
-    
-        elif structural_bias == "BEARISH":
-    
-            if (
-                "LOWER HIGH" in current_structure
-                or
-                "BEARISH" in current_structure
-            ):
-    
-                structure_status = (
-                    "BEARISH STRUCTURE CONFIRMED"
-                )
-    
-            else:
-    
-                structure_status = (
-                    "BEARISH BIAS — STRUCTURE DEVELOPING"
-                )
-    
+        #
+        # Use the same canonical sequence/BOS confirmation as
+        # Step 11. Do not infer confirmation from words contained
+        # in the human-readable structure label.
+        # ========================================================
+
+        structural_sequence = str(
+            sequence.get(
+                "structural_sequence",
+                "NO COMPLETE NEW SEQUENCE"
+            )
+        ).upper()
+
+        event_name = (
+            str(last_event.get("event", ""))
+            .upper()
+            if last_event
+            else ""
+        )
+
+        if (
+            structural_bias == "BULLISH"
+            and (
+                structural_sequence == "HH -> HL"
+                or event_name == "BULLISH BOS"
+            )
+        ):
+            structure_status = "BULLISH STRUCTURE CONFIRMED"
+
+        elif (
+            structural_bias == "BEARISH"
+            and (
+                structural_sequence == "LL -> LH"
+                or event_name == "BEARISH BOS"
+            )
+        ):
+            structure_status = "BEARISH STRUCTURE CONFIRMED"
+
+        elif structural_bias in ("BULLISH", "BEARISH"):
+            structure_status = (
+                f"{structural_bias} BIAS — STRUCTURE DEVELOPING"
+            )
+
         else:
-    
             structure_status = (
                 "NO CONFIRMED STRUCTURAL DIRECTION"
             )
-    
         # ========================================================
         # CANDLE ALIGNMENT
         # ========================================================
@@ -7122,6 +6903,14 @@ if "candles" in st.session_state:
     
             score -= 10
     
+
+        # Structural uncertainty must not be hidden by
+        # strong candle metrics.
+        if structure_status == "NO CONFIRMED STRUCTURAL DIRECTION":
+            score -= 30
+        elif "STRUCTURE DEVELOPING" in structure_status:
+            score -= 15
+
         confluence_score = round(
             clamp_score(score),
             1
@@ -7195,17 +6984,24 @@ if "candles" in st.session_state:
             # DO NOT CALL A COUNTER-DIRECTIONAL CANDLE A REVERSAL
             # ----------------------------------------------------
     
-            if (
-                candle_alignment ==
-                "COUNTER-DIRECTIONAL"
-                and
-                confluence_score >= 55
-            ):
-    
+            if structure_status == "NO CONFIRMED STRUCTURAL DIRECTION":
+
+                final_status = (
+                    "WAIT — INSUFFICIENT STRUCTURE"
+                )
+
+            elif "STRUCTURE DEVELOPING" in structure_status:
+
+                final_status = (
+                    "WAIT — STRUCTURE DEVELOPING"
+                )
+
+            elif candle_alignment == "COUNTER-DIRECTIONAL":
+
                 final_status = (
                     "WAIT — STRUCTURE INTACT"
                 )
-    
+
             elif confluence_score >= 75:
     
                 final_status = (
@@ -7463,7 +7259,7 @@ if "candles" in st.session_state:
     # ========================================================
 
     st.header(
-        "🔟 How to Read the Scores"
+        "1️⃣4️⃣ How to Read the Scores"
     )
 
     st.markdown(
