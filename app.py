@@ -90,12 +90,46 @@ st.caption(
 )
 
 # ============================================================
-# TOP TRADE SETUP / SIGNAL DISPLAY
+# TOP SIGNAL + UPLOAD LAYOUT
 # ============================================================
-# The diagnostic is calculated later, after the chart and
-# structure engine have run, but rendered here so it appears
-# at the top of the application.
-trade_setup_placeholder = st.empty()
+# The signal is calculated later, after the chart/structure engine
+# has run, but its final display is rendered into the left-hand
+# container below so the user sees the trading decision first.
+# The chart uploader stays visible beside it.
+
+top_signal_placeholder, top_upload_placeholder = st.columns(
+    [1, 1],
+    gap="large"
+)
+
+with top_upload_placeholder:
+    st.header("1️⃣ Upload Chart")
+
+    uploaded = st.file_uploader(
+        "Upload your Pocket Option chart",
+        type=[
+            "png",
+            "jpg",
+            "jpeg"
+        ],
+        key="top_chart_uploader"
+    )
+
+if uploaded is None:
+    st.info("Upload a screenshot to begin.")
+    st.stop()
+
+image = load_image(uploaded)
+h, w = image.shape[:2]
+
+with top_upload_placeholder:
+    st.write(
+        f"**Image size:** {w} × {h} px"
+    )
+
+# This is intentionally left empty until the diagnostic has been
+# calculated later in the pipeline.
+trade_setup_placeholder = top_signal_placeholder.empty()
 
 
 # ============================================================
@@ -4928,35 +4962,9 @@ def annotate_candles(
 # MAIN UI
 # ============================================================
 
-st.header("1️⃣ Upload Chart")
-
-uploaded = st.file_uploader(
-    "Upload your Pocket Option chart",
-    type=[
-        "png",
-        "jpg",
-        "jpeg"
-    ]
-)
-
-if uploaded is None:
-
-    st.info(
-        "Upload a screenshot to begin."
-    )
-
-    st.stop()
-
-
-image = load_image(
-    uploaded
-)
-
-h, w = image.shape[:2]
-
-st.write(
-    f"**Image size:** {w} × {h} px"
-)
+# The upload control is intentionally rendered at the top beside
+# the signal panel. The rest of the processing pipeline continues
+# below without changing its logic.
 
 # ============================================================
 # CROP
@@ -7141,9 +7149,9 @@ if "candles" in st.session_state:
         # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
         # ============================================================
 
-        st.header(
-            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-        )
+        # The full diagnostic remains in the normal pipeline below,
+        # but the compact Signal panel is rendered into the top-left
+        # placeholder so it sits beside Upload Chart.
 
         # ------------------------------------------------------------
         # RUN DIAGNOSTIC
@@ -7335,48 +7343,55 @@ if "candles" in st.session_state:
         )
 
         # ============================================================
-        # SIGNAL DISPLAY
+        # TOP SIGNAL DISPLAY
         # ============================================================
-
-        st.subheader("🎯 Signal")
 
         signal_value = signal_result["signal"]
 
-        if signal_value == "BUY":
-            st.success("🟢 BUY")
+        with trade_setup_placeholder.container():
 
-        elif signal_value == "SELL":
-            st.error("🔴 SELL")
+            st.header("1️⃣3️⃣ Trade Setup / Confluence Diagnostic")
+            st.subheader("🎯 Signal")
 
-        else:
-            st.warning("⚪ NO SIGNAL")
+            if signal_value == "BUY":
+                st.success("🟢 BUY")
 
-        signal_col1, signal_col2, signal_col3 = st.columns(3)
+            elif signal_value == "SELL":
+                st.error("🔴 SELL")
 
-        signal_col1.write(
-            "**Trigger:** "
-            f"`{signal_result['trigger']}`"
-        )
+            else:
+                st.warning("⚪ NO SIGNAL")
 
-        signal_col2.write(
-            "**Latest Event:** "
-            f"`{signal_result['event']}`"
-        )
+            signal_col1, signal_col2, signal_col3 = st.columns(3)
 
-        event_age_display = (
-            f"{signal_result['event_age']} candles"
-            if signal_result["event_age"] is not None
-            else "— candles"
-        )
+            signal_col1.write(
+                "**Trigger:** "
+                f"`{signal_result['trigger']}`"
+            )
 
-        signal_col3.write(
-            "**Event Age:** "
-            f"`{event_age_display}`"
-        )
+            signal_col2.write(
+                "**Latest Event:** "
+                f"`{signal_result['event']}`"
+            )
 
-        with st.expander("🔎 Signal decision audit"):
-            for reason in signal_result["reasons"]:
-                st.write(f"• {reason}")
+            event_age_display = (
+                f"{signal_result['event_age']} candles"
+                if signal_result["event_age"] is not None
+                else "— candles"
+            )
+
+            signal_col3.write(
+                "**Event Age:** "
+                f"`{event_age_display}`"
+            )
+
+            with st.expander("🔎 Signal decision audit"):
+                for reason in signal_result["reasons"]:
+                    st.write(f"• {reason}")
+
+        # ============================================================
+        # DETAILED SETUP DIAGNOSTICS
+        # ============================================================
 
         st.divider()
 
