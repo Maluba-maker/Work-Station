@@ -86,7 +86,7 @@ with st.sidebar:
 st.title("🔹 Maluz Signal Engine V2.5")
 st.caption(
     "Vision Diagnostic • Candle Geometry • OHLC Reconstruction "
-    "• Structural Validation • NO TRADING SIGNALS"
+    "• Structural Validation • Signal Engine"
 )
 
 # ============================================================
@@ -6537,6 +6537,127 @@ if "candles" in st.session_state:
         }
     
     # ============================================================
+    # SIGNAL ENGINE — V1
+    # ============================================================
+    # This is deliberately stricter than the setup diagnostic.
+    # A valid setup is NOT automatically a BUY/SELL signal.
+    #
+    # V1 is a continuation trigger:
+    #   1. Structure must be confirmed.
+    #   2. Latest structural event must agree with the setup.
+    #   3. The latest event must be recent.
+    #   4. Current candle must agree with direction.
+    #   5. Current candle must have strong body dominance.
+    #   6. Detection and sequence quality must pass minimum levels.
+    #   7. Major rejection blocks the signal.
+    #
+    # If these conditions are not met, the engine returns NO SIGNAL.
+    # ============================================================
+
+    def generate_signal(sequence, setup_analysis):
+
+        current_index = sequence.get("current_candle_index", None)
+        last_event = sequence.get("last_bos_choch")
+
+        try:
+            current_index = int(current_index)
+        except (TypeError, ValueError):
+            current_index = None
+
+        if not last_event or current_index is None:
+            return {
+                "signal": "NO SIGNAL",
+                "trigger": "INSUFFICIENT EVENT DATA",
+                "reasons": ["A current candle index and latest structural event are required."],
+            }
+
+        try:
+            event_index = int(last_event.get("candle_index"))
+        except (TypeError, ValueError):
+            return {
+                "signal": "NO SIGNAL",
+                "trigger": "INVALID EVENT INDEX",
+                "reasons": ["The latest structural event has no valid candle index."],
+            }
+
+        event_age = current_index - event_index
+
+        direction = setup_analysis.get("setup_direction", "NONE")
+        structure_status = setup_analysis.get("structure_status", "")
+        candle_alignment = setup_analysis.get("candle_alignment", "")
+        candle_strength = setup_analysis.get("candle_strength", "")
+        event_alignment = setup_analysis.get("event_alignment", "")
+        rejection_status = setup_analysis.get("rejection_status", "")
+        confidence = float(sequence.get("current_confidence", 0))
+        sequence_integrity = float(sequence.get("sequence_integrity", 0))
+        event_name = str(last_event.get("event", "")).upper()
+
+        reasons = []
+
+        # --------------------------------------------------------
+        # HARD GATES
+        # --------------------------------------------------------
+        if direction not in ("LONG", "SHORT"):
+            reasons.append("No bullish or bearish setup direction.")
+
+        if "CONFIRMED" not in structure_status:
+            reasons.append("Structure is not confirmed.")
+
+        if event_alignment != "ALIGNED":
+            reasons.append("Latest BOS / CHoCH event does not align with the setup direction.")
+
+        # V1 does not chase old structure.
+        if event_age < 0:
+            reasons.append("Latest structural event occurs after the current candle.")
+        elif event_age > 2:
+            reasons.append(f"Latest structural event is {event_age} candles old; trigger is no longer fresh.")
+
+        if candle_alignment != "ALIGNED":
+            reasons.append("Current candle is not aligned with the setup direction.")
+
+        if candle_strength != "STRONG":
+            reasons.append("Current candle does not meet the strong-body trigger threshold.")
+
+        if confidence < 85:
+            reasons.append(f"Current candle detection confidence is only {confidence:.1f}%.")
+
+        if sequence_integrity < 90:
+            reasons.append(f"Sequence integrity is only {sequence_integrity:.1f}%.")
+
+        if rejection_status != "NO MAJOR REJECTION":
+            reasons.append("Major wick rejection blocks the signal.")
+
+        # Require an actual structural break event for V1.
+        if event_name not in ("BULLISH BOS", "BEARISH BOS"):
+            reasons.append("V1 requires a confirmed BOS; CHoCH alone does not trigger an entry.")
+
+        if reasons:
+            return {
+                "signal": "NO SIGNAL",
+                "trigger": "CONDITIONS NOT MET",
+                "event_age": event_age,
+                "event": event_name or "NONE",
+                "reasons": reasons,
+            }
+
+        signal = "BUY" if direction == "LONG" else "SELL"
+
+        return {
+            "signal": signal,
+            "trigger": "FRESH BOS + ALIGNED CONFIRMATION",
+            "event_age": event_age,
+            "event": event_name,
+            "reasons": [
+                "Structure is confirmed.",
+                "Latest BOS agrees with structural direction.",
+                "The BOS is fresh (0–2 candles old).",
+                "Current candle is strongly aligned with the setup.",
+                "Detection and sequence quality meet minimum thresholds.",
+                "No major rejection is present.",
+            ],
+        }
+
+    # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
 
@@ -6550,6 +6671,35 @@ if "candles" in st.session_state:
         sequence.get("lower_wick_percentage", 0),
         sequence.get("current_confidence", 0)
     )
+
+    # ========================================================
+    # ACTUAL SIGNAL
+    # ========================================================
+
+    signal_analysis = generate_signal(
+        sequence,
+        setup_analysis
+    )
+
+    st.header("🎯 Signal")
+
+    signal = signal_analysis["signal"]
+
+    if signal == "BUY":
+        st.success("# 🟢 BUY")
+    elif signal == "SELL":
+        st.error("# 🔴 SELL")
+    else:
+        st.warning("# ⚪ NO SIGNAL")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Trigger", signal_analysis["trigger"])
+    col2.metric("Latest Event", signal_analysis.get("event", "NONE"))
+    col3.metric("Event Age", f'{signal_analysis.get("event_age", "—")} candles')
+
+    with st.expander("🔍 Signal decision audit", expanded=False):
+        for reason in signal_analysis["reasons"]:
+            st.write(f"• {reason}")
 
     # Diagnostic score only — never present this as a probability of success.
     col1, col2, col3, col4 = st.columns(4)
@@ -6593,7 +6743,7 @@ if "candles" in st.session_state:
     # STEP 14 — INTERPRETATION GUIDE
     # ========================================================
 
-    st.header("1️⃣4️⃣ How to Read the Diagnostics")
+    st.header("1️⃣5️⃣ How to Read the Diagnostics")
 
     with st.expander("📘 Score definitions", expanded=False):
         st.markdown(
