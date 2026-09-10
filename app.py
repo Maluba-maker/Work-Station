@@ -7268,7 +7268,8 @@ if "candles" in st.session_state:
             ).upper()
 
             current_index = sequence.get(
-                "current_candle_index", None
+                "current_candle_index",
+                sequence.get("count", 0) - 1
             )
 
             event_index = last_event.get(
@@ -7280,6 +7281,30 @@ if "candles" in st.session_state:
             except (TypeError, ValueError):
                 event_age = None
 
+            # ------------------------------------------------------------
+            # EVENT FRESHNESS
+            # ------------------------------------------------------------
+            # A structural confirmation that is too old should not
+            # trigger a new entry.
+            # ------------------------------------------------------------
+            
+            MAX_SIGNAL_EVENT_AGE = 5
+            
+            if event_age is None:
+                reasons.append(
+                    "Structural event age cannot be established."
+                )
+            
+            elif event_age < 1:
+                reasons.append(
+                    "Structural BOS occurred on the current candle; "
+                    "wait for confirmation on a subsequent candle."
+                )
+            
+            elif event_age > MAX_SIGNAL_EVENT_AGE:
+                reasons.append(
+                    f"Structural BOS is too old ({event_age} candles)."
+                )
             reasons = []
 
             if direction not in ("LONG", "SHORT"):
@@ -7291,13 +7316,26 @@ if "candles" in st.session_state:
             if event_alignment != "ALIGNED":
                 reasons.append("The latest structural event does not support the setup direction.")
 
-            if event_name not in (
-                "BULLISH BOS",
-                "BEARISH BOS",
-                "BULLISH CHOCH",
-                "BEARISH CHOCH"
-            ):
-                reasons.append("No valid BOS / CHoCH event is available as structural confirmation.")
+            # ------------------------------------------------------------
+            # STRUCTURAL EVENT CONFIRMATION
+            # ------------------------------------------------------------
+            # A CHoCH indicates a structural shift, but it is NOT enough
+            # by itself to authorize an entry.
+            #
+            # Actual BUY / SELL signals require a BOS in the same direction.
+            # ------------------------------------------------------------
+            
+            expected_bos = (
+                "BULLISH BOS"
+                if direction == "LONG"
+                else "BEARISH BOS"
+            )
+            
+            if event_name != expected_bos:
+                reasons.append(
+                    f"Latest structural event is {event_name}; "
+                    f"{expected_bos} is required for entry."
+                )
 
             if candle_alignment != "ALIGNED":
                 reasons.append("The current candle is not aligned with the setup direction.")
