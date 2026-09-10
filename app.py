@@ -14,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
 # ============================================================
 # PASSWORD PROTECTION
 # ============================================================
@@ -6603,11 +6602,7 @@ if "candles" in st.session_state:
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
     with trade_setup_placeholder.container():
-        # ============================================================
-        # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
-        # ============================================================
-
-        def diagnose_trade_setup(
+         def diagnose_trade_setup(
             sequence,
             current_direction,
             body_percentage,
@@ -7155,15 +7150,14 @@ if "candles" in st.session_state:
 
                 "reasons":
                     reasons
-            }
-
-        # ============================================================
-        # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
-        # ============================================================
-
-        st.header(
-            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-        )
+            }       
+    # ========================================================
+    # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
+    # ========================================================
+        
+    st.header(
+        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+    )
 
         # ------------------------------------------------------------
         # RUN DIAGNOSTIC
