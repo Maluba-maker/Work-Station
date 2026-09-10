@@ -4923,41 +4923,6 @@ def annotate_candles(
 
     return annotated
 
-# ============================================================
-# TOP SIGNAL / UPLOAD LAYOUT
-# ============================================================
-
-top_signal_col, top_upload_col = st.columns(
-    [1, 1],
-    gap="large"
-)
-
-with top_signal_col:
-
-    st.header(
-        "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-    )
-
-    st.subheader("🎯 Signal")
-
-    signal_placeholder = st.empty()
-
-    signal_details_placeholder = st.empty()
-
-
-with top_upload_col:
-
-    st.header("1️⃣ Upload Chart")
-
-    uploaded = st.file_uploader(
-        "Upload your Pocket Option chart",
-        type=[
-            "png",
-            "jpg",
-            "jpeg"
-        ]
-    )
-
 if uploaded is None:
 
     st.info(
@@ -6598,6 +6563,7 @@ if "candles" in st.session_state:
             "until sequence analysis is available."
         )
     
+    
     # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
@@ -7151,441 +7117,601 @@ if "candles" in st.session_state:
                 "reasons":
                     reasons
             }       
+    # ============================================================
+    # TOP SIGNAL / UPLOAD LAYOUT
+    # ============================================================
+    
+    top_signal_col, top_upload_col = st.columns(
+        [1, 1],
+        gap="large"
+    )
+    
+    with top_signal_col:
+    
+        st.header(
+            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
+        )
+    
+        st.subheader("🎯 Signal")
+    
+        signal_placeholder = st.empty()
+    
+        signal_details_placeholder = st.empty()
+    
+    
+    with top_upload_col:
+    
+        st.header("1️⃣ Upload Chart")
+    
+        uploaded = st.file_uploader(
+            "Upload your Pocket Option chart",
+            type=[
+                "png",
+                "jpg",
+                "jpeg"
+            ]
+        )
     # ========================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ========================================================
-        
+    
     st.header(
         "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
     )
-
-        # ------------------------------------------------------------
-        # RUN DIAGNOSTIC
-        # ------------------------------------------------------------
-
-        setup_analysis = diagnose_trade_setup(
-
-            sequence,
-
-            sequence.get(
-                "current_direction",
+    
+    # ------------------------------------------------------------
+    # RUN DIAGNOSTIC
+    # ------------------------------------------------------------
+    
+    setup_analysis = diagnose_trade_setup(
+        sequence,
+    
+        sequence.get(
+            "current_direction",
+            "UNKNOWN"
+        ),
+    
+        sequence.get(
+            "body_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "upper_wick_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "lower_wick_percentage",
+            0
+        ),
+    
+        sequence.get(
+            "current_confidence",
+            0
+        )
+    )
+    
+    
+    # ============================================================
+    # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
+    # ============================================================
+    
+    def generate_signal(sequence, setup_analysis):
+        """
+        Convert the validated setup into an actual BUY / SELL signal.
+    
+        This is intentionally stricter than the setup diagnostic.
+        A valid setup is not automatically a trade signal.
+    
+        Signal requirements:
+        - confirmed structural direction
+        - valid setup
+        - latest structural event agrees with the direction
+        - current candle agrees with the direction
+        - strong current candle body
+        - no major rejection
+        - detection confidence >= 85%
+        - sequence integrity >= 90%
+        - confluence >= 75%
+    
+        The latest event does not have to be the current candle.
+        The current candle is the entry trigger; the structural event
+        establishes the directional context.
+        """
+    
+        # --------------------------------------------------------
+        # INITIALISE REASONS
+        # --------------------------------------------------------
+    
+        reasons = []
+    
+        # --------------------------------------------------------
+        # BASIC SETUP VALUES
+        # --------------------------------------------------------
+    
+        direction = str(
+            setup_analysis.get(
+                "setup_direction",
+                "NONE"
+            )
+        ).upper()
+    
+        final_status = str(
+            setup_analysis.get(
+                "final_status",
+                "WAIT"
+            )
+        ).upper()
+    
+        event_alignment = str(
+            setup_analysis.get(
+                "event_alignment",
+                "NEUTRAL"
+            )
+        ).upper()
+    
+        candle_alignment = str(
+            setup_analysis.get(
+                "candle_alignment",
                 "UNKNOWN"
-            ),
-
-            sequence.get(
-                "body_percentage",
-                0
-            ),
-
-            sequence.get(
-                "upper_wick_percentage",
-                0
-            ),
-
-            sequence.get(
-                "lower_wick_percentage",
-                0
-            ),
-
+            )
+        ).upper()
+    
+        candle_strength = str(
+            setup_analysis.get(
+                "candle_strength",
+                "UNKNOWN"
+            )
+        ).upper()
+    
+        rejection_status = str(
+            setup_analysis.get(
+                "rejection_status",
+                ""
+            )
+        ).upper()
+    
+        confidence = float(
             sequence.get(
                 "current_confidence",
                 0
             )
         )
-
-        # ============================================================
-        # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
-        # ============================================================
-
-        def generate_signal(sequence, setup_analysis):
-            reasons = []
-            """
-            Convert the validated setup into an actual BUY / SELL signal.
-
-            This is intentionally stricter than the setup diagnostic.
-            A valid setup is not automatically a trade signal.
-
-            Signal requirements:
-            - confirmed structural direction
-            - valid setup
-            - latest structural event agrees with the direction
-            - current candle agrees with the direction
-            - strong current candle body
-            - no major rejection
-            - detection confidence >= 85%
-            - sequence integrity >= 90%
-            - confluence >= 75%
-
-            The latest event does not have to be the current candle. The
-            current candle is the entry trigger; the structural event
-            establishes the directional context.
-            """
-
-            direction = str(
-                setup_analysis.get("setup_direction", "NONE")
-            ).upper()
-
-            final_status = str(
-                setup_analysis.get("final_status", "WAIT")
-            ).upper()
-
-            event_alignment = str(
-                setup_analysis.get("event_alignment", "NEUTRAL")
-            ).upper()
-
-            candle_alignment = str(
-                setup_analysis.get("candle_alignment", "UNKNOWN")
-            ).upper()
-
-            candle_strength = str(
-                setup_analysis.get("candle_strength", "UNKNOWN")
-            ).upper()
-
-            rejection_status = str(
-                setup_analysis.get("rejection_status", "")
-            ).upper()
-
-            confidence = float(
-                sequence.get("current_confidence", 0)
+    
+        sequence_integrity = float(
+            sequence.get(
+                "sequence_integrity",
+                0
             )
-
-            sequence_integrity = float(
-                sequence.get("sequence_integrity", 0)
+        )
+    
+        confluence_score = float(
+            setup_analysis.get(
+                "confluence_score",
+                0
             )
-
-            confluence_score = float(
-                setup_analysis.get("confluence_score", 0)
+        )
+    
+        # --------------------------------------------------------
+        # LATEST STRUCTURAL EVENT
+        # --------------------------------------------------------
+    
+        last_event = sequence.get(
+            "last_bos_choch"
+        ) or {}
+    
+        event_name = str(
+            last_event.get(
+                "event",
+                "NONE"
             )
-
-            last_event = sequence.get("last_bos_choch") or {}
-            event_name = str(
-                last_event.get("event", "NONE")
-            ).upper()
-
-            current_index = sequence.get(
-                "current_candle_index",
-                sequence.get("count", 0) - 1
+        ).upper()
+    
+        # --------------------------------------------------------
+        # CURRENT CANDLE INDEX
+        # --------------------------------------------------------
+    
+        current_index = sequence.get(
+            "current_candle_index",
+            sequence.get(
+                "count",
+                0
+            ) - 1
+        )
+    
+        # --------------------------------------------------------
+        # STRUCTURAL EVENT INDEX
+        # --------------------------------------------------------
+    
+        event_index = last_event.get(
+            "candle_index",
+            None
+        )
+    
+        # --------------------------------------------------------
+        # CALCULATE EVENT AGE
+        # --------------------------------------------------------
+    
+        try:
+            event_age = (
+                int(current_index)
+                - int(event_index)
             )
-
-            event_index = last_event.get(
-                "candle_index", None
+        except (
+            TypeError,
+            ValueError
+        ):
+            event_age = None
+    
+        # ========================================================
+        # EVENT FRESHNESS
+        # ========================================================
+    
+        MAX_SIGNAL_EVENT_AGE = 5
+    
+        if event_age is None:
+    
+            reasons.append(
+                "Structural event age cannot be established."
             )
-
-            try:
-                event_age = int(current_index) - int(event_index)
-            except (TypeError, ValueError):
-                event_age = None
-
-            # ------------------------------------------------------------
-            # EVENT FRESHNESS
-            # ------------------------------------------------------------
-            # A structural confirmation that is too old should not
-            # trigger a new entry.
-            # ------------------------------------------------------------
-            
-            MAX_SIGNAL_EVENT_AGE = 5
-            
-            if event_age is None:
-                reasons.append(
-                    "Structural event age cannot be established."
-                )
-            
-            elif event_age < 1:
-                reasons.append(
-                    "Structural BOS occurred on the current candle; "
-                    "wait for confirmation on a subsequent candle."
-                )
-            
-            elif event_age > MAX_SIGNAL_EVENT_AGE:
-                reasons.append(
-                    f"Structural BOS is too old ({event_age} candles)."
-                )
-            reasons = []
-
-            if direction not in ("LONG", "SHORT"):
-                reasons.append("No confirmed BUY or SELL direction.")
-
-            if not final_status.startswith("VALID"):
-                reasons.append("The setup has not reached VALID status.")
-
-            if event_alignment != "ALIGNED":
-                reasons.append("The latest structural event does not support the setup direction.")
-
-            # ------------------------------------------------------------
-            # STRUCTURAL EVENT CONFIRMATION
-            # ------------------------------------------------------------
-            # A CHoCH indicates a structural shift, but it is NOT enough
-            # by itself to authorize an entry.
-            #
-            # Actual BUY / SELL signals require a BOS in the same direction.
-            # ------------------------------------------------------------
-            
-            expected_bos = (
-                "BULLISH BOS"
-                if direction == "LONG"
-                else "BEARISH BOS"
+    
+        elif event_age < 1:
+    
+            reasons.append(
+                "Structural BOS occurred on the current candle; "
+                "wait for confirmation on a subsequent candle."
             )
-            
-            if event_name != expected_bos:
-                reasons.append(
-                    f"Latest structural event is {event_name}; "
-                    f"{expected_bos} is required for entry."
-                )
-
-            if candle_alignment != "ALIGNED":
-                reasons.append("The current candle is not aligned with the setup direction.")
-
-            if candle_strength != "STRONG":
-                reasons.append("The current candle is not strong enough to trigger an entry.")
-
-            if rejection_status != "NO MAJOR REJECTION":
-                reasons.append("Major wick rejection blocks the entry.")
-
-            if confidence < 85:
-                reasons.append(f"Detection confidence is only {confidence:.1f}%.")
-
-            if sequence_integrity < 90:
-                reasons.append(f"Sequence integrity is only {sequence_integrity:.1f}%.")
-
-            if confluence_score < 75:
-                reasons.append(f"Confluence is only {confluence_score:.1f}%.")
-
-            if reasons:
-                return {
-                    "signal": "NO SIGNAL",
-                    "trigger": "CONDITIONS NOT MET",
-                    "event": event_name or "NONE",
-                    "event_age": event_age,
-                    "reasons": reasons
-                }
-
-            if direction == "LONG":
-                signal = "BUY"
-                trigger = "BULLISH CONFIRMATION"
-            else:
-                signal = "SELL"
-                trigger = "BEARISH CONFIRMATION"
-
+    
+        elif event_age > MAX_SIGNAL_EVENT_AGE:
+    
+            reasons.append(
+                f"Structural BOS is too old "
+                f"({event_age} candles)."
+            )
+    
+        # ========================================================
+        # DIRECTION VALIDATION
+        # ========================================================
+    
+        if direction not in (
+            "LONG",
+            "SHORT"
+        ):
+    
+            reasons.append(
+                "No confirmed BUY or SELL direction."
+            )
+    
+        # ========================================================
+        # SETUP VALIDATION
+        # ========================================================
+    
+        if not final_status.startswith(
+            "VALID"
+        ):
+    
+            reasons.append(
+                "The setup has not reached VALID status."
+            )
+    
+        # ========================================================
+        # STRUCTURAL EVENT ALIGNMENT
+        # ========================================================
+    
+        if event_alignment != "ALIGNED":
+    
+            reasons.append(
+                "The latest structural event does not "
+                "support the setup direction."
+            )
+    
+        # ========================================================
+        # STRUCTURAL EVENT CONFIRMATION
+        # ========================================================
+        #
+        # CHoCH identifies a possible structural shift.
+        # It does NOT authorize an entry by itself.
+        #
+        # Actual BUY / SELL signals require a BOS in the
+        # same direction as the setup.
+        # ========================================================
+    
+        expected_bos = (
+            "BULLISH BOS"
+            if direction == "LONG"
+            else "BEARISH BOS"
+        )
+    
+        if event_name != expected_bos:
+    
+            reasons.append(
+                f"Latest structural event is "
+                f"{event_name}; "
+                f"{expected_bos} is required for entry."
+            )
+    
+        # ========================================================
+        # CURRENT CANDLE ALIGNMENT
+        # ========================================================
+    
+        if candle_alignment != "ALIGNED":
+    
+            reasons.append(
+                "The current candle is not aligned "
+                "with the setup direction."
+            )
+    
+        # ========================================================
+        # CANDLE STRENGTH
+        # ========================================================
+    
+        if candle_strength != "STRONG":
+    
+            reasons.append(
+                "The current candle is not strong "
+                "enough to trigger an entry."
+            )
+    
+        # ========================================================
+        # WICK REJECTION
+        # ========================================================
+    
+        if rejection_status != "NO MAJOR REJECTION":
+    
+            reasons.append(
+                "Major wick rejection blocks the entry."
+            )
+    
+        # ========================================================
+        # DETECTION CONFIDENCE
+        # ========================================================
+    
+        if confidence < 85:
+    
+            reasons.append(
+                f"Detection confidence is only "
+                f"{confidence:.1f}%."
+            )
+    
+        # ========================================================
+        # SEQUENCE INTEGRITY
+        # ========================================================
+    
+        if sequence_integrity < 90:
+    
+            reasons.append(
+                f"Sequence integrity is only "
+                f"{sequence_integrity:.1f}%."
+            )
+    
+        # ========================================================
+        # CONFLUENCE SCORE
+        # ========================================================
+    
+        if confluence_score < 75:
+    
+            reasons.append(
+                f"Confluence is only "
+                f"{confluence_score:.1f}%."
+            )
+    
+        # ========================================================
+        # NO SIGNAL
+        # ========================================================
+    
+        if reasons:
+    
             return {
-                "signal": signal,
-                "trigger": trigger,
-                "event": event_name,
+                "signal": "NO SIGNAL",
+    
+                "trigger": "CONDITIONS NOT MET",
+    
+                "event": (
+                    event_name
+                    or "NONE"
+                ),
+    
                 "event_age": event_age,
-                "reasons": [
-                    "Structural direction is confirmed.",
-                    "Latest BOS / CHoCH supports the direction.",
-                    "Current candle confirms the direction.",
-                    "Current candle has strong body dominance.",
-                    "No major wick rejection is present.",
-                    f"Detection confidence is {confidence:.1f}%.",
-                    f"Confluence score is {confluence_score:.1f}%."
-                ]
+    
+                "reasons": reasons
             }
-
+    
+        # ========================================================
+        # VALID BUY / SELL SIGNAL
+        # ========================================================
+    
+        if direction == "LONG":
+    
+            signal = "BUY"
+    
+            trigger = (
+                "BULLISH CONFIRMATION"
+            )
+    
+        else:
+    
+            signal = "SELL"
+    
+            trigger = (
+                "BEARISH CONFIRMATION"
+            )
+    
+        # ========================================================
+        # SIGNAL APPROVED
+        # ========================================================
+    
+        return {
+            "signal": signal,
+    
+            "trigger": trigger,
+    
+            "event": event_name,
+    
+            "event_age": event_age,
+    
+            "reasons": [
+                "Structural direction is confirmed.",
+                "Latest BOS supports the direction.",
+                "Current candle confirms the direction.",
+                "Current candle has strong body dominance.",
+                "No major wick rejection is present.",
+                f"Detection confidence is {confidence:.1f}%.",
+                f"Sequence integrity is {sequence_integrity:.1f}%.",
+                f"Confluence score is {confluence_score:.1f}%."
+            ]
+        }
+    
+    
+        # ========================================================
+        # RUN SIGNAL ENGINE
+        # ========================================================
+        
         signal_result = generate_signal(
             sequence,
             setup_analysis
         )
-
-        # ============================================================
-        # SIGNAL DISPLAY — TOP PANEL
-        # ============================================================
         
-        signal_value = signal_result["signal"]
-        
-        with signal_placeholder.container():
-        
-            if signal_value == "BUY":
-                st.success(
-                    "🟢 BUY"
-                )
-        
-            elif signal_value == "SELL":
-                st.error(
-                    "🔴 SELL"
-                )
-        
-            else:
-                st.warning(
-                    "⚪ NO SIGNAL"
-                )
-        
-        
-        with signal_details_placeholder.container():
-        
-            signal_col1, signal_col2, signal_col3 = st.columns(3)
-        
-            signal_col1.write(
-                "**Trigger:** "
-                f"`{signal_result['trigger']}`"
-            )
-        
-            signal_col2.write(
-                "**Latest Event:** "
-                f"`{signal_result['event']}`"
-            )
-        
-            event_age_display = (
-                f"{signal_result['event_age']} candles"
-                if signal_result["event_age"] is not None
-                else "— candles"
-            )
-        
-            signal_col3.write(
-                "**Event Age:** "
-                f"`{event_age_display}`"
-            )
-        
-            with st.expander(
-                "🔎 Signal decision audit"
-            ):
-        
-                for reason in signal_result["reasons"]:
-        
-                    st.write(
-                        f"• {reason}"
-                    )
-
-        # ============================================================
+        # ========================================================
         # TOP METRICS
-        # ============================================================
-
+        # ========================================================
+        
         col1, col2, col3, col4 = st.columns(4)
-
+        
         col1.metric(
             "Setup Direction",
             setup_analysis[
                 "setup_direction"
             ]
         )
-
+        
         col2.metric(
             "Structural Bias",
             setup_analysis[
                 "structural_bias"
             ]
         )
-
+        
         col3.metric(
             "Candle Alignment",
             setup_analysis[
                 "candle_alignment"
             ]
         )
-
+        
         col4.metric(
             "Confluence Score",
             f"{setup_analysis['confluence_score']:.1f}%"
         )
-
+        
         st.divider()
-
-        # ============================================================
+        
+        # ========================================================
         # SETUP DIAGNOSTIC
-        # ============================================================
-
+        # ========================================================
+        
         st.subheader(
             "Setup Diagnostic"
         )
-
+        
         col1, col2 = st.columns(2)
-
+        
         with col1:
-
+        
             st.write(
                 "**Structure Status:** "
                 f"`{setup_analysis['structure_status']}`"
             )
-
+        
             st.write(
                 "**Candle Strength:** "
                 f"`{setup_analysis['candle_strength']}`"
             )
-
+        
             st.write(
                 "**Structural Event Alignment:** "
                 f"`{setup_analysis['event_alignment']}`"
             )
-
+        
         with col2:
-
+        
             st.write(
                 "**Rejection Status:** "
                 f"`{setup_analysis['rejection_status']}`"
             )
-
+        
             st.write(
                 "**Current Candle:** "
                 f"`{sequence.get('current_direction', 'UNKNOWN')}`"
             )
-
+        
             st.write(
                 "**Detection Confidence:** "
                 f"`{sequence.get('current_confidence', 0):.1f}%`"
             )
-
-        # ============================================================
+        
+        # ========================================================
         # FINAL STATUS
-        # ============================================================
-
+        # ========================================================
+        
         st.subheader(
             "Final Setup Status"
         )
-
+        
         final_status = setup_analysis[
             "final_status"
         ]
-
+        
         if final_status.startswith(
             "VALID"
         ):
-
+        
             st.success(
                 final_status
             )
-
+        
         elif final_status.startswith(
             "DEVELOPING"
         ):
-
+        
             st.warning(
                 final_status
             )
-
+        
         elif final_status.startswith(
             "WAIT"
         ):
-
+        
             st.warning(
                 final_status
             )
-
+        
         else:
-
+        
             st.info(
                 final_status
             )
-
-        # ============================================================
+        
+        # ========================================================
         # REASONING
-        # ============================================================
-
+        # ========================================================
+        
         st.subheader(
             "Diagnostic Reasoning"
         )
-
+        
         for reason in setup_analysis[
             "reasons"
         ]:
-
+        
             st.write(
                 f"• {reason}"
             )
-
-        # ============================================================
+        
+        # ========================================================
         # IMPORTANT INTERPRETATION
-        # ============================================================
-
+        # ========================================================
+        
         if (
             setup_analysis[
                 "candle_alignment"
@@ -7593,7 +7719,7 @@ if "candles" in st.session_state:
             ==
             "COUNTER-DIRECTIONAL"
         ):
-
+        
             st.info(
                 "The current candle is moving against the "
                 "validated structural direction. This does NOT "
@@ -7601,60 +7727,59 @@ if "candles" in st.session_state:
                 "reversal requires a confirmed break of the "
                 "protected structural level."
             )
-
-    # ========================================================
-    # INTERPRETATION GUIDE
-    # ========================================================
-
-    st.header(
-        "🔟 How to Read the Scores"
-    )
-
-    st.markdown(
+        
+        # ========================================================
+        # INTERPRETATION GUIDE
+        # ========================================================
+        
+        st.header(
+            "🔟 How to Read the Scores"
+        )
+        
+        st.markdown(
+            """
+        **Geometry Score**
+        
+        Measures whether the detected object has a
+        plausible candle-like shape.
+        
+        **Colour Confidence**
+        
+        Measures how strongly the detected pixels support
+        the assigned RED or GREEN classification.
+        
+        **Structure Score**
+        
+        Measures how well the candle fits the surrounding
+        candle sequence in terms of size and spacing.
+        
+        **Final Confidence**
+        
+        Weighted combination of:
+        
+        - Geometry: 40%
+        - Colour: 25%
+        - Structure: 25%
+        - Detection support: 10%
+        
+        **Spacing**
+        
+        - **Normal:** spacing is consistent with the local sequence.
+        - **Suspicious Gap:** spacing is unusual but not strong enough
+          to claim a missing candle.
+        - **Possible Missing Candle:** a large gap is supported by
+          normal neighbouring spacing.
+        
+        A "Possible Missing Candle" is still a hypothesis.
+        It is NOT treated as an actual candle.
         """
-**Geometry Score**
-
-Measures whether the detected object has a
-plausible candle-like shape.
-
-**Colour Confidence**
-
-Measures how strongly the detected pixels support
-the assigned RED or GREEN classification.
-
-**Structure Score**
-
-Measures how well the candle fits the surrounding
-candle sequence in terms of size and spacing.
-
-**Final Confidence**
-
-Weighted combination of:
-
-- Geometry: 40%
-- Colour: 25%
-- Structure: 25%
-- Detection support: 10%
-
-**Spacing**
-
-- **Normal:** spacing is consistent with the local sequence.
-- **Suspicious Gap:** spacing is unusual but not strong enough
-  to claim a missing candle.
-- **Possible Missing Candle:** a large gap is supported by
-  normal neighbouring spacing.
-
-A "Possible Missing Candle" is still a hypothesis.
-It is NOT treated as an actual candle.
-"""
-    )
-
-
-    # ========================================================
-    # SIGNAL ENGINE NOTE
-    # ========================================================
-
-    st.caption(
-        "BUY / SELL signals are generated only when the validated "
-        "structural, candle, confidence and confluence gates agree."
-    )
+        )
+        
+        # ========================================================
+        # SIGNAL ENGINE NOTE
+        # ========================================================
+        
+        st.caption(
+            "BUY / SELL signals are generated only when the validated "
+            "structural, candle, confidence and confluence gates agree."
+        )
