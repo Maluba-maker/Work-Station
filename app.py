@@ -7204,6 +7204,7 @@ if "candles" in st.session_state:
         # ============================================================
 
         def generate_signal(sequence, setup_analysis):
+            reasons = []
             """
             Convert the validated setup into an actual BUY / SELL signal.
 
