@@ -7152,40 +7152,7 @@ if "candles" in st.session_state:
                 "reasons":
                     reasons
             }       
-    # ============================================================
-    # TOP SIGNAL / UPLOAD LAYOUT
-    # ============================================================
     
-    top_signal_col, top_upload_col = st.columns(
-        [1, 1],
-        gap="large"
-    )
-    
-    with top_signal_col:
-    
-        st.header(
-            "1️⃣3️⃣ Trade Setup / Confluence Diagnostic"
-        )
-    
-        st.subheader("🎯 Signal")
-    
-        signal_placeholder = st.empty()
-    
-        signal_details_placeholder = st.empty()
-    
-    
-    with top_upload_col:
-    
-        st.header("1️⃣ Upload Chart")
-    
-        uploaded = st.file_uploader(
-            "Upload your Pocket Option chart",
-            type=[
-                "png",
-                "jpg",
-                "jpeg"
-            ]
-        )
     # ========================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ========================================================
