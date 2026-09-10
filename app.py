@@ -7608,6 +7608,71 @@ if "candles" in st.session_state:
         )
         
         # ========================================================
+        # SIGNAL DISPLAY
+        # ========================================================
+
+        signal_value = signal_result["signal"]
+
+        with signal_placeholder.container():
+
+            if signal_value == "BUY":
+
+                st.success(
+                    "🟢 BUY"
+                )
+
+            elif signal_value == "SELL":
+
+                st.error(
+                    "🔴 SELL"
+                )
+
+            else:
+
+                st.warning(
+                    "⚪ NO SIGNAL"
+                )
+
+
+        # ========================================================
+        # SIGNAL DETAILS
+        # ========================================================
+
+        with signal_details_placeholder.container():
+
+            signal_col1, signal_col2, signal_col3 = st.columns(3)
+
+            signal_col1.write(
+                "**Trigger:** "
+                f"`{signal_result['trigger']}`"
+            )
+
+            signal_col2.write(
+                "**Latest Event:** "
+                f"`{signal_result['event']}`"
+            )
+
+            event_age_display = (
+                f"{signal_result['event_age']} candles"
+                if signal_result["event_age"] is not None
+                else "— candles"
+            )
+
+            signal_col3.write(
+                "**Event Age:** "
+                f"`{event_age_display}`"
+            )
+
+            with st.expander(
+                "🔎 Signal decision audit"
+            ):
+
+                for reason in signal_result["reasons"]:
+
+                    st.write(
+                        f"• {reason}"
+                    )
+        # ========================================================
         # TOP METRICS
         # ========================================================
         
