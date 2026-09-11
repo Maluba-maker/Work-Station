@@ -7559,40 +7559,66 @@ def generate_signal(sequence, setup_analysis):
 # RUN SIGNAL ENGINE
 # ============================================================
 
-signal_result = generate_signal(
-    sequence,
-    setup_analysis
-)
+# The signal engine must only run after candle detection
+# and Step 13 setup analysis have been completed.
+#
+# Before the user clicks "Detect & Reconstruct Candles",
+# neither sequence nor setup_analysis exists.
+
+if (
+    "sequence_analysis" in st.session_state
+    and "candles" in st.session_state
+):
+
+    sequence = st.session_state[
+        "sequence_analysis"
+    ]
+
+    signal_result = generate_signal(
+        sequence,
+        setup_analysis
+    )
 
 
-# ============================================================
-# SIGNAL DISPLAY — TOP PANEL
-# ============================================================
+    # ========================================================
+    # SIGNAL DISPLAY — TOP PANEL
+    # ========================================================
 
-signal_value = signal_result[
-    "signal"
-]
+    signal_value = signal_result[
+        "signal"
+    ]
 
-with signal_placeholder.container():
+    with signal_placeholder.container():
 
-    if signal_value == "BUY":
+        if signal_value == "BUY":
 
-        st.success(
-            "🟢 BUY"
+            st.success(
+                "🟢 BUY"
+            )
+
+        elif signal_value == "SELL":
+
+            st.error(
+                "🔴 SELL"
+            )
+
+        else:
+
+            st.warning(
+                "⚪ NO SIGNAL"
+            )
+
+else:
+
+    # --------------------------------------------------------
+    # WAITING FOR DETECTION
+    # --------------------------------------------------------
+
+    with signal_placeholder.container():
+
+        st.info(
+            "⏳ Waiting for candle detection..."
         )
-
-    elif signal_value == "SELL":
-
-        st.error(
-            "🔴 SELL"
-        )
-
-    else:
-
-        st.warning(
-            "⚪ NO SIGNAL"
-        )
-
 
 # ============================================================
 # SIGNAL DETAILS — TOP PANEL
