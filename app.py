@@ -7198,280 +7198,222 @@ if "candles" in st.session_state:
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
 
+# ============================================================
+# STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
+# ============================================================
+
 def generate_signal(sequence, setup_analysis):
     """
-    STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
-
-    This is the final trading decision layer.
+    Convert the validated structural/setup information into an
+    actual BUY / SELL decision.
 
     IMPORTANT:
-    Step 13 diagnoses the quality of the setup.
-    Step 14 makes the actual BUY / SELL decision.
+    Step 13 diagnoses the setup.
+    Step 14 decides whether the setup is strong enough to trade.
 
-    The engine uses:
-        - Structural direction
-        - Directional BOS
-        - BOS freshness
-        - Current candle alignment
-        - Current candle strength
-        - Wick rejection
-        - Detection confidence
-        - Sequence integrity
-        - Step 13 confluence
+    This engine intentionally avoids an all-or-nothing gate system.
 
     HARD BLOCKERS:
-        - No structural direction
-        - No matching directional BOS
-        - Current candle is counter-directional
-        - Major wick rejection
-        - Extremely poor detection quality
-        - Structural event cannot be established
+    - No usable structural direction
+    - Clearly counter-directional current candle
+    - No matching directional BOS
+    - Opposite directional BOS has invalidated the setup
+    - Major rejection
+    - Extremely poor detection confidence
+    - Extremely poor sequence integrity
+    - Extremely stale BOS
 
-    Everything else contributes to a weighted score.
+    SCORED FACTORS:
+    - Structural BOS quality
+    - Current candle confirmation
+    - BOS freshness
+    - Detection confidence
+    - Sequence integrity
+    - Step 13 confluence
 
-    Signal thresholds:
+    SCORE:
         80 - 100  = BUY / SELL
         65 - 79   = WATCH
         below 65  = NO SIGNAL
 
-    This prevents the engine from requiring every individual
-    measurement to be perfect while still protecting against
-    weak or structurally invalid trades.
+    These thresholds are intentionally designed for testing and
+    will be calibrated against real tester screenshots.
     """
 
-    # ========================================================
-    # INITIALISE
-    # ========================================================
+    # --------------------------------------------------------
+    # SAFE INPUTS
+    # --------------------------------------------------------
+
+    sequence = sequence or {}
+    setup_analysis = setup_analysis or {}
 
     reasons = []
+    blockers = []
 
-    # ========================================================
-    # NORMALISE STEP 13 VALUES
-    # ========================================================
+    # --------------------------------------------------------
+    # BASIC VALUES
+    # --------------------------------------------------------
 
-    direction = str(
-        setup_analysis.get(
-            "setup_direction",
-            "NONE"
-        )
-    ).upper()
+    direction = (
+        setup_analysis.get("setup_direction")
+        or sequence.get("structural_bias")
+        or sequence.get("bos_choch_bias")
+        or ""
+    )
 
-    structural_bias = str(
-        setup_analysis.get(
-            "structural_bias",
-            sequence.get(
-                "structural_bias",
-                "UNKNOWN"
-            )
-        )
-    ).upper()
+    direction = str(direction).upper().strip()
 
-    event_alignment = str(
-        setup_analysis.get(
-            "event_alignment",
-            "NEUTRAL"
-        )
-    ).upper()
+    if direction in ("BULLISH", "LONG", "BUY"):
+        direction = "LONG"
+    elif direction in ("BEARISH", "SHORT", "SELL"):
+        direction = "SHORT"
+    else:
+        direction = ""
 
+    # Current candle information
     candle_alignment = str(
-        setup_analysis.get(
-            "candle_alignment",
-            "UNKNOWN"
-        )
-    ).upper()
+        setup_analysis.get("candle_alignment", "UNKNOWN")
+    ).upper().strip()
 
     candle_strength = str(
-        setup_analysis.get(
-            "candle_strength",
-            "UNKNOWN"
-        )
-    ).upper()
+        setup_analysis.get("candle_strength", "UNKNOWN")
+    ).upper().strip()
 
     rejection_status = str(
-        setup_analysis.get(
-            "rejection_status",
-            ""
-        )
-    ).upper()
+        setup_analysis.get("rejection_status", "")
+    ).upper().strip()
 
-    final_status = str(
-        setup_analysis.get(
-            "final_status",
-            "WAIT"
-        )
-    ).upper()
-
+    # Numeric quality values
     try:
-        confidence = float(
+        detection_confidence = float(
             sequence.get(
-                "current_confidence",
-                0
-            )
+                "detection_confidence",
+                setup_analysis.get("detection_confidence", 0)
+            ) or 0
         )
-    except (
-        TypeError,
-        ValueError
-    ):
-        confidence = 0.0
+    except Exception:
+        detection_confidence = 0.0
 
     try:
         sequence_integrity = float(
             sequence.get(
                 "sequence_integrity",
-                0
-            )
+                setup_analysis.get("sequence_integrity", 0)
+            ) or 0
         )
-    except (
-        TypeError,
-        ValueError
-    ):
+    except Exception:
         sequence_integrity = 0.0
 
     try:
-        confluence_score = float(
-            setup_analysis.get(
-                "confluence_score",
-                0
-            )
+        confluence = float(
+            setup_analysis.get("confluence_score", 0) or 0
         )
-    except (
-        TypeError,
-        ValueError
-    ):
-        confluence_score = 0.0
+    except Exception:
+        confluence = 0.0
 
-    # ========================================================
-    # LATEST STRUCTURAL EVENT
-    # ========================================================
+    # --------------------------------------------------------
+    # HARD BLOCKER 1 — NO STRUCTURAL DIRECTION
+    # --------------------------------------------------------
 
-    last_event = (
-        sequence.get(
-            "last_bos_choch"
-        )
-        or {}
-    )
-
-    event_name = str(
-        last_event.get(
-            "event",
-            "NONE"
-        )
-    ).upper()
-
-    event_direction = str(
-        last_event.get(
-            "direction",
-            ""
-        )
-    ).upper()
-
-    # ========================================================
-    # CURRENT CANDLE INDEX
-    # ========================================================
-
-    current_index = sequence.get(
-        "current_candle_index",
-        sequence.get(
-            "count",
-            0
-        ) - 1
-    )
-
-    # ========================================================
-    # STRUCTURAL EVENT INDEX
-    # ========================================================
-
-    event_index = last_event.get(
-        "candle_index",
-        None
-    )
-
-    # ========================================================
-    # EVENT AGE
-    # ========================================================
-
-    try:
-
-        event_age = (
-            int(current_index)
-            -
-            int(event_index)
-        )
-
-    except (
-        TypeError,
-        ValueError
-    ):
-
-        event_age = None
-
-    # ========================================================
-    # HARD BLOCKER 1
-    # STRUCTURAL DIRECTION
-    # ========================================================
-
-    if direction not in (
-        "LONG",
-        "SHORT"
-    ):
+    if direction not in ("LONG", "SHORT"):
+        blockers.append("NO STRUCTURAL DIRECTION")
 
         return {
             "signal": "NO SIGNAL",
-            "trigger": "NO STRUCTURAL DIRECTION",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
+            "trigger": "NO USABLE STRUCTURAL DIRECTION",
+            "event": "NONE",
+            "event_age": None,
+            "score": 0,
             "decision": "NO SIGNAL",
-            "reasons": [
-                "No confirmed structural BUY or SELL direction."
-            ]
+            "reasons": blockers,
+            "components": {}
         }
 
-    # ========================================================
-    # HARD BLOCKER 2
+    # --------------------------------------------------------
+    # HARD BLOCKER 2 — EXTREMELY POOR DATA QUALITY
+    # --------------------------------------------------------
+
+    if detection_confidence < 45:
+        blockers.append(
+            f"DETECTION CONFIDENCE TOO LOW ({detection_confidence:.1f}%)"
+        )
+
+    if sequence_integrity < 45:
+        blockers.append(
+            f"SEQUENCE INTEGRITY TOO LOW ({sequence_integrity:.1f}%)"
+        )
+
+    # --------------------------------------------------------
+    # HARD BLOCKER 3 — MAJOR REJECTION
+    # --------------------------------------------------------
+
+    if (
+        "MAJOR REJECTION" in rejection_status
+        or "STRONG REJECTION" in rejection_status
+    ):
+        blockers.append("MAJOR WICK REJECTION")
+
+    # --------------------------------------------------------
     # CURRENT CANDLE DIRECTION
-    # ========================================================
+    # --------------------------------------------------------
 
-    if candle_alignment == "COUNTER-DIRECTIONAL":
+    counter_directional = (
+        "COUNTER" in candle_alignment
+        or "OPPOSITE" in candle_alignment
+    )
 
-        reasons.append(
-            "Current candle is counter-directional "
-            "to the structural setup."
-        )
+    clearly_aligned = (
+        candle_alignment == "ALIGNED"
+        or "ALIGNED" in candle_alignment
+    )
 
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "COUNTER-DIRECTIONAL CANDLE",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
+    # A clearly counter-directional candle is still a blocker.
+    # We do NOT require the candle to be STRONG.
+    if counter_directional:
+        blockers.append("CURRENT CANDLE IS COUNTER-DIRECTIONAL")
 
-    if candle_alignment not in (
-        "ALIGNED",
-        "UNKNOWN"
-    ):
+    # --------------------------------------------------------
+    # STRUCTURAL EVENTS
+    # --------------------------------------------------------
 
-        reasons.append(
-            "Current candle alignment cannot confirm "
-            "the structural direction."
-        )
+    events = sequence.get("bos_choch_events", [])
 
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "CANDLE ALIGNMENT FAILURE",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
+    if not isinstance(events, list):
+        events = []
 
-    # ========================================================
-    # EXPECTED BOS
-    # ========================================================
+    # Normalise event list.
+    normalised_events = []
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+
+        event_name = str(
+            event.get("event")
+            or event.get("type")
+            or event.get("name")
+            or ""
+        ).upper().strip()
+
+        try:
+            candle_index = int(
+                event.get(
+                    "candle_index",
+                    event.get("index", -1)
+                )
+            )
+        except Exception:
+            candle_index = -1
+
+        normalised_events.append({
+            "raw": event,
+            "name": event_name,
+            "candle_index": candle_index
+        })
+
+    # --------------------------------------------------------
+    # FIND DIRECTIONAL BOS ANCHOR
+    # --------------------------------------------------------
 
     expected_bos = (
         "BULLISH BOS"
@@ -7479,530 +7421,388 @@ def generate_signal(sequence, setup_analysis):
         else "BEARISH BOS"
     )
 
-    # ========================================================
-    # HARD BLOCKER 3
-    # DIRECTIONAL BOS
-    # ========================================================
+    matching_bos = [
+        event
+        for event in normalised_events
+        if event["name"] == expected_bos
+    ]
 
-    if event_name != expected_bos:
+    matching_bos.sort(
+        key=lambda x: x["candle_index"]
+    )
 
-        reasons.append(
-            f"Latest structural event is "
-            f"{event_name or 'NONE'}; "
-            f"{expected_bos} is required."
+    anchor_event = None
+
+    if matching_bos:
+        anchor_event = matching_bos[-1]
+
+    # --------------------------------------------------------
+    # NO MATCHING BOS
+    # --------------------------------------------------------
+
+    if anchor_event is None:
+
+        # Check whether there is an opposite BOS.
+        opposite_bos = (
+            "BEARISH BOS"
+            if direction == "LONG"
+            else "BULLISH BOS"
         )
+
+        has_opposite_bos = any(
+            event["name"] == opposite_bos
+            for event in normalised_events
+        )
+
+        if has_opposite_bos:
+            blockers.append(
+                f"NO {expected_bos}; OPPOSITE BOS EXISTS"
+            )
+        else:
+            blockers.append(
+                f"NO MATCHING {expected_bos}"
+            )
 
         return {
             "signal": "NO SIGNAL",
-            "trigger": "DIRECTIONAL BOS NOT CONFIRMED",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
+            "trigger": "NO STRUCTURAL BOS CONFIRMATION",
+            "event": expected_bos,
+            "event_age": None,
+            "score": 0,
             "decision": "NO SIGNAL",
-            "reasons": reasons
+            "reasons": blockers,
+            "components": {}
         }
 
-    # ========================================================
-    # HARD BLOCKER 4
-    # EVENT DIRECTION
-    # ========================================================
+    # --------------------------------------------------------
+    # EVENT AGE
+    # --------------------------------------------------------
 
-    if event_direction != (
-        "BULLISH"
+    try:
+        latest_candle_index = len(
+            sequence.get("candles", [])
+        ) - 1
+
+        if latest_candle_index < 0:
+            latest_candle_index = int(
+                sequence.get(
+                    "current_candle_index",
+                    anchor_event["candle_index"]
+                )
+            )
+
+        event_age = (
+            latest_candle_index
+            - anchor_event["candle_index"]
+        )
+
+    except Exception:
+        event_age = None
+
+    # --------------------------------------------------------
+    # OPPOSITE BOS AFTER OUR ANCHOR
+    # --------------------------------------------------------
+
+    opposite_bos = (
+        "BEARISH BOS"
         if direction == "LONG"
-        else "BEARISH"
-    ):
-
-        reasons.append(
-            "Structural BOS direction does not match "
-            "the proposed trade direction."
-        )
-
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "BOS DIRECTION MISMATCH",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
-
-    # ========================================================
-    # HARD BLOCKER 5
-    # MAJOR REJECTION
-    # ========================================================
-
-    if rejection_status != "NO MAJOR REJECTION":
-
-        reasons.append(
-            "Major wick rejection is present."
-        )
-
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "MAJOR REJECTION",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
-
-    # ========================================================
-    # HARD BLOCKER 6
-    # EXTREMELY POOR DETECTION
-    # ========================================================
-
-    if confidence < 45:
-
-        reasons.append(
-            f"Detection confidence is too low "
-            f"({confidence:.1f}%)."
-        )
-
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "LOW DETECTION CONFIDENCE",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
-
-    if sequence_integrity < 45:
-
-        reasons.append(
-            f"Sequence integrity is too low "
-            f"({sequence_integrity:.1f}%)."
-        )
-
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "LOW SEQUENCE INTEGRITY",
-            "event": event_name or "NONE",
-            "event_age": event_age,
-            "score": 0.0,
-            "decision": "NO SIGNAL",
-            "reasons": reasons
-        }
-
-    # ========================================================
-    # WEIGHTED SIGNAL SCORE
-    #
-    # Maximum = 100
-    #
-    # Structure / BOS       30
-    # Candle confirmation   25
-    # BOS freshness         15
-    # Detection quality     10
-    # Sequence integrity    10
-    # Confluence             10
-    # ========================================================
-
-    signal_score = 0.0
-
-    # ========================================================
-    # 1. STRUCTURE / BOS QUALITY — 30 POINTS
-    # ========================================================
-
-    structure_points = 30
-
-    signal_score += structure_points
-
-    reasons.append(
-        "Directional BOS confirms the structural setup."
+        else "BULLISH BOS"
     )
 
-    # ========================================================
-    # 2. CURRENT CANDLE CONFIRMATION — 25 POINTS
-    # ========================================================
+    later_opposite_bos = False
 
-    candle_points = 0
+    for event in normalised_events:
+        if (
+            event["name"] == opposite_bos
+            and
+            event["candle_index"] > anchor_event["candle_index"]
+        ):
+            later_opposite_bos = True
+            break
 
-    if candle_alignment == "ALIGNED":
-
-        candle_points += 15
-
-    elif candle_alignment == "UNKNOWN":
-
-        candle_points += 7
-
-    if candle_strength == "STRONG":
-
-        candle_points += 10
-
-    elif candle_strength == "MODERATE":
-
-        candle_points += 7
-
-    elif candle_strength == "WEAK":
-
-        candle_points += 4
-
-    else:
-
-        candle_points += 1
-
-    candle_points = min(
-        candle_points,
-        25
-    )
-
-    signal_score += candle_points
-
-    if candle_strength == "STRONG":
-
-        reasons.append(
-            "Current candle provides strong directional confirmation."
+    if later_opposite_bos:
+        blockers.append(
+            "OPPOSITE BOS OCCURRED AFTER THE DIRECTIONAL BOS"
         )
 
-    elif candle_strength == "MODERATE":
+    # --------------------------------------------------------
+    # BOS FRESHNESS
+    # --------------------------------------------------------
 
-        reasons.append(
-            "Current candle provides moderate directional confirmation."
-        )
-
-    elif candle_strength == "WEAK":
-
-        reasons.append(
-            "Current candle is aligned but relatively weak."
-        )
-
-    else:
-
-        reasons.append(
-            "Current candle provides limited body confirmation."
-        )
-
-    # ========================================================
-    # 3. BOS FRESHNESS — 15 POINTS
-    # ========================================================
-
-    freshness_points = 0
+    freshness_score = 0
 
     if event_age is None:
-
-        freshness_points = 0
-
-        reasons.append(
-            "BOS freshness could not be established."
-        )
+        freshness_score = 0
+        reasons.append("BOS AGE UNKNOWN")
 
     elif event_age == 0:
-
-        freshness_points = 5
-
+        freshness_score = 6
         reasons.append(
-            "BOS occurred on the current candle; "
-            "confirmation is limited."
+            "BOS OCCURRED ON CURRENT CANDLE"
         )
 
     elif event_age <= 2:
-
-        freshness_points = 15
-
-        reasons.append(
-            f"BOS is very fresh ({event_age} candle(s) ago)."
-        )
+        freshness_score = 15
 
     elif event_age <= 4:
-
-        freshness_points = 13
-
-        reasons.append(
-            f"BOS remains fresh ({event_age} candles ago)."
-        )
+        freshness_score = 13
 
     elif event_age <= 6:
-
-        freshness_points = 10
-
-        reasons.append(
-            f"BOS is still usable ({event_age} candles ago)."
-        )
+        freshness_score = 10
 
     elif event_age <= 8:
+        freshness_score = 6
 
-        freshness_points = 6
+    else:
+        freshness_score = 0
+        blockers.append(
+            f"BOS TOO STALE ({event_age} CANDLES OLD)"
+        )
 
+    # --------------------------------------------------------
+    # STRUCTURAL SCORE
+    # --------------------------------------------------------
+
+    structural_score = 30
+
+    # If a BOS exists and is the correct direction,
+    # the structure receives full structural credit.
+    #
+    # We reduce it slightly if the BOS is not fresh,
+    # rather than killing the entire signal.
+
+    if event_age is not None:
+
+        if event_age <= 2:
+            structural_score = 30
+
+        elif event_age <= 4:
+            structural_score = 28
+
+        elif event_age <= 6:
+            structural_score = 25
+
+        elif event_age <= 8:
+            structural_score = 20
+
+        else:
+            structural_score = 0
+
+    # --------------------------------------------------------
+    # CURRENT CANDLE SCORE
+    # --------------------------------------------------------
+
+    candle_score = 0
+
+    if clearly_aligned:
+        candle_score = 15
+
+        if candle_strength == "STRONG":
+            candle_score += 10
+
+        elif candle_strength == "MODERATE":
+            candle_score += 7
+
+        elif candle_strength == "WEAK":
+            candle_score += 4
+
+        else:
+            candle_score += 1
+
+    elif candle_alignment in ("UNKNOWN", "", "UNDETERMINED"):
+        # Do not completely kill a structurally valid setup
+        # just because candle classification is uncertain.
+        candle_score = 7
         reasons.append(
-            f"BOS is becoming stale ({event_age} candles ago)."
+            "CURRENT CANDLE ALIGNMENT UNCERTAIN"
         )
 
     else:
+        candle_score = 0
 
-        freshness_points = 0
+    # --------------------------------------------------------
+    # DETECTION CONFIDENCE SCORE
+    # --------------------------------------------------------
 
-        reasons.append(
-            f"BOS is too old ({event_age} candles ago)."
-        )
-
-    signal_score += freshness_points
-
-    # ========================================================
-    # 4. DETECTION CONFIDENCE — 10 POINTS
-    # ========================================================
-
-    if confidence >= 90:
-
-        confidence_points = 10
-
-    elif confidence >= 85:
-
-        confidence_points = 9
-
-    elif confidence >= 80:
-
-        confidence_points = 8
-
-    elif confidence >= 75:
-
-        confidence_points = 7
-
-    elif confidence >= 70:
-
-        confidence_points = 6
-
-    elif confidence >= 60:
-
-        confidence_points = 4
-
-    elif confidence >= 50:
-
-        confidence_points = 2
-
+    if detection_confidence >= 90:
+        confidence_score = 10
+    elif detection_confidence >= 85:
+        confidence_score = 9
+    elif detection_confidence >= 80:
+        confidence_score = 8
+    elif detection_confidence >= 75:
+        confidence_score = 7
+    elif detection_confidence >= 70:
+        confidence_score = 6
+    elif detection_confidence >= 60:
+        confidence_score = 4
+    elif detection_confidence >= 50:
+        confidence_score = 2
     else:
+        confidence_score = 0
 
-        confidence_points = 0
-
-    signal_score += confidence_points
-
-    reasons.append(
-        f"Detection confidence contributes "
-        f"{confidence_points}/10 points "
-        f"({confidence:.1f}%)."
-    )
-
-    # ========================================================
-    # 5. SEQUENCE INTEGRITY — 10 POINTS
-    # ========================================================
+    # --------------------------------------------------------
+    # SEQUENCE INTEGRITY SCORE
+    # --------------------------------------------------------
 
     if sequence_integrity >= 95:
-
-        integrity_points = 10
-
+        integrity_score = 10
     elif sequence_integrity >= 90:
-
-        integrity_points = 9
-
+        integrity_score = 9
     elif sequence_integrity >= 85:
-
-        integrity_points = 8
-
+        integrity_score = 8
     elif sequence_integrity >= 80:
-
-        integrity_points = 7
-
+        integrity_score = 7
     elif sequence_integrity >= 75:
-
-        integrity_points = 6
-
+        integrity_score = 6
     elif sequence_integrity >= 65:
-
-        integrity_points = 4
-
+        integrity_score = 4
     elif sequence_integrity >= 55:
-
-        integrity_points = 2
-
+        integrity_score = 2
     else:
+        integrity_score = 0
 
-        integrity_points = 0
+    # --------------------------------------------------------
+    # CONFLUENCE SCORE
+    # --------------------------------------------------------
 
-    signal_score += integrity_points
-
-    reasons.append(
-        f"Sequence integrity contributes "
-        f"{integrity_points}/10 points "
-        f"({sequence_integrity:.1f}%)."
-    )
-
-    # ========================================================
-    # 6. STEP 13 CONFLUENCE — 10 POINTS
-    # ========================================================
-
-    if confluence_score >= 85:
-
-        confluence_points = 10
-
-    elif confluence_score >= 75:
-
-        confluence_points = 9
-
-    elif confluence_score >= 70:
-
-        confluence_points = 8
-
-    elif confluence_score >= 65:
-
-        confluence_points = 7
-
-    elif confluence_score >= 60:
-
-        confluence_points = 5
-
-    elif confluence_score >= 55:
-
-        confluence_points = 3
-
-    elif confluence_score >= 45:
-
-        confluence_points = 1
-
+    if confluence >= 85:
+        confluence_score = 10
+    elif confluence >= 75:
+        confluence_score = 9
+    elif confluence >= 70:
+        confluence_score = 8
+    elif confluence >= 65:
+        confluence_score = 7
+    elif confluence >= 60:
+        confluence_score = 5
+    elif confluence >= 55:
+        confluence_score = 3
+    elif confluence >= 45:
+        confluence_score = 1
     else:
+        confluence_score = 0
 
-        confluence_points = 0
-
-    signal_score += confluence_points
-
-    reasons.append(
-        f"Setup confluence contributes "
-        f"{confluence_points}/10 points "
-        f"({confluence_score:.1f}%)."
-    )
-
-    # ========================================================
+    # --------------------------------------------------------
     # FINAL SCORE
-    # ========================================================
+    # --------------------------------------------------------
 
-    signal_score = round(
-        max(
-            0.0,
-            min(
-                100.0,
-                signal_score
-            )
-        ),
-        1
+    total_score = (
+        structural_score
+        + candle_score
+        + freshness_score
+        + confidence_score
+        + integrity_score
+        + confluence_score
     )
 
-    # ========================================================
-    # VERY STALE BOS PROTECTION
-    # ========================================================
+    # Keep score within 0–100.
+    total_score = max(
+        0,
+        min(100, int(round(total_score)))
+    )
 
-    if (
-        event_age is not None
-        and
-        event_age > 8
-    ):
+    # --------------------------------------------------------
+    # ADD DIAGNOSTIC REASONS
+    # --------------------------------------------------------
 
+    if event_age is not None and event_age > 4:
         reasons.append(
-            "The directional BOS is too stale "
-            "to support a current entry."
+            f"BOS IS AGING ({event_age} CANDLES OLD)"
         )
+
+    if candle_strength not in ("STRONG",):
+        reasons.append(
+            f"CURRENT CANDLE STRENGTH: {candle_strength}"
+        )
+
+    if detection_confidence < 70:
+        reasons.append(
+            f"DETECTION CONFIDENCE: {detection_confidence:.1f}%"
+        )
+
+    if sequence_integrity < 75:
+        reasons.append(
+            f"SEQUENCE INTEGRITY: {sequence_integrity:.1f}%"
+        )
+
+    if confluence < 65:
+        reasons.append(
+            f"CONFLUENCE: {confluence:.1f}"
+        )
+
+    # --------------------------------------------------------
+    # HARD BLOCKERS OVERRIDE SCORE
+    # --------------------------------------------------------
+
+    if blockers:
 
         return {
             "signal": "NO SIGNAL",
-            "trigger": "STALE BOS",
-            "event": event_name or "NONE",
+            "trigger": blockers[0],
+            "event": expected_bos,
             "event_age": event_age,
-            "score": signal_score,
+            "score": total_score,
             "decision": "NO SIGNAL",
-            "reasons": reasons
+            "reasons": blockers + reasons,
+            "components": {
+                "structure": structural_score,
+                "candle": candle_score,
+                "freshness": freshness_score,
+                "confidence": confidence_score,
+                "integrity": integrity_score,
+                "confluence": confluence_score
+            }
         }
 
-    # ========================================================
+    # --------------------------------------------------------
     # FINAL DECISION
-    # ========================================================
-
-    SIGNAL_THRESHOLD = 80
-    WATCH_THRESHOLD = 65
-
-    # --------------------------------------------------------
-    # BUY / SELL
     # --------------------------------------------------------
 
-    if signal_score >= SIGNAL_THRESHOLD:
+    if total_score >= 80:
 
         if direction == "LONG":
-
             signal = "BUY"
-
-            trigger = (
-                "BULLISH STRUCTURAL CONFIRMATION"
-            )
-
+            trigger = "BULLISH STRUCTURAL CONFIRMATION"
         else:
-
             signal = "SELL"
+            trigger = "BEARISH STRUCTURAL CONFIRMATION"
 
-            trigger = (
-                "BEARISH STRUCTURAL CONFIRMATION"
-            )
+        decision = "SIGNAL"
 
-        reasons.insert(
-            0,
-            f"Signal score is {signal_score:.1f}/100 "
-            f"and exceeds the {SIGNAL_THRESHOLD} "
-            f"entry threshold."
-        )
+    elif total_score >= 65:
 
-        return {
-            "signal": signal,
-            "trigger": trigger,
-            "event": event_name,
-            "event_age": event_age,
-            "score": signal_score,
-            "decision": signal,
-            "reasons": reasons
-        }
+        signal = "WATCH"
+        trigger = "SETUP DEVELOPING"
+        decision = "WATCH"
+
+    else:
+
+        signal = "NO SIGNAL"
+        trigger = "INSUFFICIENT SIGNAL QUALITY"
+        decision = "NO SIGNAL"
 
     # --------------------------------------------------------
-    # WATCH
+    # RETURN FULL AUDIT RESULT
     # --------------------------------------------------------
-
-    if signal_score >= WATCH_THRESHOLD:
-
-        reasons.insert(
-            0,
-            f"Setup score is {signal_score:.1f}/100. "
-            f"Directional conditions exist, but the entry "
-            f"threshold of {SIGNAL_THRESHOLD} was not reached."
-        )
-
-        return {
-            "signal": "WATCH",
-            "trigger": "SETUP DEVELOPING",
-            "event": event_name,
-            "event_age": event_age,
-            "score": signal_score,
-            "decision": "WATCH",
-            "reasons": reasons
-        }
-
-    # --------------------------------------------------------
-    # NO SIGNAL
-    # --------------------------------------------------------
-
-    reasons.insert(
-        0,
-        f"Setup score is only {signal_score:.1f}/100 "
-        f"and remains below the {WATCH_THRESHOLD} "
-        f"minimum quality threshold."
-    )
 
     return {
-        "signal": "NO SIGNAL",
-        "trigger": "INSUFFICIENT SIGNAL QUALITY",
-        "event": event_name,
+        "signal": signal,
+        "trigger": trigger,
+        "event": expected_bos,
         "event_age": event_age,
-        "score": signal_score,
-        "decision": "NO SIGNAL",
-        "reasons": reasons
+        "score": total_score,
+        "decision": decision,
+        "reasons": reasons,
+        "components": {
+            "structure": structural_score,
+            "candle": candle_score,
+            "freshness": freshness_score,
+            "confidence": confidence_score,
+            "integrity": integrity_score,
+            "confluence": confluence_score
+        }
     }
-
 # ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
