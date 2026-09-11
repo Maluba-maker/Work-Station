@@ -7556,33 +7556,37 @@ def generate_signal(sequence, setup_analysis):
 
 
 # ============================================================
-# RUN SIGNAL ENGINE
+# STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
 
-# The signal engine must only run after candle detection
-# and Step 13 setup analysis have been completed.
-#
-# Before the user clicks "Detect & Reconstruct Candles",
-# neither sequence nor setup_analysis exists.
+signal_result = None
+
+# ------------------------------------------------------------
+# ONLY RUN AFTER CANDLE DETECTION
+# ------------------------------------------------------------
 
 if (
     "sequence_analysis" in st.session_state
-    and "candles" in st.session_state
+    and
+    "candles" in st.session_state
 ):
 
     sequence = st.session_state[
         "sequence_analysis"
     ]
 
+    # --------------------------------------------------------
+    # RUN SIGNAL ENGINE
+    # --------------------------------------------------------
+
     signal_result = generate_signal(
         sequence,
         setup_analysis
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # SIGNAL DISPLAY — TOP PANEL
-    # ========================================================
+    # --------------------------------------------------------
 
     signal_value = signal_result[
         "signal"
@@ -7608,10 +7612,211 @@ if (
                 "⚪ NO SIGNAL"
             )
 
+    # ========================================================
+    # SIGNAL DETAILS — TOP PANEL
+    # ========================================================
+
+    with signal_details_placeholder.container():
+
+        signal_col1, signal_col2, signal_col3 = st.columns(
+            3
+        )
+
+        signal_col1.write(
+            "**Trigger:** "
+            f"`{signal_result['trigger']}`"
+        )
+
+        signal_col2.write(
+            "**Latest Event:** "
+            f"`{signal_result['event']}`"
+        )
+
+        event_age_display = (
+            f"{signal_result['event_age']} candles"
+            if signal_result["event_age"] is not None
+            else "— candles"
+        )
+
+        signal_col3.write(
+            "**Event Age:** "
+            f"`{event_age_display}`"
+        )
+
+        with st.expander(
+            "🔎 Signal decision audit"
+        ):
+
+            for reason in signal_result[
+                "reasons"
+            ]:
+
+                st.write(
+                    f"• {reason}"
+                )
+
+        # ====================================================
+        # TOP METRICS
+        # ====================================================
+
+        col1, col2, col3, col4 = st.columns(
+            4
+        )
+
+        col1.metric(
+            "Setup Direction",
+            setup_analysis[
+                "setup_direction"
+            ]
+        )
+
+        col2.metric(
+            "Structural Bias",
+            setup_analysis[
+                "structural_bias"
+            ]
+        )
+
+        col3.metric(
+            "Candle Alignment",
+            setup_analysis[
+                "candle_alignment"
+            ]
+        )
+
+        col4.metric(
+            "Confluence Score",
+            f"{setup_analysis['confluence_score']:.1f}%"
+        )
+
+        st.divider()
+
+        # ====================================================
+        # SETUP DIAGNOSTIC
+        # ====================================================
+
+        st.subheader(
+            "Setup Diagnostic"
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.write(
+                "**Structure Status:** "
+                f"`{setup_analysis['structure_status']}`"
+            )
+
+            st.write(
+                "**Candle Strength:** "
+                f"`{setup_analysis['candle_strength']}`"
+            )
+
+            st.write(
+                "**Structural Event Alignment:** "
+                f"`{setup_analysis['event_alignment']}`"
+            )
+
+        with col2:
+
+            st.write(
+                "**Rejection Status:** "
+                f"`{setup_analysis['rejection_status']}`"
+            )
+
+            st.write(
+                "**Current Candle:** "
+                f"`{sequence.get('current_direction', 'UNKNOWN')}`"
+            )
+
+            st.write(
+                "**Detection Confidence:** "
+                f"`{sequence.get('current_confidence', 0):.1f}%`"
+            )
+
+        # ====================================================
+        # FINAL STATUS
+        # ====================================================
+
+        st.subheader(
+            "Final Setup Status"
+        )
+
+        final_status = setup_analysis[
+            "final_status"
+        ]
+
+        if final_status.startswith(
+            "VALID"
+        ):
+
+            st.success(
+                final_status
+            )
+
+        elif final_status.startswith(
+            "DEVELOPING"
+        ):
+
+            st.warning(
+                final_status
+            )
+
+        elif final_status.startswith(
+            "WAIT"
+        ):
+
+            st.warning(
+                final_status
+            )
+
+        else:
+
+            st.info(
+                final_status
+            )
+
+        # ====================================================
+        # REASONING
+        # ====================================================
+
+        st.subheader(
+            "Diagnostic Reasoning"
+        )
+
+        for reason in setup_analysis[
+            "reasons"
+        ]:
+
+            st.write(
+                f"• {reason}"
+            )
+
+        # ====================================================
+        # IMPORTANT INTERPRETATION
+        # ====================================================
+
+        if (
+            setup_analysis[
+                "candle_alignment"
+            ]
+            ==
+            "COUNTER-DIRECTIONAL"
+        ):
+
+            st.info(
+                "The current candle is moving against the "
+                "validated structural direction. This does NOT "
+                "by itself invalidate the structure. A structural "
+                "reversal requires a confirmed break of the "
+                "protected structural level."
+            )
+
 else:
 
     # --------------------------------------------------------
-    # WAITING FOR DETECTION
+    # BEFORE DETECTION
     # --------------------------------------------------------
 
     with signal_placeholder.container():
@@ -7620,203 +7825,12 @@ else:
             "⏳ Waiting for candle detection..."
         )
 
-# ============================================================
-# SIGNAL DETAILS — TOP PANEL
-# ============================================================
+    with signal_details_placeholder.container():
 
-with signal_details_placeholder.container():
-
-    signal_col1, signal_col2, signal_col3 = st.columns(
-        3
-    )
-
-    signal_col1.write(
-        "**Trigger:** "
-        f"`{signal_result['trigger']}`"
-    )
-
-    signal_col2.write(
-        "**Latest Event:** "
-        f"`{signal_result['event']}`"
-    )
-
-    event_age_display = (
-        f"{signal_result['event_age']} candles"
-        if signal_result["event_age"] is not None
-        else "— candles"
-    )
-
-    signal_col3.write(
-        "**Event Age:** "
-        f"`{event_age_display}`"
-    )
-
-    with st.expander(
-        "🔎 Signal decision audit"
-    ):
-
-        for reason in signal_result[
-            "reasons"
-        ]:
-
-            st.write(
-                f"• {reason}"
-            )
-        # ========================================================
-        # TOP METRICS
-        # ========================================================
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        col1.metric(
-            "Setup Direction",
-            setup_analysis[
-                "setup_direction"
-            ]
+        st.caption(
+            "Signal analysis will appear after "
+            "candle detection is completed."
         )
-        
-        col2.metric(
-            "Structural Bias",
-            setup_analysis[
-                "structural_bias"
-            ]
-        )
-        
-        col3.metric(
-            "Candle Alignment",
-            setup_analysis[
-                "candle_alignment"
-            ]
-        )
-        
-        col4.metric(
-            "Confluence Score",
-            f"{setup_analysis['confluence_score']:.1f}%"
-        )
-        
-        st.divider()
-        
-        # ========================================================
-        # SETUP DIAGNOSTIC
-        # ========================================================
-        
-        st.subheader(
-            "Setup Diagnostic"
-        )
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-        
-            st.write(
-                "**Structure Status:** "
-                f"`{setup_analysis['structure_status']}`"
-            )
-        
-            st.write(
-                "**Candle Strength:** "
-                f"`{setup_analysis['candle_strength']}`"
-            )
-        
-            st.write(
-                "**Structural Event Alignment:** "
-                f"`{setup_analysis['event_alignment']}`"
-            )
-        
-        with col2:
-        
-            st.write(
-                "**Rejection Status:** "
-                f"`{setup_analysis['rejection_status']}`"
-            )
-        
-            st.write(
-                "**Current Candle:** "
-                f"`{sequence.get('current_direction', 'UNKNOWN')}`"
-            )
-        
-            st.write(
-                "**Detection Confidence:** "
-                f"`{sequence.get('current_confidence', 0):.1f}%`"
-            )
-        
-        # ========================================================
-        # FINAL STATUS
-        # ========================================================
-        
-        st.subheader(
-            "Final Setup Status"
-        )
-        
-        final_status = setup_analysis[
-            "final_status"
-        ]
-        
-        if final_status.startswith(
-            "VALID"
-        ):
-        
-            st.success(
-                final_status
-            )
-        
-        elif final_status.startswith(
-            "DEVELOPING"
-        ):
-        
-            st.warning(
-                final_status
-            )
-        
-        elif final_status.startswith(
-            "WAIT"
-        ):
-        
-            st.warning(
-                final_status
-            )
-        
-        else:
-        
-            st.info(
-                final_status
-            )
-        
-        # ========================================================
-        # REASONING
-        # ========================================================
-        
-        st.subheader(
-            "Diagnostic Reasoning"
-        )
-        
-        for reason in setup_analysis[
-            "reasons"
-        ]:
-        
-            st.write(
-                f"• {reason}"
-            )
-        
-        # ========================================================
-        # IMPORTANT INTERPRETATION
-        # ========================================================
-        
-        if (
-            setup_analysis[
-                "candle_alignment"
-            ]
-            ==
-            "COUNTER-DIRECTIONAL"
-        ):
-        
-            st.info(
-                "The current candle is moving against the "
-                "validated structural direction. This does NOT "
-                "by itself invalidate the structure. A structural "
-                "reversal requires a confirmed break of the "
-                "protected structural level."
-            )
         
         # ========================================================
         # INTERPRETATION GUIDE
