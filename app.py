@@ -4942,6 +4942,22 @@ with top_signal_col:
     signal_placeholder = st.empty()
     signal_details_placeholder = st.empty()
 
+    # --------------------------------------------------------
+    # INITIAL STATE — BEFORE CANDLE DETECTION
+    # --------------------------------------------------------
+
+    with signal_placeholder.container():
+
+        st.info(
+            "⏳ Waiting for candle detection..."
+        )
+
+    with signal_details_placeholder.container():
+
+        st.caption(
+            "Signal analysis will appear after "
+            "candle detection is completed."
+        )
 
 with top_upload_col:
 
@@ -8584,23 +8600,6 @@ if (
         )
 
         st.divider()
-
-    # --------------------------------------------------------
-    # BEFORE DETECTION
-    # --------------------------------------------------------
-
-    with signal_placeholder.container():
-
-        st.info(
-            "⏳ Waiting for candle detection..."
-        )
-
-    with signal_details_placeholder.container():
-
-        st.caption(
-            "Signal analysis will appear after "
-            "candle detection is completed."
-        )
         
     # ============================================================
     # BOTTOM OF PAGE — SETUP DIAGNOSTIC DETAILS
