@@ -7198,65 +7198,91 @@ if "candles" in st.session_state:
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
 
+# ============================================================
+# STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
+# ============================================================
+
 def generate_signal(sequence, setup_analysis):
     """
     STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 
-    Purpose:
-        Convert structural/setup information from Steps 8–13
-        into an actionable BUY / SELL decision.
+    PURPOSE
+    -------
+    Convert the validated structural state and current candle
+    information into an actionable BUY / SELL decision.
 
-    DESIGN PHILOSOPHY:
+    IMPORTANT DESIGN CHANGE
+    -----------------------
+    A BOS is NOT required to be recent in order for a signal
+    to exist.
 
-        STRUCTURE  = determines direction
-        BOS        = confirms structural direction
-        CANDLE     = improves/reduces timing quality
-        FRESHNESS  = determines how recent the BOS is
-        CONFIDENCE = determines data reliability
-        INTEGRITY  = determines sequence reliability
-        CONFLUENCE = additional setup quality
+    The engine now recognises two valid pathways:
 
-    IMPORTANT:
+    PATH A — FRESH BOS
+        Current structural bias
+        +
+        recent directional BOS
+        +
+        no later opposite BOS
+        +
+        acceptable candle
+        =
+        BUY / SELL
 
-        Counter-directional candles are NOT automatic blockers.
+    PATH B — STRUCTURAL CONTINUATION
+        Current structural bias
+        +
+        historical directional BOS
+        +
+        no later opposite BOS
+        +
+        current structure remains intact
+        +
+        current candle / confluence supports continuation
+        =
+        BUY / SELL
 
-        Strong wick rejection is NOT automatically a blocker.
+    This prevents a perfectly valid trend continuation from being
+    rejected simply because the original BOS happened many candles
+    ago.
 
-        Older BOS events lose points gradually rather than being
-        immediately invalidated.
-
-        Only genuine structural contradictions remain hard blockers.
-
-    HARD BLOCKERS:
-
+    HARD BLOCKERS
+    -------------
         1. No structural direction
-        2. No directional BOS
-        3. Opposite BOS after the selected directional BOS
-        4. Extremely poor detection confidence
-        5. Extremely poor sequence integrity
+        2. Later opposite BOS
+        3. Extremely poor detection confidence
+        4. Extremely poor sequence integrity
 
-    SCORE:
+    NOT HARD BLOCKERS
+    -----------------
+        - Counter-directional candle
+        - Wick rejection
+        - Old BOS
+        - Weak current candle
+        - Moderate confluence
 
-        Structure       = 30
-        Candle          = 25
-        Freshness       = 15
-        Confidence      = 10
-        Integrity       = 10
-        Confluence      = 10
-        --------------------------------
-        TOTAL           = 100
+    SCORE
+    -----
+        Structure / Current Bias       30
+        Current Candle                 20
+        Structural Confirmation        15
+        Freshness / Recency             10
+        Detection Confidence            10
+        Sequence Integrity              10
+        Confluence                       5
+        -----------------------------------
+        TOTAL                          100
 
-    DECISION:
+    DECISION
+    --------
+        72+       BUY / SELL
+        65–71     WATCH
+        <65       NO SIGNAL
 
-        72+             = BUY / SELL
-        65–71           = WATCH
-        <65             = NO SIGNAL
-
-    NOTE:
-
-        This is deliberately less restrictive than the previous
-        version. It is designed to produce usable signals while
-        still respecting structural invalidation.
+    NOTE
+    ----
+    The score is a setup-quality score.
+    It is NOT a probability of winning.
     """
 
     # ========================================================
@@ -7271,7 +7297,9 @@ def generate_signal(sequence, setup_analysis):
     blockers = []
 
     # ========================================================
-    # 2. STRUCTURAL BIAS
+    # 2. CURRENT STRUCTURAL BIAS
+    #
+    # THIS IS NOW THE PRIMARY DIRECTIONAL AUTHORITY.
     # ========================================================
 
     structural_bias = str(
@@ -7284,6 +7312,30 @@ def generate_signal(sequence, setup_analysis):
         )
     ).upper().strip()
 
+    current_structure = str(
+        sequence.get(
+            "swing_current_structure",
+            sequence.get(
+                "current_structure",
+                sequence.get(
+                    "structural_sequence",
+                    "UNKNOWN"
+                )
+            )
+        )
+    ).upper().strip()
+
+    current_direction = str(
+        sequence.get(
+            "current_direction",
+            ""
+        )
+    ).upper().strip()
+
+    # ========================================================
+    # 3. SETUP DIRECTION
+    # ========================================================
+
     setup_direction = str(
         setup_analysis.get(
             "setup_direction",
@@ -7292,45 +7344,62 @@ def generate_signal(sequence, setup_analysis):
     ).upper().strip()
 
     # --------------------------------------------------------
-    # NORMALISE DIRECTION
+    # CURRENT STRUCTURAL BIAS HAS PRIORITY.
+    #
+    # We do NOT allow an old BOS to force the direction if the
+    # current structural engine says otherwise.
     # --------------------------------------------------------
 
-    if setup_direction in ("LONG", "BUY"):
-        direction = "LONG"
+    if structural_bias == "BULLISH":
 
-    elif setup_direction in ("SHORT", "SELL"):
-        direction = "SHORT"
-
-    elif structural_bias == "BULLISH":
         direction = "LONG"
 
     elif structural_bias == "BEARISH":
+
+        direction = "SHORT"
+
+    elif setup_direction in (
+        "LONG",
+        "BUY"
+    ):
+
+        direction = "LONG"
+
+    elif setup_direction in (
+        "SHORT",
+        "SELL"
+    ):
+
         direction = "SHORT"
 
     else:
+
         direction = ""
 
     # ========================================================
-    # 3. NO STRUCTURAL DIRECTION
+    # 4. NO CURRENT STRUCTURAL DIRECTION
     # ========================================================
 
-    if direction not in ("LONG", "SHORT"):
+    if direction not in (
+        "LONG",
+        "SHORT"
+    ):
 
         return {
             "signal": "NO SIGNAL",
-            "trigger": "NO USABLE STRUCTURAL DIRECTION",
+            "trigger": "NO CURRENT STRUCTURAL DIRECTION",
             "event": "NONE",
             "event_age": None,
             "score": 0,
             "decision": "NO SIGNAL",
             "reasons": [
-                "NO CONFIRMED STRUCTURAL DIRECTION"
+                "CURRENT STRUCTURAL BIAS IS NOT CONFIRMED"
             ],
             "components": {}
         }
 
     # ========================================================
-    # 4. CURRENT CANDLE INFORMATION
+    # 5. CURRENT CANDLE INFORMATION
     # ========================================================
 
     candle_alignment = str(
@@ -7354,38 +7423,54 @@ def generate_signal(sequence, setup_analysis):
         )
     ).upper().strip()
 
+    event_alignment = str(
+        setup_analysis.get(
+            "event_alignment",
+            "NEUTRAL"
+        )
+    ).upper().strip()
+
     # ========================================================
-    # 5. DATA QUALITY VALUES
+    # 6. DATA QUALITY
     # ========================================================
 
     try:
+
         detection_confidence = float(
             sequence.get(
                 "current_confidence",
                 0
             ) or 0
         )
+
     except Exception:
+
         detection_confidence = 0.0
 
     try:
+
         sequence_integrity = float(
             sequence.get(
                 "sequence_integrity",
                 0
             ) or 0
         )
+
     except Exception:
+
         sequence_integrity = 0.0
 
     try:
+
         confluence = float(
             setup_analysis.get(
                 "confluence_score",
                 0
             ) or 0
         )
+
     except Exception:
+
         confluence = 0.0
 
     detection_confidence = max(
@@ -7404,16 +7489,8 @@ def generate_signal(sequence, setup_analysis):
     )
 
     # ========================================================
-    # 6. CANDLE ALIGNMENT
+    # 7. CANDLE CLASSIFICATION
     # ========================================================
-
-    counter_directional = (
-        candle_alignment == "COUNTER-DIRECTIONAL"
-        or
-        "COUNTER" in candle_alignment
-        or
-        "OPPOSITE" in candle_alignment
-    )
 
     aligned = (
         candle_alignment == "ALIGNED"
@@ -7421,29 +7498,23 @@ def generate_signal(sequence, setup_analysis):
         candle_alignment.startswith("ALIGNED")
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT CHANGE:
-    #
-    # Counter-directional candles are NOT blockers anymore.
-    #
-    # A red candle inside a bullish structure can simply be a
-    # pullback.
-    #
-    # A green candle inside a bearish structure can simply be
-    # a retracement.
-    # --------------------------------------------------------
+    counter_directional = (
+        "COUNTER" in candle_alignment
+        or
+        "OPPOSITE" in candle_alignment
+    )
 
-    if counter_directional:
+    if aligned:
+
+        reasons.append(
+            "CURRENT CANDLE AGREES WITH STRUCTURAL BIAS"
+        )
+
+    elif counter_directional:
 
         warnings.append(
             "CURRENT CANDLE IS COUNTER-DIRECTIONAL "
-            "— TREATED AS A PULLBACK / RETRACEMENT"
-        )
-
-    elif aligned:
-
-        reasons.append(
-            "CURRENT CANDLE ALIGNS WITH STRUCTURAL DIRECTION"
+            "— TREATED AS PULLBACK / RETRACEMENT"
         )
 
     else:
@@ -7453,7 +7524,7 @@ def generate_signal(sequence, setup_analysis):
         )
 
     # ========================================================
-    # 7. REJECTION ANALYSIS
+    # 8. REJECTION
     # ========================================================
 
     major_rejection = (
@@ -7463,34 +7534,25 @@ def generate_signal(sequence, setup_analysis):
     )
 
     moderate_rejection = (
-        "MODERATE REJECTION" in rejection_status
-        or
         "REJECTION" in rejection_status
     )
-
-    # --------------------------------------------------------
-    # IMPORTANT CHANGE:
-    #
-    # Rejection is scored as a penalty instead of being an
-    # automatic blocker.
-    # --------------------------------------------------------
 
     if major_rejection:
 
         warnings.append(
-            "STRONG WICK REJECTION DETECTED "
-            "— SIGNAL QUALITY REDUCED"
+            "STRONG WICK REJECTION "
+            "— QUALITY REDUCED"
         )
 
     elif moderate_rejection:
 
         warnings.append(
-            "MODERATE WICK REJECTION DETECTED "
+            "WICK REJECTION DETECTED "
             "— SMALL QUALITY PENALTY"
         )
 
     # ========================================================
-    # 8. STRUCTURAL EVENTS
+    # 9. STRUCTURAL EVENTS
     # ========================================================
 
     events = sequence.get(
@@ -7499,17 +7561,15 @@ def generate_signal(sequence, setup_analysis):
     )
 
     if not isinstance(events, list):
-        events = []
 
-    # ========================================================
-    # 9. NORMALISE BOS / CHoCH EVENTS
-    # ========================================================
+        events = []
 
     normalised_events = []
 
     for event in events:
 
         if not isinstance(event, dict):
+
             continue
 
         event_name = str(
@@ -7527,73 +7587,54 @@ def generate_signal(sequence, setup_analysis):
         ).upper().strip()
 
         try:
+
             candle_index = int(
                 event.get(
                     "candle_index",
                     -1
                 )
             )
+
         except Exception:
+
             candle_index = -1
-
-        try:
-            level_index = int(
-                event.get(
-                    "level_index",
-                    -1
-                )
-            )
-        except Exception:
-            level_index = -1
-
-        try:
-            level_price = float(
-                event.get(
-                    "level_price",
-                    0
-                )
-            )
-        except Exception:
-            level_price = 0.0
-
-        try:
-            break_distance = float(
-                event.get(
-                    "break_distance",
-                    0
-                )
-            )
-        except Exception:
-            break_distance = 0.0
 
         normalised_events.append(
             {
-                "event": event_name,
-                "direction": event_direction,
-                "candle_index": candle_index,
-                "level_index": level_index,
-                "level_price": level_price,
-                "break_distance": break_distance,
-                "raw": event
+                "event":
+                    event_name,
+
+                "direction":
+                    event_direction,
+
+                "candle_index":
+                    candle_index,
+
+                "raw":
+                    event
             }
         )
 
     # ========================================================
-    # 10. EXPECTED BOS
+    # 10. EXPECTED / OPPOSITE BOS
     # ========================================================
 
     if direction == "LONG":
 
         expected_bos = "BULLISH BOS"
+        expected_direction = "BULLISH"
         opposite_bos = "BEARISH BOS"
+        opposite_direction = "BEARISH"
 
     else:
 
         expected_bos = "BEARISH BOS"
+        expected_direction = "BEARISH"
         opposite_bos = "BULLISH BOS"
+        opposite_direction = "BULLISH"
 
     # ========================================================
-    # 11. FIND MATCHING DIRECTIONAL BOS
+    # 11. FIND DIRECTIONAL BOS
     # ========================================================
 
     matching_bos = [
@@ -7608,56 +7649,7 @@ def generate_signal(sequence, setup_analysis):
     )
 
     # ========================================================
-    # 12. NO MATCHING BOS
-    # ========================================================
-
-    if not matching_bos:
-
-        opposite_events = [
-            event
-            for event in normalised_events
-            if event["event"] == opposite_bos
-        ]
-
-        if opposite_events:
-
-            return {
-                "signal": "NO SIGNAL",
-                "trigger": "NO MATCHING DIRECTIONAL BOS",
-                "event": expected_bos,
-                "event_age": None,
-                "score": 0,
-                "decision": "NO SIGNAL",
-                "reasons": [
-                    f"REQUIRED EVENT: {expected_bos}",
-                    f"OPPOSITE EVENT EXISTS: {opposite_bos}",
-                    "NO CONFIRMED BOS IN SETUP DIRECTION"
-                ],
-                "components": {}
-            }
-
-        return {
-            "signal": "NO SIGNAL",
-            "trigger": "NO DIRECTIONAL BOS",
-            "event": expected_bos,
-            "event_age": None,
-            "score": 0,
-            "decision": "NO SIGNAL",
-            "reasons": [
-                f"NO {expected_bos} DETECTED",
-                "STRUCTURAL BOS CONFIRMATION IS MISSING"
-            ],
-            "components": {}
-        }
-
-    # ========================================================
-    # 13. SELECT MOST RECENT MATCHING BOS
-    # ========================================================
-
-    anchor_event = matching_bos[-1]
-
-    # ========================================================
-    # 14. CURRENT CANDLE INDEX
+    # 12. CURRENT CANDLE INDEX
     # ========================================================
 
     try:
@@ -7679,283 +7671,366 @@ def generate_signal(sequence, setup_analysis):
             candle_count - 1
         )
 
-    else:
+    elif matching_bos:
 
         latest_candle_index = (
-            anchor_event[
-                "candle_index"
-            ]
+            matching_bos[-1]["candle_index"]
         )
 
         warnings.append(
             "CANDLE COUNT UNAVAILABLE"
         )
 
+    else:
+
+        latest_candle_index = 0
+
+        warnings.append(
+            "CANDLE INDEX UNAVAILABLE"
+        )
+
     # ========================================================
-    # 15. BOS AGE
+    # 13. SELECT MOST RECENT DIRECTIONAL BOS
+    #
+    # IMPORTANT:
+    #
+    # We no longer reject the setup simply because this event
+    # is old.
     # ========================================================
 
-    try:
+    anchor_event = None
+
+    if matching_bos:
+
+        anchor_event = matching_bos[-1]
+
+    # ========================================================
+    # 14. BOS AGE
+    # ========================================================
+
+    if anchor_event is not None:
 
         event_age = (
             latest_candle_index
             -
-            anchor_event[
-                "candle_index"
-            ]
+            anchor_event["candle_index"]
         )
 
-    except Exception:
+        event_age = max(
+            0,
+            event_age
+        )
+
+    else:
 
         event_age = None
 
-    if event_age is not None and event_age < 0:
-
-        event_age = 0
-
     # ========================================================
-    # 16. CHECK FOR LATER OPPOSITE BOS
+    # 15. CHECK FOR LATER OPPOSITE BOS
     #
-    # THIS REMAINS A HARD BLOCKER.
-    #
-    # If bullish BOS happened and a later bearish BOS occurred,
-    # the bullish setup has structurally failed.
+    # THIS REMAINS A HARD STRUCTURAL INVALIDATION.
     # ========================================================
 
     later_opposite_bos = False
 
-    for event in normalised_events:
+    if anchor_event is not None:
+
+        for event in normalised_events:
+
+            if (
+                event["event"] == opposite_bos
+                and
+                event["candle_index"]
+                >
+                anchor_event["candle_index"]
+            ):
+
+                later_opposite_bos = True
+
+                break
+
+    # --------------------------------------------------------
+    # If the latest structural event itself is opposite to the
+    # current bias, that is also a structural contradiction.
+    # --------------------------------------------------------
+
+    last_structural_event = None
+
+    if normalised_events:
+
+        last_structural_event = max(
+            normalised_events,
+            key=lambda event:
+            event["candle_index"]
+        )
+
+    if last_structural_event is not None:
 
         if (
-            event["event"] == opposite_bos
-            and
-            event["candle_index"]
-            >
-            anchor_event["candle_index"]
+            last_structural_event["event"]
+            == opposite_bos
         ):
 
             later_opposite_bos = True
-            break
 
     if later_opposite_bos:
 
         blockers.append(
-            "OPPOSITE BOS OCCURRED AFTER "
-            "THE SELECTED DIRECTIONAL BOS"
+            "OPPOSITE BOS INVALIDATES CURRENT "
+            "DIRECTIONAL SETUP"
         )
 
     # ========================================================
-    # 17. BOS FRESHNESS SCORE
-    #
-    # OLD VERSION:
-    #       0 candles  = only 6
-    #       9+         = automatic blocker
-    #
-    # NEW VERSION:
-    #       Freshness decays gradually.
+    # 16. DETERMINE SIGNAL PATH
     # ========================================================
 
-    if event_age is None:
+    if anchor_event is None:
 
-        freshness_score = 5
+        signal_path = "STRUCTURAL_CONTINUATION"
 
         warnings.append(
-            "BOS AGE UNKNOWN"
+            "NO DIRECTIONAL BOS AVAILABLE — "
+            "USING CURRENT STRUCTURAL BIAS"
         )
 
-    elif event_age <= 2:
+    elif event_age is not None and event_age <= 8:
 
-        freshness_score = 15
+        signal_path = "FRESH_BOS"
 
         reasons.append(
-            "BOS IS FRESH"
-        )
-
-    elif event_age <= 4:
-
-        freshness_score = 13
-
-    elif event_age <= 6:
-
-        freshness_score = 11
-
-    elif event_age <= 9:
-
-        freshness_score = 8
-
-        warnings.append(
-            f"BOS IS {event_age} CANDLES OLD"
-        )
-
-    elif event_age <= 12:
-
-        freshness_score = 6
-
-        warnings.append(
-            f"BOS IS AGING ({event_age} CANDLES OLD)"
-        )
-
-    elif event_age <= 15:
-
-        freshness_score = 3
-
-        warnings.append(
-            f"BOS IS STALE ({event_age} CANDLES OLD)"
+            f"FRESH {expected_bos} CONFIRMATION"
         )
 
     else:
 
-        freshness_score = 0
+        signal_path = "STRUCTURAL_CONTINUATION"
 
-        warnings.append(
-            f"BOS IS VERY STALE ({event_age} CANDLES OLD)"
+        reasons.append(
+            f"HISTORICAL {expected_bos} SUPPORTS "
+            "CURRENT STRUCTURAL BIAS"
         )
 
     # ========================================================
-    # 18. STRUCTURAL SCORE
+    # 17. CURRENT STRUCTURE QUALITY
     #
-    # The BOS is the main directional confirmation.
+    # This is what allows a 67-candle-old BOS to remain useful.
     # ========================================================
 
-    if event_age is None:
+    structure_score = 0
 
-        structural_score = 24
+    if direction == "LONG":
 
-    elif event_age <= 2:
+        if (
+            "BULLISH" in current_structure
+            or
+            "HIGHER HIGH" in current_structure
+            or
+            "HIGHER LOW" in current_structure
+            or
+            "HH" in current_structure
+            or
+            "HL" in current_structure
+        ):
 
-        structural_score = 30
+            structure_score = 30
 
-    elif event_age <= 4:
+            reasons.append(
+                "CURRENT STRUCTURE SUPPORTS BULLISH BIAS"
+            )
 
-        structural_score = 29
+        else:
 
-    elif event_age <= 6:
+            structure_score = 23
 
-        structural_score = 27
-
-    elif event_age <= 9:
-
-        structural_score = 24
-
-    elif event_age <= 12:
-
-        structural_score = 21
-
-    elif event_age <= 15:
-
-        structural_score = 18
+            warnings.append(
+                "BULLISH BIAS EXISTS BUT CURRENT "
+                "STRUCTURE DESCRIPTION IS LIMITED"
+            )
 
     else:
 
-        structural_score = 15
+        if (
+            "BEARISH" in current_structure
+            or
+            "LOWER HIGH" in current_structure
+            or
+            "LOWER LOW" in current_structure
+            or
+            "LH" in current_structure
+            or
+            "LL" in current_structure
+        ):
+
+            structure_score = 30
+
+            reasons.append(
+                "CURRENT STRUCTURE SUPPORTS BEARISH BIAS"
+            )
+
+        else:
+
+            structure_score = 23
+
+            warnings.append(
+                "BEARISH BIAS EXISTS BUT CURRENT "
+                "STRUCTURE DESCRIPTION IS LIMITED"
+            )
 
     # ========================================================
-    # 19. CURRENT CANDLE SCORE
+    # 18. CURRENT CANDLE SCORE
     #
-    # 25 POINTS TOTAL
+    # 20 POINTS
     #
-    # ALIGNED:
-    #       Strong       = 25
-    #       Moderate     = 22
-    #       Weak         = 18
-    #       Very weak    = 15
-    #
-    # COUNTER:
-    #       Strong       = 14
-    #       Moderate     = 12
-    #       Weak         = 10
-    #       Very weak    = 8
-    #
-    # UNKNOWN:
-    #       10
-    #
-    # This allows a pullback candle to remain tradable.
+    # Alignment helps.
+    # Counter-directional candle does NOT kill the setup.
     # ========================================================
-
-    candle_score = 0
 
     if aligned:
 
         if candle_strength == "STRONG":
 
-            candle_score = 25
+            candle_score = 20
 
         elif candle_strength == "MODERATE":
 
-            candle_score = 22
-
-        elif candle_strength == "WEAK":
-
             candle_score = 18
 
-        elif candle_strength == "VERY WEAK":
+        elif candle_strength == "WEAK":
 
             candle_score = 15
 
         else:
 
-            candle_score = 17
+            candle_score = 12
 
     elif counter_directional:
 
         if candle_strength == "STRONG":
 
-            candle_score = 14
+            candle_score = 11
 
         elif candle_strength == "MODERATE":
 
-            candle_score = 12
+            candle_score = 13
 
         elif candle_strength == "WEAK":
 
-            candle_score = 10
-
-        elif candle_strength == "VERY WEAK":
-
-            candle_score = 8
+            candle_score = 12
 
         else:
 
             candle_score = 10
 
-    elif candle_alignment in (
-        "",
-        "UNKNOWN",
-        "UNDETERMINED"
-    ):
+    else:
 
         candle_score = 10
 
-        warnings.append(
-            "CURRENT CANDLE ALIGNMENT UNCERTAIN"
-        )
-
-    else:
-
-        candle_score = 9
-
-    # ========================================================
-    # 20. REJECTION PENALTY
-    #
-    # Rejection reduces the candle score but cannot automatically
-    # destroy an otherwise valid structural setup.
-    # ========================================================
+    # --------------------------------------------------------
+    # Rejection penalty
+    # --------------------------------------------------------
 
     if major_rejection:
 
-        candle_score -= 8
+        candle_score -= 7
 
     elif moderate_rejection:
 
-        candle_score -= 4
+        candle_score -= 3
 
     candle_score = max(
         0,
-        min(25, candle_score)
+        min(20, candle_score)
     )
 
     # ========================================================
-    # 21. DETECTION CONFIDENCE SCORE
+    # 19. STRUCTURAL CONFIRMATION SCORE
+    #
+    # 15 POINTS
+    #
+    # Fresh BOS gets full value.
+    # Old BOS still provides historical confirmation.
+    #
+    # If there is no BOS at all, current structure can still
+    # provide partial continuation confirmation.
+    # ========================================================
+
+    if signal_path == "FRESH_BOS":
+
+        structural_confirmation_score = 15
+
+    elif signal_path == "STRUCTURAL_CONTINUATION":
+
+        if (
+            anchor_event is not None
+            and
+            event_alignment == "ALIGNED"
+        ):
+
+            structural_confirmation_score = 12
+
+        elif anchor_event is not None:
+
+            structural_confirmation_score = 10
+
+        else:
+
+            structural_confirmation_score = 8
+
+    else:
+
+        structural_confirmation_score = 5
+
+    # ========================================================
+    # 20. FRESHNESS SCORE
+    #
+    # Freshness is now a QUALITY FACTOR ONLY.
+    #
+    # It NEVER blocks a structurally valid continuation.
+    # ========================================================
+
+    if event_age is None:
+
+        freshness_score = 4
+
+    elif event_age <= 2:
+
+        freshness_score = 10
+
+    elif event_age <= 4:
+
+        freshness_score = 9
+
+    elif event_age <= 6:
+
+        freshness_score = 8
+
+    elif event_age <= 8:
+
+        freshness_score = 7
+
+    elif event_age <= 15:
+
+        freshness_score = 5
+
+    elif event_age <= 30:
+
+        freshness_score = 3
+
+    elif event_age <= 60:
+
+        freshness_score = 2
+
+    else:
+
+        freshness_score = 1
+
+        warnings.append(
+            f"DIRECTIONAL BOS IS HISTORICAL "
+            f"({event_age} CANDLES OLD)"
+        )
+
+    # ========================================================
+    # 21. DETECTION CONFIDENCE
     # ========================================================
 
     if detection_confidence >= 90:
@@ -7986,19 +8061,13 @@ def generate_signal(sequence, setup_analysis):
 
         confidence_score = 3
 
-    elif detection_confidence >= 45:
+    elif detection_confidence >= 40:
 
         confidence_score = 2
 
     else:
 
         confidence_score = 0
-
-    # ========================================================
-    # 22. VERY LOW DETECTION CONFIDENCE
-    #
-    # Keep this as a genuine data-quality blocker.
-    # ========================================================
 
     if detection_confidence < 40:
 
@@ -8007,15 +8076,15 @@ def generate_signal(sequence, setup_analysis):
             f"({detection_confidence:.1f}%)"
         )
 
-    elif detection_confidence < 50:
+    elif detection_confidence < 55:
 
         warnings.append(
-            "LOW DETECTION CONFIDENCE "
+            "DETECTION CONFIDENCE IS LOW "
             f"({detection_confidence:.1f}%)"
         )
 
     # ========================================================
-    # 23. SEQUENCE INTEGRITY SCORE
+    # 22. SEQUENCE INTEGRITY
     # ========================================================
 
     if sequence_integrity >= 95:
@@ -8054,10 +8123,6 @@ def generate_signal(sequence, setup_analysis):
 
         integrity_score = 0
 
-    # ========================================================
-    # 24. VERY LOW SEQUENCE INTEGRITY
-    # ========================================================
-
     if sequence_integrity < 40:
 
         blockers.append(
@@ -8068,58 +8133,55 @@ def generate_signal(sequence, setup_analysis):
     elif sequence_integrity < 55:
 
         warnings.append(
-            "LOW SEQUENCE INTEGRITY "
+            "SEQUENCE INTEGRITY IS LOW "
             f"({sequence_integrity:.1f}%)"
         )
 
     # ========================================================
-    # 25. CONFLUENCE SCORE
+    # 23. CONFLUENCE
+    #
+    # Only 5 points here because Step 13 is diagnostic and
+    # should not overpower structural information.
     # ========================================================
 
     if confluence >= 85:
 
-        confluence_score = 10
+        confluence_score = 5
 
     elif confluence >= 75:
 
-        confluence_score = 9
-
-    elif confluence >= 70:
-
-        confluence_score = 8
+        confluence_score = 5
 
     elif confluence >= 65:
 
-        confluence_score = 7
-
-    elif confluence >= 60:
-
-        confluence_score = 6
+        confluence_score = 4
 
     elif confluence >= 55:
 
-        confluence_score = 5
+        confluence_score = 3
 
     elif confluence >= 45:
 
-        confluence_score = 3
+        confluence_score = 2
 
     elif confluence >= 35:
 
-        confluence_score = 2
+        confluence_score = 1
 
     else:
 
         confluence_score = 0
 
     # ========================================================
-    # 26. TOTAL SCORE
+    # 24. TOTAL SCORE
     # ========================================================
 
     total_score = (
-        structural_score
+        structure_score
         +
         candle_score
+        +
+        structural_confirmation_score
         +
         freshness_score
         +
@@ -8143,39 +8205,49 @@ def generate_signal(sequence, setup_analysis):
     )
 
     # ========================================================
-    # 27. DIAGNOSTIC REASONS
+    # 25. SIGNAL PATH DIAGNOSTICS
     # ========================================================
 
     reasons.append(
-        f"STRUCTURAL BIAS: "
+        f"SIGNAL PATH: {signal_path}"
+    )
+
+    reasons.append(
+        f"CURRENT STRUCTURE: {current_structure}"
+    )
+
+    reasons.append(
+        f"CURRENT STRUCTURAL BIAS: "
         f"{structural_bias}"
     )
 
     reasons.append(
-        f"SETUP DIRECTION: "
-        f"{direction}"
+        f"CURRENT CANDLE: "
+        f"{current_direction}"
     )
 
     reasons.append(
-        f"DIRECTIONAL BOS: "
-        f"{expected_bos}"
+        f"CANDLE: "
+        f"{candle_alignment} / "
+        f"{candle_strength}"
     )
 
-    reasons.append(
-        f"BOS CANDLE INDEX: "
-        f"{anchor_event['candle_index']}"
-    )
+    if anchor_event is not None:
 
-    reasons.append(
-        f"CURRENT CANDLE INDEX: "
-        f"{latest_candle_index}"
-    )
-
-    if event_age is not None:
+        reasons.append(
+            f"LATEST DIRECTIONAL BOS: "
+            f"{expected_bos}"
+        )
 
         reasons.append(
             f"BOS AGE: "
             f"{event_age} CANDLES"
+        )
+
+    else:
+
+        reasons.append(
+            "NO HISTORICAL DIRECTIONAL BOS FOUND"
         )
 
     reasons.append(
@@ -8193,62 +8265,64 @@ def generate_signal(sequence, setup_analysis):
         f"{confluence:.1f}"
     )
 
-    reasons.append(
-        f"CANDLE: "
-        f"{candle_alignment} / "
-        f"{candle_strength}"
-    )
-
     # ========================================================
-    # 28. SCORE BREAKDOWN
+    # 26. SCORE BREAKDOWN
     # ========================================================
 
     reasons.append(
         f"SCORE BREAKDOWN: "
-        f"STRUCTURE {structural_score}/30 | "
-        f"CANDLE {candle_score}/25 | "
-        f"FRESHNESS {freshness_score}/15 | "
+        f"STRUCTURE {structure_score}/30 | "
+        f"CANDLE {candle_score}/20 | "
+        f"STRUCTURAL CONFIRMATION "
+        f"{structural_confirmation_score}/15 | "
+        f"FRESHNESS {freshness_score}/10 | "
         f"CONFIDENCE {confidence_score}/10 | "
         f"INTEGRITY {integrity_score}/10 | "
-        f"CONFLUENCE {confluence_score}/10"
+        f"CONFLUENCE {confluence_score}/5"
     )
 
     # ========================================================
-    # 29. HARD BLOCKERS OVERRIDE SCORE
-    #
-    # Only genuine structural/data failures reach this point.
+    # 27. HARD BLOCKERS
     # ========================================================
 
     if blockers:
 
         return {
-            "signal": "NO SIGNAL",
+            "signal":
+                "NO SIGNAL",
 
-            "trigger": blockers[0],
+            "trigger":
+                blockers[0],
 
-            "event": expected_bos,
+            "event":
+                expected_bos,
 
-            "event_age": event_age,
+            "event_age":
+                event_age,
 
-            "score": total_score,
+            "score":
+                total_score,
 
-            "decision": "NO SIGNAL",
+            "decision":
+                "NO SIGNAL",
 
-            "reasons": (
+            "reasons":
                 blockers
                 +
                 warnings
                 +
-                reasons
-            ),
+                reasons,
 
             "components": {
 
                 "structure":
-                    structural_score,
+                    structure_score,
 
                 "candle":
                     candle_score,
+
+                "structural_confirmation":
+                    structural_confirmation_score,
 
                 "freshness":
                     freshness_score,
@@ -8265,11 +8339,7 @@ def generate_signal(sequence, setup_analysis):
         }
 
     # ========================================================
-    # 30. FINAL SIGNAL DECISION
-    #
-    # 72+ = actionable signal
-    # 65–71 = developing setup
-    # <65 = insufficient quality
+    # 28. FINAL DECISION
     # ========================================================
 
     if total_score >= 72:
@@ -8278,19 +8348,37 @@ def generate_signal(sequence, setup_analysis):
 
             signal = "BUY"
 
-            trigger = (
-                "BULLISH STRUCTURAL "
-                "CONFIRMATION"
-            )
+            if signal_path == "FRESH_BOS":
+
+                trigger = (
+                    "BULLISH BOS "
+                    "CONFIRMATION"
+                )
+
+            else:
+
+                trigger = (
+                    "BULLISH STRUCTURAL "
+                    "CONTINUATION"
+                )
 
         else:
 
             signal = "SELL"
 
-            trigger = (
-                "BEARISH STRUCTURAL "
-                "CONFIRMATION"
-            )
+            if signal_path == "FRESH_BOS":
+
+                trigger = (
+                    "BEARISH BOS "
+                    "CONFIRMATION"
+                )
+
+            else:
+
+                trigger = (
+                    "BEARISH STRUCTURAL "
+                    "CONTINUATION"
+                )
 
         decision = "SIGNAL"
 
@@ -8299,7 +8387,7 @@ def generate_signal(sequence, setup_analysis):
         signal = "WATCH"
 
         trigger = (
-            "SETUP DEVELOPING"
+            "STRUCTURAL SETUP DEVELOPING"
         )
 
         decision = "WATCH"
@@ -8315,7 +8403,7 @@ def generate_signal(sequence, setup_analysis):
         decision = "NO SIGNAL"
 
     # ========================================================
-    # 31. FINAL AUDIT RESULT
+    # 29. FINAL RESULT
     # ========================================================
 
     return {
@@ -8344,10 +8432,13 @@ def generate_signal(sequence, setup_analysis):
         "components": {
 
             "structure":
-                structural_score,
+                structure_score,
 
             "candle":
                 candle_score,
+
+            "structural_confirmation":
+                structural_confirmation_score,
 
             "freshness":
                 freshness_score,
