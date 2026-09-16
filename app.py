@@ -6944,148 +6944,195 @@ if "candles" in st.session_state:
         # RECENT LOCAL LEVEL DETECTION
         # ========================================================
         #
-        # IMPORTANT:
+        # A recent level is useful only if price actually reacted
+        # away from it.
         #
-        # The current candle is excluded.
+        # We therefore evaluate:
         #
-        # We examine recent COMPLETED candles only.
+        #   1. Local turning point
+        #   2. Movement away from the level
+        #   3. Recency
         #
-        # We use a 3-candle local structure:
-        #
-        # HIGH:
-        # candle high is above the candles around it
-        #
-        # LOW:
-        # candle low is below the candles around it
-        #
-        # Because this is image Y:
-        #
-        # HIGH = smaller Y
-        # LOW  = larger Y
+        # This prevents random chart extremes from becoming support
+        # or resistance.
         # ========================================================
-    
+        
         recent_count = min(
-            12,
+            14,
             len(candles) - 1
         )
-    
+        
         recent_candles = candles[
             -recent_count - 1:-1
         ]
-    
+        
         active_highs = []
         active_lows = []
-    
+        
         if len(recent_candles) >= 3:
-    
+        
             for i in range(
                 1,
                 len(recent_candles) - 1
             ):
-    
+        
                 try:
-    
+        
                     previous_candle = (
                         recent_candles[i - 1]
                     )
-    
+        
                     current_bar = (
                         recent_candles[i]
                     )
-    
+        
                     next_candle = (
                         recent_candles[i + 1]
                     )
-    
+        
                     previous_high = float(
                         previous_candle["high"]
                     )
-    
+        
                     current_high = float(
                         current_bar["high"]
                     )
-    
+        
                     next_high = float(
                         next_candle["high"]
                     )
-    
+        
                     previous_low = float(
                         previous_candle["low"]
                     )
-    
+        
                     current_low = float(
                         current_bar["low"]
                     )
-    
+        
                     next_low = float(
                         next_candle["low"]
                     )
-    
+        
                 except Exception:
-    
+        
                     continue
-    
-                # =================================================
+        
+                # ====================================================
                 # LOCAL HIGH
-                # =================================================
-    
+                # ====================================================
+        
                 is_local_high = (
                     current_high < previous_high
                     and
                     current_high < next_high
                 )
-    
+        
                 if is_local_high:
-    
-                    active_highs.append({
-    
-                        "y":
-                            current_high,
-    
-                        "index":
-                            i,
-    
-                        "source":
-                            "RECENT LOCAL HIGH",
-    
-                        "level_type":
-                            "RESISTANCE",
-    
-                        "strength":
-                            1
-    
-                    })
-    
-                # =================================================
+        
+                    # -----------------------------------------------
+                    # Measure reaction away from the high.
+                    #
+                    # Larger Y = lower price.
+                    #
+                    # Therefore a valid high should be followed by
+                    # downward movement.
+                    # -----------------------------------------------
+        
+        
+                    reaction_move = (
+                        next_high -
+                        current_high
+                    )
+        
+                    # Require a meaningful reaction.
+                    minimum_reaction = max(
+                        median_range * 0.50,
+                        3.0
+                    )
+        
+                    if reaction_move >= minimum_reaction:
+        
+                        active_highs.append({
+        
+                            "y":
+                                current_high,
+        
+                            "index":
+                                i,
+        
+                            "source":
+                                "RECENT LOCAL HIGH",
+        
+                            "level_type":
+                                "RESISTANCE",
+        
+                            "strength":
+                                1,
+        
+                            "reaction":
+                                float(
+                                    reaction_move
+                                )
+        
+                        })
+        
+                # ====================================================
                 # LOCAL LOW
-                # =================================================
-    
+                # ====================================================
+        
                 is_local_low = (
                     current_low > previous_low
                     and
                     current_low > next_low
                 )
-    
+        
                 if is_local_low:
-    
-                    active_lows.append({
-    
-                        "y":
-                            current_low,
-    
-                        "index":
-                            i,
-    
-                        "source":
-                            "RECENT LOCAL LOW",
-    
-                        "level_type":
-                            "SUPPORT",
-    
-                        "strength":
-                            1
-    
-                    })
+        
+                    # -----------------------------------------------
+                    # Measure reaction away from the low.
+                    #
+                    # Smaller Y = higher price.
+                    #
+                    # Therefore a valid low should be followed by
+                    # upward movement.
+                    # -----------------------------------------------
+        
+                    reaction_move = (
+                        current_low -
+                        next_low
+                    )
+        
+                    minimum_reaction = max(
+                        median_range * 0.50,
+                        3.0
+                    )
+        
+                    if reaction_move >= minimum_reaction:
+        
+                        active_lows.append({
+        
+                            "y":
+                                current_low,
+        
+                            "index":
+                                i,
+        
+                            "source":
+                                "RECENT LOCAL LOW",
+        
+                            "level_type":
+                                "SUPPORT",
+        
+                            "strength":
+                                1,
+        
+                            "reaction":
+                                float(
+                                    reaction_move
+                                )
+        
+                        })
     
         # ========================================================
         # REMOVE LEVELS TOO CLOSE TO CURRENT CANDLE EXTREMES
