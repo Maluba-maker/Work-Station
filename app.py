@@ -6944,21 +6944,21 @@ if "candles" in st.session_state:
         # RECENT LOCAL LEVEL DETECTION
         # ========================================================
         #
-        # A recent level is useful only if price actually reacted
-        # away from it.
+        # Detect recent reaction areas rather than requiring a
+        # perfect one-candle pivot.
         #
-        # We therefore evaluate:
+        # A valid recent level requires:
         #
-        #   1. Local turning point
-        #   2. Movement away from the level
-        #   3. Recency
+        #   1. A local turning point
+        #   2. Nearby candles supporting that turning point
+        #   3. Meaningful movement away from the level
         #
-        # This prevents random chart extremes from becoming support
-        # or resistance.
+        # The reaction is measured over several candles instead
+        # of only the candle immediately following the pivot.
         # ========================================================
         
         recent_count = min(
-            14,
+            16,
             len(candles) - 1
         )
         
@@ -6969,50 +6969,36 @@ if "candles" in st.session_state:
         active_highs = []
         active_lows = []
         
-        if len(recent_candles) >= 3:
+        if len(recent_candles) >= 5:
         
             for i in range(
-                1,
-                len(recent_candles) - 1
+                2,
+                len(recent_candles) - 2
             ):
         
                 try:
         
-                    previous_candle = (
-                        recent_candles[i - 1]
-                    )
+                    # ------------------------------------------------
+                    # FIVE-CANDLE LOCAL WINDOW
+                    # ------------------------------------------------
         
-                    current_bar = (
-                        recent_candles[i]
-                    )
+                    left_2 = recent_candles[i - 2]
+                    left_1 = recent_candles[i - 1]
+                    current_bar = recent_candles[i]
+                    right_1 = recent_candles[i + 1]
+                    right_2 = recent_candles[i + 2]
         
-                    next_candle = (
-                        recent_candles[i + 1]
-                    )
+                    left_2_high = float(left_2["high"])
+                    left_1_high = float(left_1["high"])
+                    current_high = float(current_bar["high"])
+                    right_1_high = float(right_1["high"])
+                    right_2_high = float(right_2["high"])
         
-                    previous_high = float(
-                        previous_candle["high"]
-                    )
-        
-                    current_high = float(
-                        current_bar["high"]
-                    )
-        
-                    next_high = float(
-                        next_candle["high"]
-                    )
-        
-                    previous_low = float(
-                        previous_candle["low"]
-                    )
-        
-                    current_low = float(
-                        current_bar["low"]
-                    )
-        
-                    next_low = float(
-                        next_candle["low"]
-                    )
+                    left_2_low = float(left_2["low"])
+                    left_1_low = float(left_1["low"])
+                    current_low = float(current_bar["low"])
+                    right_1_low = float(right_1["low"])
+                    right_2_low = float(right_2["low"])
         
                 except Exception:
         
@@ -7021,31 +7007,40 @@ if "candles" in st.session_state:
                 # ====================================================
                 # LOCAL HIGH
                 # ====================================================
+                #
+                # Remember:
+                # Chart Y increases downward.
+                #
+                # Therefore a HIGH has a smaller Y coordinate.
+                # ====================================================
         
                 is_local_high = (
-                    current_high < previous_high
+                    current_high <= left_1_high
                     and
-                    current_high < next_high
+                    current_high <= left_2_high
+                    and
+                    current_high <= right_1_high
+                    and
+                    current_high <= right_2_high
                 )
         
                 if is_local_high:
         
-                    # -----------------------------------------------
-                    # Measure reaction away from the high.
-                    #
-                    # Larger Y = lower price.
-                    #
-                    # Therefore a valid high should be followed by
-                    # downward movement.
-                    # -----------------------------------------------
+                    # ------------------------------------------------
+                    # Measure the strongest downward reaction within
+                    # the next two candles.
+                    # ------------------------------------------------
         
+                    reaction_low = max(
+                        right_1_high,
+                        right_2_high
+                    )
         
                     reaction_move = (
-                        next_high -
+                        reaction_low -
                         current_high
                     )
         
-                    # Require a meaningful reaction.
                     minimum_reaction = max(
                         median_range * 0.50,
                         3.0
@@ -7080,27 +7075,35 @@ if "candles" in st.session_state:
                 # ====================================================
                 # LOCAL LOW
                 # ====================================================
+                #
+                # A LOW has a larger Y coordinate.
+                # ====================================================
         
                 is_local_low = (
-                    current_low > previous_low
+                    current_low >= left_1_low
                     and
-                    current_low > next_low
+                    current_low >= left_2_low
+                    and
+                    current_low >= right_1_low
+                    and
+                    current_low >= right_2_low
                 )
         
                 if is_local_low:
         
-                    # -----------------------------------------------
-                    # Measure reaction away from the low.
-                    #
-                    # Smaller Y = higher price.
-                    #
-                    # Therefore a valid low should be followed by
-                    # upward movement.
-                    # -----------------------------------------------
+                    # ------------------------------------------------
+                    # Measure the strongest upward reaction within
+                    # the next two candles.
+                    # ------------------------------------------------
+        
+                    reaction_high = min(
+                        right_1_low,
+                        right_2_low
+                    )
         
                     reaction_move = (
                         current_low -
-                        next_low
+                        reaction_high
                     )
         
                     minimum_reaction = max(
