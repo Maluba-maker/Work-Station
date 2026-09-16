@@ -6614,7 +6614,551 @@ if "candles" in st.session_state:
             "until sequence analysis is available."
         )
     
+
+    # ============================================================
+    # PRICE LOCATION ANALYSIS
+    # ============================================================
+    #
+    # PURPOSE
+    # -------
+    # Determine where current price is located relative to the
+    # structural swing highs and swing lows already detected.
+    #
+    # IMPORTANT
+    # ---------
+    # This is a DIAGNOSTIC layer initially.
+    #
+    # It DOES NOT change BUY / SELL / NO SIGNAL decisions yet.
+    #
+    # Candle coordinates are PIXEL coordinates:
+    # Smaller Y = higher market price
+    # Larger Y = lower market price
+    # ============================================================
     
+    def analyze_price_location(candles, swing_highs, swing_lows):
+    
+        # --------------------------------------------------------
+        # SAFE INPUTS
+        # --------------------------------------------------------
+    
+        candles = candles or []
+        swing_highs = swing_highs or []
+        swing_lows = swing_lows or []
+    
+        if not candles:
+            return {
+                "status": "UNAVAILABLE",
+                "location": "UNKNOWN",
+                "nearest_resistance": None,
+                "nearest_support": None,
+                "distance_to_resistance": None,
+                "distance_to_support": None,
+                "location_quality": 0.0,
+                "reasons": [
+                    "NO CANDLE DATA AVAILABLE"
+                ]
+            }
+    
+        # --------------------------------------------------------
+        # CURRENT PRICE
+        # --------------------------------------------------------
+        #
+        # Use the CURRENT CANDLE CLOSE as the reference point.
+        #
+        # This keeps the location analysis tied to where price
+        # actually closed / currently sits rather than using the
+        # candle high or low.
+        # --------------------------------------------------------
+    
+        current_candle = candles[-1]
+    
+        try:
+            current_price_y = float(
+                current_candle["close"]
+            )
+        except Exception:
+            return {
+                "status": "UNAVAILABLE",
+                "location": "UNKNOWN",
+                "nearest_resistance": None,
+                "nearest_support": None,
+                "distance_to_resistance": None,
+                "distance_to_support": None,
+                "location_quality": 0.0,
+                "reasons": [
+                    "CURRENT CANDLE CLOSE UNAVAILABLE"
+                ]
+            }
+    
+        # --------------------------------------------------------
+        # ESTIMATE NORMAL CANDLE MOVEMENT
+        # --------------------------------------------------------
+        #
+        # We use recent candle ranges to determine what counts as
+        # "near" a structural level.
+        #
+        # This is preferable to using a hard-coded pixel distance.
+        # --------------------------------------------------------
+    
+        recent_candles = candles[-10:]
+    
+        ranges = []
+    
+        for candle in recent_candles:
+    
+            try:
+                high = float(candle["high"])
+                low = float(candle["low"])
+    
+                candle_range = abs(
+                    low - high
+                )
+    
+                if candle_range > 0:
+                    ranges.append(
+                        candle_range
+                    )
+    
+            except Exception:
+                continue
+    
+        if ranges:
+    
+            median_range = float(
+                np.median(ranges)
+            )
+    
+        else:
+    
+            median_range = 10.0
+    
+        median_range = max(
+            median_range,
+            1.0
+        )
+    
+        # --------------------------------------------------------
+        # DEFINE LOCATION THRESHOLDS
+        # --------------------------------------------------------
+        #
+        # "AT" level:
+        # Very close to structural level.
+        #
+        # "NEAR" level:
+        # Close enough that the level can materially affect
+        # the next move.
+        #
+        # "BREAKING":
+        # Current price has moved beyond the level by a meaningful
+        # amount.
+        # --------------------------------------------------------
+    
+        at_threshold = (
+            median_range * 0.50
+        )
+    
+        near_threshold = (
+            median_range * 1.50
+        )
+    
+        break_threshold = (
+            median_range * 0.75
+        )
+    
+        # --------------------------------------------------------
+        # FIND RESISTANCE LEVELS
+        # --------------------------------------------------------
+        #
+        # In pixel coordinates:
+        #
+        # Smaller Y = higher price.
+        #
+        # Therefore a swing high with a Y coordinate smaller than
+        # current price is ABOVE current price.
+        # --------------------------------------------------------
+    
+        resistance_levels = []
+    
+        for swing in swing_highs:
+    
+            try:
+                level_y = float(
+                    swing["price"]
+                )
+    
+            except Exception:
+                continue
+    
+            # Swing high above current price
+            if level_y <= current_price_y:
+    
+                distance = (
+                    current_price_y -
+                    level_y
+                )
+    
+                resistance_levels.append({
+                    "price": level_y,
+                    "distance": distance,
+                    "index": swing.get(
+                        "index",
+                        None
+                    )
+                })
+    
+        # --------------------------------------------------------
+        # FIND SUPPORT LEVELS
+        # --------------------------------------------------------
+        #
+        # Swing lows with larger Y values are BELOW current price.
+        # --------------------------------------------------------
+    
+        support_levels = []
+    
+        for swing in swing_lows:
+    
+            try:
+                level_y = float(
+                    swing["price"]
+                )
+    
+            except Exception:
+                continue
+    
+            # Swing low below current price
+            if level_y >= current_price_y:
+    
+                distance = (
+                    level_y -
+                    current_price_y
+                )
+    
+                support_levels.append({
+                    "price": level_y,
+                    "distance": distance,
+                    "index": swing.get(
+                        "index",
+                        None
+                    )
+                })
+    
+        # --------------------------------------------------------
+        # NEAREST LEVELS
+        # --------------------------------------------------------
+    
+        nearest_resistance = None
+    
+        if resistance_levels:
+    
+            nearest_resistance = min(
+                resistance_levels,
+                key=lambda x: x["distance"]
+            )
+    
+        nearest_support = None
+    
+        if support_levels:
+    
+            nearest_support = min(
+                support_levels,
+                key=lambda x: x["distance"]
+            )
+    
+        resistance_distance = (
+            nearest_resistance["distance"]
+            if nearest_resistance
+            else None
+        )
+    
+        support_distance = (
+            nearest_support["distance"]
+            if nearest_support
+            else None
+        )
+    
+        # --------------------------------------------------------
+        # LOCATION CLASSIFICATION
+        # --------------------------------------------------------
+    
+        location = "MID-RANGE"
+    
+        reasons = []
+    
+        # --------------------------------------------------------
+        # RESISTANCE SIDE
+        # --------------------------------------------------------
+    
+        if resistance_distance is not None:
+    
+            if resistance_distance <= at_threshold:
+    
+                location = "AT RESISTANCE"
+    
+                reasons.append(
+                    "CURRENT PRICE IS AT A STRUCTURAL "
+                    "SWING HIGH"
+                )
+    
+            elif resistance_distance <= near_threshold:
+    
+                location = "NEAR RESISTANCE"
+    
+                reasons.append(
+                    "CURRENT PRICE IS APPROACHING "
+                    "A STRUCTURAL SWING HIGH"
+                )
+    
+        # --------------------------------------------------------
+        # SUPPORT SIDE
+        # --------------------------------------------------------
+    
+        if support_distance is not None:
+    
+            if support_distance <= at_threshold:
+    
+                location = "AT SUPPORT"
+    
+                reasons.append(
+                    "CURRENT PRICE IS AT A STRUCTURAL "
+                    "SWING LOW"
+                )
+    
+            elif support_distance <= near_threshold:
+    
+                if location == "MID-RANGE":
+    
+                    location = "NEAR SUPPORT"
+    
+                    reasons.append(
+                        "CURRENT PRICE IS APPROACHING "
+                        "A STRUCTURAL SWING LOW"
+                    )
+    
+        # --------------------------------------------------------
+        # BREAKOUT / BREAKDOWN CHECK
+        # --------------------------------------------------------
+        #
+        # This uses the CURRENT CANDLE HIGH/LOW as well as the
+        # current close.
+        #
+        # We are NOT calling this a confirmed breakout yet.
+        #
+        # This only identifies that price has moved beyond a
+        # structural level.
+        # --------------------------------------------------------
+    
+        current_high = None
+        current_low = None
+    
+        try:
+    
+            current_high = float(
+                current_candle["high"]
+            )
+    
+            current_low = float(
+                current_candle["low"]
+            )
+    
+        except Exception:
+            pass
+    
+        # --------------------------------------------------------
+        # POSSIBLE RESISTANCE BREAK
+        # --------------------------------------------------------
+    
+        if nearest_resistance is not None:
+    
+            resistance_y = (
+                nearest_resistance["price"]
+            )
+    
+            if (
+                current_high is not None
+                and
+                current_high < (
+                    resistance_y -
+                    break_threshold
+                )
+            ):
+    
+                location = (
+                    "BREAKING RESISTANCE"
+                )
+    
+                reasons.append(
+                    "CURRENT CANDLE HAS MOVED "
+                    "ABOVE THE NEAREST STRUCTURAL HIGH"
+                )
+    
+        # --------------------------------------------------------
+        # POSSIBLE SUPPORT BREAK
+        # --------------------------------------------------------
+    
+        if nearest_support is not None:
+    
+            support_y = (
+                nearest_support["price"]
+            )
+    
+            if (
+                current_low is not None
+                and
+                current_low > (
+                    support_y +
+                    break_threshold
+                )
+            ):
+    
+                location = (
+                    "BREAKING SUPPORT"
+                )
+    
+                reasons.append(
+                    "CURRENT CANDLE HAS MOVED "
+                    "BELOW THE NEAREST STRUCTURAL LOW"
+                )
+    
+        # --------------------------------------------------------
+        # LOCATION QUALITY
+        # --------------------------------------------------------
+        #
+        # This is NOT a trade score.
+        #
+        # It simply measures how clearly price is interacting with
+        # a structural level.
+        # --------------------------------------------------------
+    
+        location_quality = 0.0
+    
+        if location in (
+            "AT RESISTANCE",
+            "AT SUPPORT"
+        ):
+    
+            location_quality = 100.0
+    
+        elif location in (
+            "NEAR RESISTANCE",
+            "NEAR SUPPORT"
+        ):
+    
+            location_quality = 80.0
+    
+        elif location in (
+            "BREAKING RESISTANCE",
+            "BREAKING SUPPORT"
+        ):
+    
+            location_quality = 90.0
+    
+        else:
+    
+            location_quality = 40.0
+    
+            reasons.append(
+                "CURRENT PRICE IS NOT CLOSE TO "
+                "A MAJOR DETECTED SWING LEVEL"
+            )
+    
+        # --------------------------------------------------------
+        # DEBUG
+        # --------------------------------------------------------
+    
+        print("\n")
+        print("=" * 70)
+        print("PRICE LOCATION ANALYSIS")
+        print("=" * 70)
+    
+        print(
+            "Current price Y:",
+            current_price_y
+        )
+    
+        print(
+            "Median candle range:",
+            round(
+                median_range,
+                2
+            )
+        )
+    
+        print(
+            "Nearest resistance:",
+            nearest_resistance
+        )
+    
+        print(
+            "Nearest support:",
+            nearest_support
+        )
+    
+        print(
+            "Location:",
+            location
+        )
+    
+        print(
+            "Location quality:",
+            location_quality
+        )
+    
+        print("=" * 70)
+        print("\n")
+    
+        # --------------------------------------------------------
+        # RETURN
+        # --------------------------------------------------------
+    
+        return {
+    
+            "status":
+                "AVAILABLE",
+    
+            "location":
+                location,
+    
+            "current_price_y":
+                current_price_y,
+    
+            "median_candle_range":
+                round(
+                    median_range,
+                    2
+                ),
+    
+            "nearest_resistance":
+                nearest_resistance,
+    
+            "nearest_support":
+                nearest_support,
+    
+            "distance_to_resistance":
+                (
+                    round(
+                        resistance_distance,
+                        2
+                    )
+                    if resistance_distance is not None
+                    else None
+                ),
+    
+            "distance_to_support":
+                (
+                    round(
+                        support_distance,
+                        2
+                    )
+                    if support_distance is not None
+                    else None
+                ),
+    
+            "location_quality":
+                location_quality,
+    
+            "reasons":
+                reasons
+        }
     # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
@@ -7206,10 +7750,35 @@ if "candles" in st.session_state:
             0
         )
     )
-# ============================================================
-# STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
-# ============================================================
 
+    # ============================================================
+    # PRICE LOCATION ANALYSIS
+    # ============================================================
+    #
+    # This is a diagnostic layer only.
+    # It does NOT change the BUY / SELL decision yet.
+    # ============================================================
+    
+    price_location = analyze_price_location(
+        st.session_state.get(
+            "candles",
+            []
+        ),
+    
+        sequence.get(
+            "swing_highs",
+            []
+        ),
+    
+        sequence.get(
+            "swing_lows",
+            []
+        )
+    )
+    
+    # Store it inside the sequence so Step 14 can use it later.
+    sequence["price_location"] = price_location
+    
 # ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
@@ -8647,7 +9216,79 @@ if (
             f"`{sequence.get('current_confidence', 0):.1f}%`"
         )
     
+    # ============================================================
+    # PRICE LOCATION
+    # ============================================================
     
+    st.divider()
+    
+    st.write(
+        "**Price Location:** "
+        f"`{price_location.get('location', 'UNKNOWN')}`"
+    )
+    
+    location_col1, location_col2, location_col3 = st.columns(3)
+    
+    with location_col1:
+    
+        resistance = price_location.get(
+            "nearest_resistance"
+        )
+    
+        if resistance:
+    
+            st.write(
+                "**Nearest Resistance:** "
+                f"`{resistance['price']:.1f}`"
+            )
+    
+        else:
+    
+            st.write(
+                "**Nearest Resistance:** `—`"
+            )
+    
+    
+    with location_col2:
+    
+        support = price_location.get(
+            "nearest_support"
+        )
+    
+        if support:
+    
+            st.write(
+                "**Nearest Support:** "
+                f"`{support['price']:.1f}`"
+            )
+    
+        else:
+    
+            st.write(
+                "**Nearest Support:** `—`"
+            )
+    
+    
+    with location_col3:
+    
+        st.write(
+            "**Location Quality:** "
+            f"`{price_location.get('location_quality', 0):.1f}%`"
+        )
+    
+    
+    # ------------------------------------------------------------
+    # PRICE LOCATION REASONS
+    # ------------------------------------------------------------
+    
+    for reason in price_location.get(
+        "reasons",
+        []
+    ):
+    
+        st.write(
+            f"• {reason}"
+        )
     # ============================================================
     # FINAL SETUP STATUS
     # ============================================================
