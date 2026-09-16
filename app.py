@@ -7073,62 +7073,118 @@ if "candles" in st.session_state:
                     })
     
         # ========================================================
-        # ALSO INCLUDE RECENT EXTREMES
+        # ADD RECENT ACTIVE EXTREMES — CONTROLLED VERSION
         # ========================================================
         #
-        # This catches situations like the screenshot where price
-        # is sitting directly on a newly formed low that has not
-        # yet become a confirmed swing.
+        # Do NOT automatically treat the absolute chart extreme
+        # as support/resistance.
+        #
+        # We only accept a recent extreme when it behaves like a
+        # genuine local turning point.
         # ========================================================
-    
-        if recent_candles:
-    
+        
+        if len(recent_candles) >= 3:
+        
             try:
-    
-                recent_low_y = max(
-                    float(
-                        c["low"]
+        
+                for i in range(1, len(recent_candles) - 1):
+        
+                    current_bar = recent_candles[i]
+        
+                    previous_bar = recent_candles[i - 1]
+        
+                    next_bar = recent_candles[i + 1]
+        
+                    current_high_y = float(
+                        current_bar["high"]
                     )
-                    for c in recent_candles
-                )
-    
-                recent_high_y = min(
-                    float(
-                        c["high"]
+        
+                    current_low_y = float(
+                        current_bar["low"]
                     )
-                    for c in recent_candles
-                )
-    
-                active_lows.append({
-    
-                    "y":
-                        recent_low_y,
-    
-                    "index":
-                        None,
-    
-                    "source":
-                        "RECENT EXTREME"
-    
-                })
-    
-                active_highs.append({
-    
-                    "y":
-                        recent_high_y,
-    
-                    "index":
-                        None,
-    
-                    "source":
-                        "RECENT EXTREME"
-    
-                })
-    
+        
+                    previous_high_y = float(
+                        previous_bar["high"]
+                    )
+        
+                    previous_low_y = float(
+                        previous_bar["low"]
+                    )
+        
+                    next_high_y = float(
+                        next_bar["high"]
+                    )
+        
+                    next_low_y = float(
+                        next_bar["low"]
+                    )
+        
+                    # =================================================
+                    # LOCAL HIGH
+                    # =================================================
+                    #
+                    # Smaller Y = higher price.
+                    #
+                    # A genuine local high should therefore have a
+                    # smaller Y than the candles immediately around it.
+                    # =================================================
+        
+                    is_local_high = (
+                        current_high_y <= previous_high_y
+                        and
+                        current_high_y <= next_high_y
+                    )
+        
+                    if is_local_high:
+        
+                        active_highs.append({
+        
+                            "y":
+                                current_high_y,
+        
+                            "index":
+                                i,
+        
+                            "source":
+                                "RECENT LOCAL HIGH"
+        
+                        })
+        
+                    # =================================================
+                    # LOCAL LOW
+                    # =================================================
+                    #
+                    # Larger Y = lower price.
+                    #
+                    # A genuine local low should therefore have a
+                    # larger Y than the candles immediately around it.
+                    # =================================================
+        
+                    is_local_low = (
+                        current_low_y >= previous_low_y
+                        and
+                        current_low_y >= next_low_y
+                    )
+        
+                    if is_local_low:
+        
+                        active_lows.append({
+        
+                            "y":
+                                current_low_y,
+        
+                            "index":
+                                i,
+        
+                            "source":
+                                "RECENT LOCAL LOW"
+        
+                        })
+        
             except Exception:
-    
+        
                 pass
-    
+            
         # ========================================================
         # REMOVE DUPLICATE / NEAR-DUPLICATE ACTIVE LEVELS
         # ========================================================
