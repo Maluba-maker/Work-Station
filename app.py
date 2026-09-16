@@ -6616,110 +6616,144 @@ if "candles" in st.session_state:
     
 
     # ============================================================
-    # PRICE LOCATION ANALYSIS
+    # PRICE LOCATION ENGINE
     # ============================================================
     #
     # PURPOSE
     # -------
-    # Determine where current price is located relative to the
-    # structural swing highs and swing lows already detected.
+    # Determine where current price is located relative to:
+    #
+    # 1. Confirmed structural swing levels
+    # 2. Recent active highs/lows
+    # 3. Current candle interaction with those levels
     #
     # IMPORTANT
     # ---------
-    # This is a DIAGNOSTIC layer initially.
+    # Candle "price" values are IMAGE Y-COORDINATES.
     #
-    # It DOES NOT change BUY / SELL / NO SIGNAL decisions yet.
-    #
-    # Candle coordinates are PIXEL coordinates:
     # Smaller Y = higher market price
-    # Larger Y = lower market price
+    # Larger Y   = lower market price
+    #
+    # Therefore:
+    #
+    # Resistance = level ABOVE current price
+    # Support    = level BELOW current price
+    #
+    # This function DOES NOT generate BUY / SELL.
+    # It only describes PRICE LOCATION.
     # ============================================================
     
-    def analyze_price_location(candles, swing_highs, swing_lows):
+    def analyze_price_location(
+        candles,
+        swing_highs,
+        swing_lows
+    ):
     
-        # --------------------------------------------------------
+        # ========================================================
         # SAFE INPUTS
-        # --------------------------------------------------------
+        # ========================================================
     
         candles = candles or []
         swing_highs = swing_highs or []
         swing_lows = swing_lows or []
     
-        if not candles:
+        if len(candles) < 3:
+    
             return {
                 "status": "UNAVAILABLE",
                 "location": "UNKNOWN",
+                "current_price_y": None,
                 "nearest_resistance": None,
                 "nearest_support": None,
+                "active_resistance": None,
+                "active_support": None,
                 "distance_to_resistance": None,
                 "distance_to_support": None,
                 "location_quality": 0.0,
                 "reasons": [
-                    "NO CANDLE DATA AVAILABLE"
+                    "INSUFFICIENT CANDLE DATA"
                 ]
             }
     
-        # --------------------------------------------------------
-        # CURRENT PRICE
-        # --------------------------------------------------------
-        #
-        # Use the CURRENT CANDLE CLOSE as the reference point.
-        #
-        # This keeps the location analysis tied to where price
-        # actually closed / currently sits rather than using the
-        # candle high or low.
-        # --------------------------------------------------------
+        # ========================================================
+        # CURRENT CANDLE
+        # ========================================================
     
         current_candle = candles[-1]
     
         try:
-            current_price_y = float(
+    
+            current_close_y = float(
                 current_candle["close"]
             )
+    
+            current_high_y = float(
+                current_candle["high"]
+            )
+    
+            current_low_y = float(
+                current_candle["low"]
+            )
+    
         except Exception:
+    
             return {
                 "status": "UNAVAILABLE",
                 "location": "UNKNOWN",
+                "current_price_y": None,
                 "nearest_resistance": None,
                 "nearest_support": None,
+                "active_resistance": None,
+                "active_support": None,
                 "distance_to_resistance": None,
                 "distance_to_support": None,
                 "location_quality": 0.0,
                 "reasons": [
-                    "CURRENT CANDLE CLOSE UNAVAILABLE"
+                    "CURRENT CANDLE COORDINATES UNAVAILABLE"
                 ]
             }
     
-        # --------------------------------------------------------
-        # ESTIMATE NORMAL CANDLE MOVEMENT
-        # --------------------------------------------------------
+        # ========================================================
+        # RECENT CANDLE RANGE
+        # ========================================================
         #
-        # We use recent candle ranges to determine what counts as
-        # "near" a structural level.
+        # We use recent candle height to make the proximity
+        # thresholds adaptive to the chart.
         #
-        # This is preferable to using a hard-coded pixel distance.
-        # --------------------------------------------------------
+        # IMPORTANT:
+        # Current candle is excluded from the normal-range
+        # calculation so an unusually large current candle does
+        # not distort the thresholds.
+        # ========================================================
     
-        recent_candles = candles[-10:]
+        historical_candles = candles[-11:-1]
     
         ranges = []
     
-        for candle in recent_candles:
+        for candle in historical_candles:
     
             try:
-                high = float(candle["high"])
-                low = float(candle["low"])
+    
+                high_y = float(
+                    candle["high"]
+                )
+    
+                low_y = float(
+                    candle["low"]
+                )
     
                 candle_range = abs(
-                    low - high
+                    low_y - high_y
                 )
     
                 if candle_range > 0:
+    
                     ranges.append(
                         candle_range
                     )
     
             except Exception:
+    
                 continue
     
         if ranges:
@@ -6730,139 +6764,621 @@ if "candles" in st.session_state:
     
         else:
     
-            median_range = 10.0
+            median_range = 8.0
     
         median_range = max(
             median_range,
-            1.0
+            2.0
         )
     
-        # --------------------------------------------------------
-        # DEFINE LOCATION THRESHOLDS
-        # --------------------------------------------------------
+        # ========================================================
+        # ADAPTIVE DISTANCE THRESHOLDS
+        # ========================================================
         #
-        # "AT" level:
-        # Very close to structural level.
+        # AT:
+        # Price is essentially touching the level.
         #
-        # "NEAR" level:
-        # Close enough that the level can materially affect
-        # the next move.
+        # NEAR:
+        # Level is close enough to influence the next move.
         #
-        # "BREAKING":
-        # Current price has moved beyond the level by a meaningful
-        # amount.
-        # --------------------------------------------------------
+        # ACTIVE:
+        # Recent local level that may matter even when it has not
+        # yet become a confirmed structural swing.
+        # ========================================================
     
-        at_threshold = (
-            median_range * 0.50
+        at_threshold = max(
+            median_range * 0.60,
+            3.0
         )
     
-        near_threshold = (
-            median_range * 1.50
+        near_threshold = max(
+            median_range * 2.00,
+            8.0
         )
     
-        break_threshold = (
-            median_range * 0.75
+        active_threshold = max(
+            median_range * 2.50,
+            10.0
         )
     
-        # --------------------------------------------------------
-        # FIND RESISTANCE LEVELS
-        # --------------------------------------------------------
-        #
-        # In pixel coordinates:
-        #
-        # Smaller Y = higher price.
-        #
-        # Therefore a swing high with a Y coordinate smaller than
-        # current price is ABOVE current price.
-        # --------------------------------------------------------
+        break_threshold = max(
+            median_range * 0.75,
+            4.0
+        )
     
-        resistance_levels = []
+        # ========================================================
+        # HELPER — CLEAN LEVELS
+        # ========================================================
     
-        for swing in swing_highs:
+        def clean_levels(levels):
     
-            try:
-                level_y = float(
-                    swing["price"]
-                )
+            cleaned = []
     
-            except Exception:
-                continue
+            for level in levels:
     
-            # Swing high above current price
-            if level_y <= current_price_y:
+                try:
     
-                distance = (
-                    current_price_y -
-                    level_y
-                )
+                    level_y = float(
+                        level.get(
+                            "price"
+                        )
+                    )
     
-                resistance_levels.append({
-                    "price": level_y,
-                    "distance": distance,
-                    "index": swing.get(
+                    index = level.get(
                         "index",
                         None
                     )
+    
+                    if not np.isfinite(
+                        level_y
+                    ):
+    
+                        continue
+    
+                    cleaned.append({
+    
+                        "y": level_y,
+    
+                        "index": index,
+    
+                        "source": "STRUCTURAL"
+    
+                    })
+    
+                except Exception:
+    
+                    continue
+    
+            return cleaned
+    
+        # ========================================================
+        # CONFIRMED STRUCTURAL LEVELS
+        # ========================================================
+    
+        structural_highs = clean_levels(
+            swing_highs
+        )
+    
+        structural_lows = clean_levels(
+            swing_lows
+        )
+    
+        # ========================================================
+        # FIND STRUCTURAL RESISTANCE
+        # ========================================================
+        #
+        # Smaller Y = higher on chart.
+        #
+        # A resistance level must therefore be ABOVE current
+        # price, meaning its Y coordinate is SMALLER.
+        # ========================================================
+    
+        structural_resistance = []
+    
+        for level in structural_highs:
+    
+            distance = (
+                current_close_y -
+                level["y"]
+            )
+    
+            if distance >= 0:
+    
+                structural_resistance.append({
+    
+                    "y":
+                        level["y"],
+    
+                    "distance":
+                        distance,
+    
+                    "index":
+                        level["index"],
+    
+                    "source":
+                        "STRUCTURAL"
+    
                 })
     
-        # --------------------------------------------------------
-        # FIND SUPPORT LEVELS
-        # --------------------------------------------------------
+        # ========================================================
+        # FIND STRUCTURAL SUPPORT
+        # ========================================================
         #
-        # Swing lows with larger Y values are BELOW current price.
-        # --------------------------------------------------------
+        # Larger Y = lower on chart.
+        #
+        # Support must therefore be BELOW current price.
+        # ========================================================
     
-        support_levels = []
+        structural_support = []
     
-        for swing in swing_lows:
+        for level in structural_lows:
+    
+            distance = (
+                level["y"] -
+                current_close_y
+            )
+    
+            if distance >= 0:
+    
+                structural_support.append({
+    
+                    "y":
+                        level["y"],
+    
+                    "distance":
+                        distance,
+    
+                    "index":
+                        level["index"],
+    
+                    "source":
+                        "STRUCTURAL"
+    
+                })
+    
+        # ========================================================
+        # RECENT ACTIVE LEVELS
+        # ========================================================
+        #
+        # This is the important improvement.
+        #
+        # A professional looking at the chart does not ignore a
+        # recent high/low simply because a classical swing detector
+        # has not confirmed it yet.
+        #
+        # We therefore inspect recent candles, EXCLUDING the
+        # current candle.
+        #
+        # We do not simply use the absolute highest/lowest candle.
+        # We look for repeated interaction / local extremes.
+        # ========================================================
+    
+        recent_count = min(
+            12,
+            len(candles) - 1
+        )
+    
+        recent_candles = candles[
+            -recent_count - 1:-1
+        ]
+    
+        active_highs = []
+        active_lows = []
+    
+        for i, candle in enumerate(
+            recent_candles
+        ):
     
             try:
-                level_y = float(
-                    swing["price"]
+    
+                high_y = float(
+                    candle["high"]
+                )
+    
+                low_y = float(
+                    candle["low"]
                 )
     
             except Exception:
+    
                 continue
     
-            # Swing low below current price
-            if level_y >= current_price_y:
+            # ----------------------------------------------------
+            # LOCAL WINDOW
+            # ----------------------------------------------------
     
-                distance = (
-                    level_y -
-                    current_price_y
+            left_index = max(
+                0,
+                i - 1
+            )
+    
+            right_index = min(
+                len(recent_candles),
+                i + 2
+            )
+    
+            local_window = (
+                recent_candles[
+                    left_index:right_index
+                ]
+            )
+    
+            local_highs = []
+            local_lows = []
+    
+            for local_candle in local_window:
+    
+                try:
+    
+                    local_highs.append(
+                        float(
+                            local_candle["high"]
+                        )
+                    )
+    
+                    local_lows.append(
+                        float(
+                            local_candle["low"]
+                        )
+                    )
+    
+                except Exception:
+    
+                    continue
+    
+            # ----------------------------------------------------
+            # RECENT LOCAL HIGH
+            # ----------------------------------------------------
+    
+            if local_highs:
+    
+                if high_y <= min(
+                    local_highs
+                ):
+    
+                    active_highs.append({
+    
+                        "y":
+                            high_y,
+    
+                        "index":
+                            i,
+    
+                        "source":
+                            "ACTIVE"
+    
+                    })
+    
+            # ----------------------------------------------------
+            # RECENT LOCAL LOW
+            # ----------------------------------------------------
+    
+            if local_lows:
+    
+                if low_y >= max(
+                    local_lows
+                ):
+    
+                    active_lows.append({
+    
+                        "y":
+                            low_y,
+    
+                        "index":
+                            i,
+    
+                        "source":
+                            "ACTIVE"
+    
+                    })
+    
+        # ========================================================
+        # ALSO INCLUDE RECENT EXTREMES
+        # ========================================================
+        #
+        # This catches situations like the screenshot where price
+        # is sitting directly on a newly formed low that has not
+        # yet become a confirmed swing.
+        # ========================================================
+    
+        if recent_candles:
+    
+            try:
+    
+                recent_low_y = max(
+                    float(
+                        c["low"]
+                    )
+                    for c in recent_candles
                 )
     
-                support_levels.append({
-                    "price": level_y,
-                    "distance": distance,
-                    "index": swing.get(
-                        "index",
-                        None
+                recent_high_y = min(
+                    float(
+                        c["high"]
                     )
+                    for c in recent_candles
+                )
+    
+                active_lows.append({
+    
+                    "y":
+                        recent_low_y,
+    
+                    "index":
+                        None,
+    
+                    "source":
+                        "RECENT EXTREME"
+    
                 })
     
-        # --------------------------------------------------------
-        # NEAREST LEVELS
-        # --------------------------------------------------------
+                active_highs.append({
+    
+                    "y":
+                        recent_high_y,
+    
+                    "index":
+                        None,
+    
+                    "source":
+                        "RECENT EXTREME"
+    
+                })
+    
+            except Exception:
+    
+                pass
+    
+        # ========================================================
+        # REMOVE DUPLICATE / NEAR-DUPLICATE ACTIVE LEVELS
+        # ========================================================
+    
+        def merge_levels(
+            levels,
+            tolerance
+        ):
+    
+            if not levels:
+    
+                return []
+    
+            sorted_levels = sorted(
+                levels,
+                key=lambda x: x["y"]
+            )
+    
+            merged = []
+    
+            for level in sorted_levels:
+    
+                if not merged:
+    
+                    merged.append(
+                        level
+                    )
+    
+                    continue
+    
+                previous = merged[-1]
+    
+                if abs(
+                    level["y"] -
+                    previous["y"]
+                ) <= tolerance:
+    
+                    # Prefer the level that has more structural
+                    # significance.
+                    if (
+                        level["source"]
+                        == "STRUCTURAL"
+                        and
+                        previous["source"]
+                        != "STRUCTURAL"
+                    ):
+    
+                        merged[-1] = level
+    
+                else:
+    
+                    merged.append(
+                        level
+                    )
+    
+            return merged
+    
+        active_highs = merge_levels(
+            active_highs,
+            max(
+                2.0,
+                median_range * 0.35
+            )
+        )
+    
+        active_lows = merge_levels(
+            active_lows,
+            max(
+                2.0,
+                median_range * 0.35
+            )
+        )
+    
+        # ========================================================
+        # FIND NEAREST ACTIVE RESISTANCE
+        # ========================================================
+    
+        active_resistance_candidates = []
+    
+        for level in active_highs:
+    
+            distance = (
+                current_close_y -
+                level["y"]
+            )
+    
+            if (
+                distance >= 0
+                and
+                distance <= active_threshold
+            ):
+    
+                active_resistance_candidates.append({
+    
+                    "y":
+                        level["y"],
+    
+                    "distance":
+                        distance,
+    
+                    "index":
+                        level["index"],
+    
+                    "source":
+                        level["source"]
+    
+                })
+    
+        # ========================================================
+        # FIND NEAREST ACTIVE SUPPORT
+        # ========================================================
+    
+        active_support_candidates = []
+    
+        for level in active_lows:
+    
+            distance = (
+                level["y"] -
+                current_close_y
+            )
+    
+            if (
+                distance >= 0
+                and
+                distance <= active_threshold
+            ):
+    
+                active_support_candidates.append({
+    
+                    "y":
+                        level["y"],
+    
+                    "distance":
+                        distance,
+    
+                    "index":
+                        level["index"],
+    
+                    "source":
+                        level["source"]
+    
+                })
+    
+        # ========================================================
+        # NEAREST STRUCTURAL LEVELS
+        # ========================================================
+    
+        nearest_structural_resistance = None
+    
+        if structural_resistance:
+    
+            nearest_structural_resistance = min(
+                structural_resistance,
+                key=lambda x: x["distance"]
+            )
+    
+        nearest_structural_support = None
+    
+        if structural_support:
+    
+            nearest_structural_support = min(
+                structural_support,
+                key=lambda x: x["distance"]
+            )
+    
+        # ========================================================
+        # NEAREST ACTIVE LEVELS
+        # ========================================================
+    
+        nearest_active_resistance = None
+    
+        if active_resistance_candidates:
+    
+            nearest_active_resistance = min(
+                active_resistance_candidates,
+                key=lambda x: x["distance"]
+            )
+    
+        nearest_active_support = None
+    
+        if active_support_candidates:
+    
+            nearest_active_support = min(
+                active_support_candidates,
+                key=lambda x: x["distance"]
+            )
+    
+        # ========================================================
+        # SELECT FINAL RESISTANCE
+        # ========================================================
+        #
+        # Prefer the closest meaningful level.
+        #
+        # A recent active level is allowed to be the nearest level,
+        # but structural information is preserved separately.
+        # ========================================================
+    
+        resistance_candidates = []
+    
+        if nearest_structural_resistance:
+    
+            resistance_candidates.append(
+                nearest_structural_resistance
+            )
+    
+        if nearest_active_resistance:
+    
+            resistance_candidates.append(
+                nearest_active_resistance
+            )
     
         nearest_resistance = None
     
-        if resistance_levels:
+        if resistance_candidates:
     
             nearest_resistance = min(
-                resistance_levels,
+                resistance_candidates,
                 key=lambda x: x["distance"]
+            )
+    
+        # ========================================================
+        # SELECT FINAL SUPPORT
+        # ========================================================
+    
+        support_candidates = []
+    
+        if nearest_structural_support:
+    
+            support_candidates.append(
+                nearest_structural_support
+            )
+    
+        if nearest_active_support:
+    
+            support_candidates.append(
+                nearest_active_support
             )
     
         nearest_support = None
     
-        if support_levels:
+        if support_candidates:
     
             nearest_support = min(
-                support_levels,
+                support_candidates,
                 key=lambda x: x["distance"]
             )
+    
+        # ========================================================
+        # DISTANCES
+        # ========================================================
     
         resistance_distance = (
             nearest_resistance["distance"]
@@ -6876,207 +7392,293 @@ if "candles" in st.session_state:
             else None
         )
     
-        # --------------------------------------------------------
+        # ========================================================
         # LOCATION CLASSIFICATION
-        # --------------------------------------------------------
+        # ========================================================
     
         location = "MID-RANGE"
     
         reasons = []
     
-        # --------------------------------------------------------
-        # RESISTANCE SIDE
-        # --------------------------------------------------------
+        # ========================================================
+        # CURRENT CANDLE INTERACTION
+        # ========================================================
     
-        if resistance_distance is not None:
+        current_candle_touches_support = False
+        current_candle_touches_resistance = False
     
-            if resistance_distance <= at_threshold:
+        if nearest_support:
     
-                location = "AT RESISTANCE"
+            support_y = (
+                nearest_support["y"]
+            )
     
-                reasons.append(
-                    "CURRENT PRICE IS AT A STRUCTURAL "
-                    "SWING HIGH"
-                )
+            if (
+                current_low_y >=
+                support_y - at_threshold
+            ):
     
-            elif resistance_distance <= near_threshold:
+                current_candle_touches_support = True
     
-                location = "NEAR RESISTANCE"
+        if nearest_resistance:
     
-                reasons.append(
-                    "CURRENT PRICE IS APPROACHING "
-                    "A STRUCTURAL SWING HIGH"
-                )
+            resistance_y = (
+                nearest_resistance["y"]
+            )
     
-        # --------------------------------------------------------
-        # SUPPORT SIDE
-        # --------------------------------------------------------
+            if (
+                current_high_y <=
+                resistance_y + at_threshold
+            ):
     
-        if support_distance is not None:
+                current_candle_touches_resistance = True
     
-            if support_distance <= at_threshold:
+        # ========================================================
+        # SUPPORT LOCATION
+        # ========================================================
+    
+        if nearest_support:
+    
+            if (
+                support_distance <=
+                at_threshold
+            ):
     
                 location = "AT SUPPORT"
     
                 reasons.append(
-                    "CURRENT PRICE IS AT A STRUCTURAL "
-                    "SWING LOW"
+                    "CURRENT PRICE IS TESTING "
+                    "A NEARBY SUPPORT LEVEL"
                 )
     
-            elif support_distance <= near_threshold:
+            elif (
+                support_distance <=
+                near_threshold
+            ):
+    
+                location = "NEAR SUPPORT"
+    
+                reasons.append(
+                    "CURRENT PRICE IS APPROACHING "
+                    "A SUPPORT LEVEL"
+                )
+    
+        # ========================================================
+        # RESISTANCE LOCATION
+        # ========================================================
+    
+        if nearest_resistance:
+    
+            if (
+                resistance_distance <=
+                at_threshold
+            ):
+    
+                # Only overwrite support when resistance is
+                # materially closer.
+                if (
+                    location == "MID-RANGE"
+                    or
+                    (
+                        support_distance is not None
+                        and
+                        resistance_distance <
+                        support_distance
+                    )
+                ):
+    
+                    location = "AT RESISTANCE"
+    
+                    reasons.append(
+                        "CURRENT PRICE IS TESTING "
+                        "A NEARBY RESISTANCE LEVEL"
+                    )
+    
+            elif (
+                resistance_distance <=
+                near_threshold
+            ):
     
                 if location == "MID-RANGE":
     
-                    location = "NEAR SUPPORT"
+                    location = "NEAR RESISTANCE"
     
                     reasons.append(
                         "CURRENT PRICE IS APPROACHING "
-                        "A STRUCTURAL SWING LOW"
+                        "A RESISTANCE LEVEL"
                     )
     
-        # --------------------------------------------------------
-        # BREAKOUT / BREAKDOWN CHECK
-        # --------------------------------------------------------
+        # ========================================================
+        # BREAKING SUPPORT
+        # ========================================================
         #
-        # This uses the CURRENT CANDLE HIGH/LOW as well as the
-        # current close.
+        # We only call this a LOCATION event.
         #
-        # We are NOT calling this a confirmed breakout yet.
-        #
-        # This only identifies that price has moved beyond a
-        # structural level.
-        # --------------------------------------------------------
+        # It is NOT a confirmed bearish breakout.
+        # Step 13 / Step 14 must still decide that.
+        # ========================================================
     
-        current_high = None
-        current_low = None
-    
-        try:
-    
-            current_high = float(
-                current_candle["high"]
-            )
-    
-            current_low = float(
-                current_candle["low"]
-            )
-    
-        except Exception:
-            pass
-    
-        # --------------------------------------------------------
-        # POSSIBLE RESISTANCE BREAK
-        # --------------------------------------------------------
-    
-        if nearest_resistance is not None:
-    
-            resistance_y = (
-                nearest_resistance["price"]
-            )
-    
-            if (
-                current_high is not None
-                and
-                current_high < (
-                    resistance_y -
-                    break_threshold
-                )
-            ):
-    
-                location = (
-                    "BREAKING RESISTANCE"
-                )
-    
-                reasons.append(
-                    "CURRENT CANDLE HAS MOVED "
-                    "ABOVE THE NEAREST STRUCTURAL HIGH"
-                )
-    
-        # --------------------------------------------------------
-        # POSSIBLE SUPPORT BREAK
-        # --------------------------------------------------------
-    
-        if nearest_support is not None:
+        if nearest_support:
     
             support_y = (
-                nearest_support["price"]
+                nearest_support["y"]
             )
     
             if (
-                current_low is not None
-                and
-                current_low > (
-                    support_y +
-                    break_threshold
-                )
+                current_close_y >
+                support_y +
+                break_threshold
             ):
     
-                location = (
-                    "BREAKING SUPPORT"
-                )
+                location = "BREAKING SUPPORT"
     
                 reasons.append(
-                    "CURRENT CANDLE HAS MOVED "
-                    "BELOW THE NEAREST STRUCTURAL LOW"
+                    "CURRENT CLOSE HAS MOVED "
+                    "BELOW THE NEAREST SUPPORT LEVEL"
                 )
     
-        # --------------------------------------------------------
+        # ========================================================
+        # BREAKING RESISTANCE
+        # ========================================================
+    
+        if nearest_resistance:
+    
+            resistance_y = (
+                nearest_resistance["y"]
+            )
+    
+            if (
+                current_close_y <
+                resistance_y -
+                break_threshold
+            ):
+    
+                location = "BREAKING RESISTANCE"
+    
+                reasons.append(
+                    "CURRENT CLOSE HAS MOVED "
+                    "ABOVE THE NEAREST RESISTANCE LEVEL"
+                )
+    
+        # ========================================================
+        # TOUCH / TEST INFORMATION
+        # ========================================================
+    
+        if current_candle_touches_support:
+    
+            reasons.append(
+                "CURRENT CANDLE HAS INTERACTED "
+                "WITH SUPPORT"
+            )
+    
+        if current_candle_touches_resistance:
+    
+            reasons.append(
+                "CURRENT CANDLE HAS INTERACTED "
+                "WITH RESISTANCE"
+            )
+    
+        # ========================================================
+        # DETERMINE LEVEL TYPE
+        # ========================================================
+    
+        support_type = None
+    
+        if nearest_support:
+    
+            support_type = (
+                nearest_support.get(
+                    "source"
+                )
+            )
+    
+        resistance_type = None
+    
+        if nearest_resistance:
+    
+            resistance_type = (
+                nearest_resistance.get(
+                    "source"
+                )
+            )
+    
+        # ========================================================
         # LOCATION QUALITY
-        # --------------------------------------------------------
+        # ========================================================
         #
         # This is NOT a trade score.
         #
-        # It simply measures how clearly price is interacting with
-        # a structural level.
-        # --------------------------------------------------------
-    
-        location_quality = 0.0
+        # It represents how clearly current price is interacting
+        # with a meaningful level.
+        # ========================================================
     
         if location in (
-            "AT RESISTANCE",
-            "AT SUPPORT"
+            "AT SUPPORT",
+            "AT RESISTANCE"
         ):
     
             location_quality = 100.0
     
         elif location in (
-            "NEAR RESISTANCE",
-            "NEAR SUPPORT"
-        ):
-    
-            location_quality = 80.0
-    
-        elif location in (
-            "BREAKING RESISTANCE",
-            "BREAKING SUPPORT"
+            "BREAKING SUPPORT",
+            "BREAKING RESISTANCE"
         ):
     
             location_quality = 90.0
     
+        elif location in (
+            "NEAR SUPPORT",
+            "NEAR RESISTANCE"
+        ):
+    
+            location_quality = 80.0
+    
         else:
     
+            # MID-RANGE is not necessarily bad.
+            # It simply means there is no nearby level.
             location_quality = 40.0
     
             reasons.append(
                 "CURRENT PRICE IS NOT CLOSE TO "
-                "A MAJOR DETECTED SWING LEVEL"
+                "A MAJOR OR ACTIVE PRICE LEVEL"
             )
     
-        # --------------------------------------------------------
+        # ========================================================
         # DEBUG
-        # --------------------------------------------------------
+        # ========================================================
     
         print("\n")
         print("=" * 70)
-        print("PRICE LOCATION ANALYSIS")
+        print("PRICE LOCATION ENGINE")
         print("=" * 70)
     
         print(
-            "Current price Y:",
-            current_price_y
+            "Current Close Y:",
+            round(
+                current_close_y,
+                2
+            )
         )
     
         print(
-            "Median candle range:",
+            "Current High Y:",
+            round(
+                current_high_y,
+                2
+            )
+        )
+    
+        print(
+            "Current Low Y:",
+            round(
+                current_low_y,
+                2
+            )
+        )
+    
+        print(
+            "Median Candle Range:",
             round(
                 median_range,
                 2
@@ -7084,13 +7686,23 @@ if "candles" in st.session_state:
         )
     
         print(
-            "Nearest resistance:",
+            "Nearest Resistance:",
             nearest_resistance
         )
     
         print(
-            "Nearest support:",
+            "Nearest Support:",
             nearest_support
+        )
+    
+        print(
+            "Structural Resistance:",
+            nearest_structural_resistance
+        )
+    
+        print(
+            "Structural Support:",
+            nearest_structural_support
         )
     
         print(
@@ -7099,16 +7711,16 @@ if "candles" in st.session_state:
         )
     
         print(
-            "Location quality:",
+            "Location Quality:",
             location_quality
         )
     
         print("=" * 70)
         print("\n")
     
-        # --------------------------------------------------------
+        # ========================================================
         # RETURN
-        # --------------------------------------------------------
+        # ========================================================
     
         return {
     
@@ -7118,8 +7730,25 @@ if "candles" in st.session_state:
             "location":
                 location,
     
+            # IMPORTANT:
+            # This is a PIXEL Y coordinate, not a market price.
             "current_price_y":
-                current_price_y,
+                round(
+                    current_close_y,
+                    2
+                ),
+    
+            "current_high_y":
+                round(
+                    current_high_y,
+                    2
+                ),
+    
+            "current_low_y":
+                round(
+                    current_low_y,
+                    2
+                ),
     
             "median_candle_range":
                 round(
@@ -7132,6 +7761,24 @@ if "candles" in st.session_state:
     
             "nearest_support":
                 nearest_support,
+    
+            "active_resistance":
+                nearest_active_resistance,
+    
+            "active_support":
+                nearest_active_support,
+    
+            "structural_resistance":
+                nearest_structural_resistance,
+    
+            "structural_support":
+                nearest_structural_support,
+    
+            "resistance_type":
+                resistance_type,
+    
+            "support_type":
+                support_type,
     
             "distance_to_resistance":
                 (
@@ -7156,9 +7803,16 @@ if "candles" in st.session_state:
             "location_quality":
                 location_quality,
     
+            "current_candle_touches_support":
+                current_candle_touches_support,
+    
+            "current_candle_touches_resistance":
+                current_candle_touches_resistance,
+    
             "reasons":
                 reasons
         }
+
     # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
@@ -9238,8 +9892,8 @@ if (
         if resistance:
     
             st.write(
-                "**Nearest Resistance:** "
-                f"`{resistance['price']:.1f}`"
+                "**Nearest Resistance (chart Y):** "
+                f"`{resistance['y']:.1f}`"
             )
     
         else:
@@ -9258,8 +9912,8 @@ if (
         if support:
     
             st.write(
-                "**Nearest Support:** "
-                f"`{support['price']:.1f}`"
+                "**Nearest Support (chart Y):** "
+                f"`{support['y']:.1f}`"
             )
     
         else:
