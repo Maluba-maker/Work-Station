@@ -7912,13 +7912,14 @@ if "candles" in st.session_state:
         # BREAKING RESISTANCE
         # --------------------------------------------------------
 
-        if (
-            nearest_resistance
-            and
-            resistance_position == "ABOVE"
-        ):
+        if broke_resistance:
 
-            location = "BREAKING / ABOVE RESISTANCE"
+            location = "BREAKING RESISTANCE"
+
+            reasons.append(
+                "CURRENT PRICE HAS BROKEN ABOVE "
+                "THE NEAREST RESISTANCE LEVEL"
+            )
 
             reasons.append(
                 "CURRENT PRICE IS ABOVE "
@@ -7930,13 +7931,14 @@ if "candles" in st.session_state:
         # BREAKING SUPPORT
         # --------------------------------------------------------
 
-        elif (
-            nearest_support
-            and
-            support_position == "BELOW"
-        ):
+        elif broke_support:
 
-            location = "BREAKING / BELOW SUPPORT"
+            location = "BREAKING SUPPORT"
+
+            reasons.append(
+                "CURRENT PRICE HAS BROKEN BELOW "
+                "THE NEAREST SUPPORT LEVEL"
+            )
 
             reasons.append(
                 "CURRENT PRICE IS BELOW "
