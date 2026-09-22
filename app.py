@@ -8403,9 +8403,21 @@ if "candles" in st.session_state:
             "moving_down":
                 moving_down,
 
-            "median_candle_range":
+             "median_candle_range":
                 round(
                     median_range,
+                    2
+                ),
+
+            "at_threshold":
+                round(
+                    at_threshold,
+                    2
+                ),
+
+            "near_threshold":
+                round(
+                    near_threshold,
                     2
                 ),
 
@@ -10607,7 +10619,98 @@ if (
             "**Location Quality:** "
             f"`{price_location.get('location_quality', 0):.1f}%`"
         )
-    
+
+
+    # ============================================================
+    # PRICE LOCATION DEBUG
+    # ============================================================
+
+    with st.expander(
+        "Price Location Debug",
+        expanded=True
+    ):
+
+        st.write(
+            "**Current Close Y:**",
+            price_location.get(
+                "current_price_y"
+            )
+        )
+
+        st.write(
+            "**Current High Y:**",
+            price_location.get(
+                "current_high_y"
+            )
+        )
+
+        st.write(
+            "**Current Low Y:**",
+            price_location.get(
+                "current_low_y"
+            )
+        )
+
+        st.write(
+            "**Previous Close Y:**",
+            price_location.get(
+                "previous_price_y"
+            )
+        )
+
+        st.write(
+            "**AT Threshold:**",
+            price_location.get(
+                "at_threshold"
+            )
+        )
+
+        st.write(
+            "**NEAR Threshold:**",
+            price_location.get(
+                "near_threshold"
+            )
+        )
+
+        resistance_debug = price_location.get(
+            "nearest_resistance"
+        )
+
+        support_debug = price_location.get(
+            "nearest_support"
+        )
+
+        st.write(
+            "**Resistance Y:**",
+            (
+                resistance_debug.get("y")
+                if resistance_debug
+                else None
+            )
+        )
+
+        st.write(
+            "**Support Y:**",
+            (
+                support_debug.get("y")
+                if support_debug
+                else None
+            )
+        )
+
+        st.write(
+            "**Touches Resistance:**",
+            price_location.get(
+                "current_candle_touches_resistance"
+            )
+        )
+
+        st.write(
+            "**Touches Support:**",
+            price_location.get(
+                "current_candle_touches_support"
+            )
+        )
     
     # ------------------------------------------------------------
     # PRICE LOCATION REASONS
