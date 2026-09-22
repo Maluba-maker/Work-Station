@@ -7296,6 +7296,75 @@ if "candles" in st.session_state:
         )
     
         # ========================================================
+        # DEVELOPING RESISTANCE FROM CURRENT CANDLE
+        # ========================================================
+        #
+        # The current candle cannot yet be a confirmed swing
+        # because it does not have two candles to its right.
+        #
+        # However, if the current candle has made a meaningful
+        # high and price has pulled back from that high, we can
+        # treat the high as a DEVELOPING resistance level.
+        #
+        # This is NOT classified as a confirmed structural level.
+        # ========================================================
+
+        developing_resistance = None
+
+        try:
+
+            current_high_distance = (
+                current_close_y -
+                current_high_y
+            )
+
+            if (
+                current_high_y <
+                current_close_y
+                and
+                current_high_distance >=
+                max(
+                    median_range * 0.50,
+                    3.0
+                )
+                and
+                current_high_distance <=
+                near_threshold
+            ):
+
+                developing_resistance = {
+
+                    "y":
+                        float(
+                            current_high_y
+                        ),
+
+                    "index":
+                        len(candles) - 1,
+
+                    "source":
+                        "DEVELOPING RESISTANCE",
+
+                    "level_type":
+                        "RESISTANCE",
+
+                    "strength":
+                        1,
+
+                    "touch_count":
+                        1,
+
+                    "reaction":
+                        float(
+                            current_high_distance
+                        )
+                }
+
+        except Exception:
+
+            developing_resistance = None
+        
+        # ========================================================
         # ROBUST PRICE LOCATION ENGINE
         # ========================================================
         #
@@ -7453,6 +7522,20 @@ if "candles" in st.session_state:
         
                 continue
 
+        # --------------------------------------------------------
+        # DEVELOPING RESISTANCE
+        # --------------------------------------------------------
+
+        if developing_resistance:
+
+            developing_resistance["distance"] = (
+                current_close_y -
+                developing_resistance["y"]
+            )
+
+            resistance_candidates.append(
+                developing_resistance
+            )
         # ========================================================
         # BUILD ALL SUPPORT CANDIDATES
         # ========================================================
@@ -10836,6 +10919,15 @@ if (
             )
         )
 
+        st.write(
+            "**Resistance Source:**",
+            (
+                resistance_debug.get("source")
+                if resistance_debug
+                else None
+            )
+        )
+        
         st.write(
             "**Support Y:**",
             (
