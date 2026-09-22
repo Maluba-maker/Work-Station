@@ -7684,24 +7684,26 @@ if "candles" in st.session_state:
         reasons = []
 
         # ========================================================
-        # CURRENT CANDLE INTERACTION
+        # CURRENT CANDLE — STRICT LEVEL INTERACTION
         # ========================================================
         #
-        # A level is considered interacted with when the candle
-        # range actually overlaps the level or comes within the
-        # defined tolerance.
+        # A candle has reached a level only when the actual
+        # candle wick range crosses that level.
         #
-        # This is fundamentally different from checking only
-        # current_low_y or current_high_y.
+        # We do NOT use proximity alone to claim interaction.
+        #
+        # Chart coordinates:
+        # Smaller Y = higher price
+        # Larger Y  = lower price
         # ========================================================
 
         current_candle_touches_support = False
         current_candle_touches_resistance = False
 
 
-        # --------------------------------------------------------
-        # SUPPORT INTERACTION
-        # --------------------------------------------------------
+        # ========================================================
+        # STRICT SUPPORT TOUCH
+        # ========================================================
 
         if nearest_support:
 
@@ -7709,31 +7711,43 @@ if "candles" in st.session_state:
                 nearest_support["y"]
             )
 
-            support_zone_top = (
-                support_y -
-                at_threshold
-            )
+            # The support level must actually fall inside
+            # the candle's high/low range.
+            #
+            # A small tolerance is allowed only at the
+            # boundary of the wick.
 
-            support_zone_bottom = (
-                support_y +
-                at_threshold
-            )
-
-            # Candle range overlaps support zone
-            if (
+            support_inside_candle = (
                 current_high_y <=
-                support_zone_bottom
-                and
-                current_low_y >=
-                support_zone_top
+                support_y
+                <=
+                current_low_y
+            )
+
+            support_near_wick = (
+                abs(
+                    current_high_y -
+                    support_y
+                ) <= at_threshold
+                or
+                abs(
+                    current_low_y -
+                    support_y
+                ) <= at_threshold
+            )
+
+            if (
+                support_inside_candle
+                or
+                support_near_wick
             ):
 
                 current_candle_touches_support = True
 
 
-        # --------------------------------------------------------
-        # RESISTANCE INTERACTION
-        # --------------------------------------------------------
+        # ========================================================
+        # STRICT RESISTANCE TOUCH
+        # ========================================================
 
         if nearest_resistance:
 
@@ -7741,27 +7755,34 @@ if "candles" in st.session_state:
                 nearest_resistance["y"]
             )
 
-            resistance_zone_top = (
-                resistance_y -
-                at_threshold
-            )
-
-            resistance_zone_bottom = (
-                resistance_y +
-                at_threshold
-            )
-
-            # Candle range overlaps resistance zone
-            if (
+            # The resistance level must actually fall inside
+            # the candle's high/low range.
+            resistance_inside_candle = (
                 current_high_y <=
-                resistance_zone_bottom
-                and
-                current_low_y >=
-                resistance_zone_top
+                resistance_y
+                <=
+                current_low_y
+            )
+
+            resistance_near_wick = (
+                abs(
+                    current_high_y -
+                    resistance_y
+                ) <= at_threshold
+                or
+                abs(
+                    current_low_y -
+                    resistance_y
+                ) <= at_threshold
+            )
+
+            if (
+                resistance_inside_candle
+                or
+                resistance_near_wick
             ):
 
                 current_candle_touches_resistance = True
-
 
         # ========================================================
         # PRICE RELATIONSHIP TO LEVELS
