@@ -8014,6 +8014,393 @@ if "candles" in st.session_state:
                 "REACHED THE RESISTANCE LEVEL"
             )
 
+        # ========================================================
+        # LEVEL TYPES
+        # ========================================================
+
+        support_type = None
+
+        if nearest_support:
+
+            support_type = nearest_support.get(
+                "source"
+            )
+
+
+        resistance_type = None
+
+        if nearest_resistance:
+
+            resistance_type = nearest_resistance.get(
+                "source"
+            )
+
+
+        # ========================================================
+        # LOCATION QUALITY
+        # ========================================================
+
+        location_quality = 40.0
+
+
+        # --------------------------------------------------------
+        # AT LEVEL
+        # --------------------------------------------------------
+
+        if location in (
+            "AT SUPPORT",
+            "AT RESISTANCE"
+        ):
+
+            level = (
+                nearest_support
+                if location == "AT SUPPORT"
+                else nearest_resistance
+            )
+
+            if level:
+
+                if level.get("source") == "STRUCTURAL":
+
+                    location_quality = 100.0
+
+                else:
+
+                    touch_count = level.get(
+                        "touch_count",
+                        1
+                    )
+
+                    if touch_count >= 3:
+
+                        location_quality = 90.0
+
+                    elif touch_count == 2:
+
+                        location_quality = 80.0
+
+                    else:
+
+                        location_quality = 70.0
+
+
+        # --------------------------------------------------------
+        # FRESH BREAK
+        # --------------------------------------------------------
+
+        elif location in (
+            "BREAKING SUPPORT",
+            "BREAKING RESISTANCE"
+        ):
+
+            location_quality = 90.0
+
+
+        # --------------------------------------------------------
+        # NEAR LEVEL
+        # --------------------------------------------------------
+
+        elif location in (
+            "NEAR SUPPORT",
+            "NEAR RESISTANCE"
+        ):
+
+            level = (
+                nearest_support
+                if location == "NEAR SUPPORT"
+                else nearest_resistance
+            )
+
+            if level:
+
+                if level.get("source") == "STRUCTURAL":
+
+                    location_quality = 75.0
+
+                else:
+
+                    location_quality = 60.0
+
+
+        # --------------------------------------------------------
+        # ABOVE / BELOW
+        # --------------------------------------------------------
+
+        elif location in (
+            "ABOVE RESISTANCE",
+            "BELOW SUPPORT"
+        ):
+
+            location_quality = 85.0
+
+
+        # ========================================================
+        # DEBUG
+        # ========================================================
+
+        print("\n")
+        print("=" * 70)
+        print("PRICE LOCATION ENGINE — FINAL")
+        print("=" * 70)
+
+        print(
+            "Current Close Y:",
+            round(
+                current_close_y,
+                2
+            )
+        )
+
+        print(
+            "Previous Close Y:",
+            (
+                round(
+                    previous_close_y,
+                    2
+                )
+                if previous_close_y is not None
+                else None
+            )
+        )
+
+        print(
+            "Price Move Y:",
+            round(
+                price_move_y,
+                2
+            )
+        )
+
+        print(
+            "Moving Up:",
+            moving_up
+        )
+
+        print(
+            "Moving Down:",
+            moving_down
+        )
+
+        print(
+            "Current High Y:",
+            round(
+                current_high_y,
+                2
+            )
+        )
+
+        print(
+            "Current Low Y:",
+            round(
+                current_low_y,
+                2
+            )
+        )
+
+        print(
+            "Nearest Resistance:",
+            nearest_resistance
+        )
+
+        print(
+            "Nearest Support:",
+            nearest_support
+        )
+
+        print(
+            "Resistance Distance:",
+            resistance_distance
+        )
+
+        print(
+            "Support Distance:",
+            support_distance
+        )
+
+        print(
+            "Resistance Gap:",
+            resistance_gap
+        )
+
+        print(
+            "Support Gap:",
+            support_gap
+        )
+
+        print(
+            "Touches Resistance:",
+            current_candle_touches_resistance
+        )
+
+        print(
+            "Touches Support:",
+            current_candle_touches_support
+        )
+
+        print(
+            "Broke Resistance:",
+            broke_resistance
+        )
+
+        print(
+            "Broke Support:",
+            broke_support
+        )
+
+        print(
+            "Final Location:",
+            location
+        )
+
+        print(
+            "Location Quality:",
+            location_quality
+        )
+
+        print("=" * 70)
+        print("\n")
+
+
+        # ========================================================
+        # RETURN PRICE LOCATION RESULT
+        # ========================================================
+
+        return {
+
+            "status":
+                "AVAILABLE",
+
+            "location":
+                location,
+
+            "current_price_y":
+                round(
+                    current_close_y,
+                    2
+                ),
+
+            "current_high_y":
+                round(
+                    current_high_y,
+                    2
+                ),
+
+            "current_low_y":
+                round(
+                    current_low_y,
+                    2
+                ),
+
+            "previous_price_y":
+                (
+                    round(
+                        previous_close_y,
+                        2
+                    )
+                    if previous_close_y is not None
+                    else None
+                ),
+
+            "price_move_y":
+                round(
+                    price_move_y,
+                    2
+                ),
+
+            "moving_up":
+                moving_up,
+
+            "moving_down":
+                moving_down,
+
+            "median_candle_range":
+                round(
+                    median_range,
+                    2
+                ),
+
+            "nearest_resistance":
+                nearest_resistance,
+
+            "nearest_support":
+                nearest_support,
+
+            "active_resistance":
+                (
+                    nearest_active_resistance
+                    if "nearest_active_resistance"
+                    in locals()
+                    else None
+                ),
+
+            "active_support":
+                (
+                    nearest_active_support
+                    if "nearest_active_support"
+                    in locals()
+                    else None
+                ),
+
+            "structural_resistance":
+                (
+                    nearest_structural_resistance
+                    if "nearest_structural_resistance"
+                    in locals()
+                    else None
+                ),
+
+            "structural_support":
+                (
+                    nearest_structural_support
+                    if "nearest_structural_support"
+                    in locals()
+                    else None
+                ),
+
+            "resistance_type":
+                resistance_type,
+
+            "support_type":
+                support_type,
+
+            "distance_to_resistance":
+                (
+                    round(
+                        resistance_distance,
+                        2
+                    )
+                    if resistance_distance is not None
+                    else None
+                ),
+
+            "distance_to_support":
+                (
+                    round(
+                        support_distance,
+                        2
+                    )
+                    if support_distance is not None
+                    else None
+                ),
+
+            "location_quality":
+                location_quality,
+
+            "current_candle_touches_support":
+                current_candle_touches_support,
+
+            "current_candle_touches_resistance":
+                current_candle_touches_resistance,
+
+            "broke_support":
+                broke_support,
+
+            "broke_resistance":
+                broke_resistance,
+
+            "reasons":
+                reasons
+        }
     # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
