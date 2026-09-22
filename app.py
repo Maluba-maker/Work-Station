@@ -7838,6 +7838,73 @@ if "candles" in st.session_state:
 
 
         # ========================================================
+        # FRESH BREAK DETECTION
+        # ========================================================
+
+        broke_resistance = False
+        broke_support = False
+
+        # --------------------------------------------------------
+        # RESISTANCE BREAK
+        # --------------------------------------------------------
+        #
+        # Price was at/below resistance on the previous candle
+        # and is now clearly above it.
+        #
+        # Smaller Y = higher price.
+        # --------------------------------------------------------
+
+        if (
+            nearest_resistance
+            and
+            previous_close_y is not None
+        ):
+
+            resistance_y = float(
+                nearest_resistance["y"]
+            )
+
+            if (
+                previous_close_y >=
+                resistance_y
+                and
+                current_close_y <
+                resistance_y -
+                break_threshold
+            ):
+
+                broke_resistance = True
+
+
+        # --------------------------------------------------------
+        # SUPPORT BREAK
+        # --------------------------------------------------------
+        #
+        # Price was at/above support on the previous candle
+        # and is now clearly below it.
+        # --------------------------------------------------------
+
+        if (
+            nearest_support
+            and
+            previous_close_y is not None
+        ):
+
+            support_y = float(
+                nearest_support["y"]
+            )
+
+            if (
+                previous_close_y <=
+                support_y
+                and
+                current_close_y >
+                support_y +
+                break_threshold
+            ):
+
+                broke_support = True
+        # ========================================================
         # DETERMINE FINAL LOCATION
         # ========================================================
 
