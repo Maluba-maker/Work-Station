@@ -7495,42 +7495,110 @@ if "candles" in st.session_state:
         # ========================================================
         # SELECT NEAREST RESISTANCE
         # ========================================================
-
+        #
+        # Resistance must be ABOVE current price.
+        # In chart coordinates:
+        #
+        # Smaller Y = higher price
+        #
+        # Therefore:
+        #
+        # resistance_y < current_close_y
+        #
+        # ========================================================
+        
+        valid_resistance_candidates = []
+        
+        for level in resistance_candidates:
+        
+            try:
+        
+                level_y = float(
+                    level["y"]
+                )
+        
+                if level_y < current_close_y:
+        
+                    valid_resistance_candidates.append(
+                        level
+                    )
+        
+            except Exception:
+        
+                continue
+        
+        
         nearest_resistance = None
-
-        if resistance_candidates:
-
+        
+        if valid_resistance_candidates:
+        
             nearest_resistance = min(
-                resistance_candidates,
+                valid_resistance_candidates,
                 key=lambda x: (
-                    x["distance"],
+                    abs(
+                        current_close_y -
+                        float(x["y"])
+                    ),
                     0
                     if x.get("source") ==
                     "STRUCTURAL"
                     else 1
                 )
             )
-
 
         # ========================================================
         # SELECT NEAREST SUPPORT
         # ========================================================
-
+        #
+        # Support must be BELOW current price.
+        # In chart coordinates:
+        #
+        # Larger Y = lower price
+        #
+        # Therefore:
+        #
+        # support_y > current_close_y
+        #
+        # ========================================================
+        
+        valid_support_candidates = []
+        
+        for level in support_candidates:
+        
+            try:
+        
+                level_y = float(
+                    level["y"]
+                )
+        
+                if level_y > current_close_y:
+        
+                    valid_support_candidates.append(
+                        level
+                    )
+        
+            except Exception:
+        
+                continue
+        
+        
         nearest_support = None
-
-        if support_candidates:
-
+        
+        if valid_support_candidates:
+        
             nearest_support = min(
-                support_candidates,
+                valid_support_candidates,
                 key=lambda x: (
-                    x["distance"],
+                    abs(
+                        current_close_y -
+                        float(x["y"])
+                    ),
                     0
                     if x.get("source") ==
                     "STRUCTURAL"
                     else 1
                 )
             )
-
 
         # ========================================================
         # DISTANCES
