@@ -7416,26 +7416,42 @@ if "candles" in st.session_state:
         # --------------------------------------------------------
         # RECENT / ACTIVE RESISTANCE
         # --------------------------------------------------------
-
+        
         for level in active_highs:
-
+        
             try:
-
+        
                 level_copy = level.copy()
-
-                level_copy["distance"] = abs(
-                    current_close_y -
+        
+                level_y = float(
                     level_copy["y"]
                 )
-
-                resistance_candidates.append(
-                    level_copy
-                )
-
+        
+                # Resistance must be ABOVE current price.
+                # Smaller Y = higher on chart.
+        
+                if level_y < current_close_y:
+        
+                    level_copy["distance"] = (
+                        current_close_y -
+                        level_y
+                    )
+        
+                    # Keep the level if it is within the
+                    # broader NEAR threshold.
+        
+                    if (
+                        level_copy["distance"]
+                        <= near_threshold
+                    ):
+        
+                        resistance_candidates.append(
+                            level_copy
+                        )
+        
             except Exception:
-
+        
                 continue
-
 
         # ========================================================
         # BUILD ALL SUPPORT CANDIDATES
@@ -7471,26 +7487,42 @@ if "candles" in st.session_state:
         # --------------------------------------------------------
         # RECENT / ACTIVE SUPPORT
         # --------------------------------------------------------
-
+        
         for level in active_lows:
-
+        
             try:
-
+        
                 level_copy = level.copy()
-
-                level_copy["distance"] = abs(
-                    current_close_y -
+        
+                level_y = float(
                     level_copy["y"]
                 )
-
-                support_candidates.append(
-                    level_copy
-                )
-
+        
+                # Support must be BELOW current price.
+                # Larger Y = lower on chart.
+        
+                if level_y > current_close_y:
+        
+                    level_copy["distance"] = (
+                        level_y -
+                        current_close_y
+                    )
+        
+                    # Keep the level if it is within the
+                    # broader NEAR threshold.
+        
+                    if (
+                        level_copy["distance"]
+                        <= near_threshold
+                    ):
+        
+                        support_candidates.append(
+                            level_copy
+                        )
+        
             except Exception:
-
+        
                 continue
-
 
         # ========================================================
         # SELECT NEAREST RESISTANCE
