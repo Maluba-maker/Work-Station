@@ -8084,24 +8084,71 @@ if "candles" in st.session_state:
                 "TESTING OR APPROACHING A MAJOR LEVEL"
             )
 
-
         # ========================================================
-        # CANDLE INTERACTION REASONS
+        # RELEVANT CURRENT PRICE INTERACTION
+        # ========================================================
+        #
+        # A candle may span multiple historical levels.
+        # That does NOT mean price is currently interacting
+        # with all of them.
+        #
+        # For the price-location diagnostic, only report the
+        # level that is relevant to the CURRENT PRICE LOCATION.
         # ========================================================
 
-        if current_candle_touches_support:
+        if location == "AT RESISTANCE":
+
+            if current_candle_touches_resistance:
+
+                reasons.append(
+                    "CURRENT PRICE/CANDLE IS "
+                    "INTERACTING WITH RESISTANCE"
+                )
+
+
+        elif location == "AT SUPPORT":
+
+            if current_candle_touches_support:
+
+                reasons.append(
+                    "CURRENT PRICE/CANDLE IS "
+                    "INTERACTING WITH SUPPORT"
+                )
+
+
+        elif location == "NEAR RESISTANCE":
+
+            if current_candle_touches_resistance:
+
+                reasons.append(
+                    "CURRENT CANDLE IS "
+                    "INTERACTING WITH RESISTANCE"
+                )
+
+
+        elif location == "NEAR SUPPORT":
+
+            if current_candle_touches_support:
+
+                reasons.append(
+                    "CURRENT CANDLE IS "
+                    "INTERACTING WITH SUPPORT"
+                )
+
+
+        elif location == "BREAKING RESISTANCE":
 
             reasons.append(
-                "CURRENT CANDLE HAS ACTUALLY "
-                "REACHED THE SUPPORT LEVEL"
+                "CURRENT PRICE HAS BROKEN "
+                "THROUGH RESISTANCE"
             )
 
 
-        if current_candle_touches_resistance:
+        elif location == "BREAKING SUPPORT":
 
             reasons.append(
-                "CURRENT CANDLE HAS ACTUALLY "
-                "REACHED THE RESISTANCE LEVEL"
+                "CURRENT PRICE HAS BROKEN "
+                "THROUGH SUPPORT"
             )
 
         # ========================================================
