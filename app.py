@@ -8737,7 +8737,7 @@ def analyze_price_location(
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
     with trade_setup_placeholder.container():
-         def diagnose_trade_setup(
+        def diagnose_trade_setup(
             sequence,
             current_direction,
             body_percentage,
