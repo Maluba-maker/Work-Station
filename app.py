@@ -9824,6 +9824,14 @@ def classify_setup_with_price_location(
 # the signal engine has completed.
 # ============================================================
 
+# Use the last reconstructed sequence when available.
+# Before candle detection, this remains an empty dictionary so
+# the application can load normally without a NameError.
+sequence = st.session_state.get(
+    "sequence_analysis",
+    {}
+)
+
 setup_analysis = diagnose_trade_setup(
     sequence,
 
