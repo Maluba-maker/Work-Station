@@ -9855,42 +9855,43 @@ if "candles" in st.session_state:
         )
     )
 
-    # ============================================================
-    # STEP 13B — SETUP CLASSIFICATION
-    # ============================================================
+# ============================================================
+# PRICE LOCATION ANALYSIS
+# ============================================================
+#
+# This is a diagnostic layer only.
+# It does NOT change the BUY / SELL decision yet.
+# ============================================================
 
-    setup_analysis = classify_setup_with_price_location(
-        setup_analysis,
-        price_location
+price_location = analyze_price_location(
+    st.session_state.get(
+        "candles",
+        []
+    ),
+
+    sequence.get(
+        "swing_highs",
+        []
+    ),
+
+    sequence.get(
+        "swing_lows",
+        []
     )
-    
-    # ============================================================
-    # PRICE LOCATION ANALYSIS
-    # ============================================================
-    #
-    # This is a diagnostic layer only.
-    # It does NOT change the BUY / SELL decision yet.
-    # ============================================================
-    
-    price_location = analyze_price_location(
-        st.session_state.get(
-            "candles",
-            []
-        ),
-    
-        sequence.get(
-            "swing_highs",
-            []
-        ),
-    
-        sequence.get(
-            "swing_lows",
-            []
-        )
-    )
-    
-    # Store it inside the sequence so Step 14 can use it later.
-    sequence["price_location"] = price_location
+)
+
+# Store it inside the sequence so Step 14 can use it later.
+
+sequence["price_location"] = price_location
+
+# ============================================================
+# STEP 13B — SETUP CLASSIFICATION
+# ============================================================
+
+setup_analysis = classify_setup_with_price_location(
+    setup_analysis,
+    price_location
+)
     
 # ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
