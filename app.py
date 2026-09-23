@@ -6615,39 +6615,39 @@ if "candles" in st.session_state:
         )
     
 
-    # ============================================================
-    # PRICE LOCATION ENGINE
-    # ============================================================
-    #
-    # PURPOSE
-    # -------
-    # Determine where current price is located relative to:
-    #
-    # 1. Confirmed structural swing levels
-    # 2. Recent local reaction levels
-    # 3. Current candle interaction with those levels
-    #
-    # IMPORTANT
-    # ---------
-    # Candle coordinates are IMAGE Y-COORDINATES.
-    #
-    # Smaller Y = higher price
-    # Larger Y   = lower price
-    #
-    # Therefore:
-    #
-    # Resistance = smaller Y than current price
-    # Support    = larger Y than current price
-    #
-    # This function DOES NOT generate BUY / SELL.
-    # It only determines PRICE LOCATION.
-    # ============================================================
+# ============================================================
+# PRICE LOCATION ENGINE
+# ============================================================
+#
+# PURPOSE
+# -------
+# Determine where current price is located relative to:
+#
+# 1. Confirmed structural swing levels
+# 2. Recent local reaction levels
+# 3. Current candle interaction with those levels
+#
+# IMPORTANT
+# ---------
+# Candle coordinates are IMAGE Y-COORDINATES.
+#
+# Smaller Y = higher price
+# Larger Y   = lower price
+#
+# Therefore:
+#
+# Resistance = smaller Y than current price
+# Support    = larger Y than current price
+#
+# This function DOES NOT generate BUY / SELL.
+# It only determines PRICE LOCATION.
+# ============================================================
     
-    def analyze_price_location(
-        candles,
-        swing_highs,
-        swing_lows
-    ):
+def analyze_price_location(
+    candles,
+    swing_highs,
+    swing_lows
+):
     
         # ========================================================
         # SAFE INPUTS
