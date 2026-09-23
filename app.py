@@ -9900,6 +9900,590 @@ setup_analysis = classify_setup_with_price_location(
 )
     
 # ============================================================
+# STEP 15 — ENTRY TRIGGER CLASSIFICATION
+# ============================================================
+#
+# PURPOSE
+# -------
+# Determine whether the CURRENT candle provides enough
+# confirmation for the classified setup to remain valid
+# for the NEXT candle.
+#
+# IMPORTANT
+# ---------
+# This does NOT generate BUY / SELL.
+#
+# It only determines:
+#
+#     VALID TRIGGER
+#     DEVELOPING TRIGGER
+#     NO TRIGGER
+#
+# Step 14 will use this information later.
+# ============================================================
+
+def classify_entry_trigger(
+    sequence,
+    setup_analysis
+):
+    """
+    STEP 15 — ENTRY TRIGGER CLASSIFICATION
+
+    This layer evaluates the current candle as confirmation
+    for the already-classified setup.
+
+    It does NOT predict the next candle directly and does
+    NOT generate a BUY / SELL signal.
+    """
+
+    sequence = sequence or {}
+    setup_analysis = setup_analysis or {}
+
+    # ========================================================
+    # SAFE INPUTS
+    # ========================================================
+
+    setup_direction = str(
+        setup_analysis.get(
+            "setup_direction",
+            "NONE"
+        )
+    ).upper().strip()
+
+    setup_classification = str(
+        setup_analysis.get(
+            "setup_classification",
+            ""
+        )
+    ).upper().strip()
+
+    location_effect = str(
+        setup_analysis.get(
+            "location_effect",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    candle_alignment = str(
+        setup_analysis.get(
+            "candle_alignment",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    candle_strength = str(
+        setup_analysis.get(
+            "candle_strength",
+            "UNKNOWN"
+        )).upper().strip()
+
+    rejection_status = str(
+        setup_analysis.get(
+            "rejection_status",
+            ""
+        )
+    ).upper().strip()
+
+    event_alignment = str(
+        setup_analysis.get(
+            "event_alignment",
+            "NEUTRAL"
+        )
+    ).upper().strip()
+
+    try:
+
+        body_percentage = float(
+            sequence.get(
+                "body_percentage",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        body_percentage = 0.0
+
+    try:
+
+        detection_confidence = float(
+            sequence.get(
+                "current_confidence",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        detection_confidence = 0.0
+
+    try:
+
+        sequence_integrity = float(
+            sequence.get(
+                "sequence_integrity",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        sequence_integrity = 0.0
+
+    # ========================================================
+    # DEFAULT RESULT
+    # ========================================================
+
+    trigger = "NO TRIGGER"
+
+    trigger_quality = "NONE"
+
+    trigger_direction = "NONE"
+
+    trigger_score = 0
+
+    trigger_reasons = []
+
+    # ========================================================
+    # NO STRUCTURAL DIRECTION
+    # ========================================================
+
+    if setup_direction not in (
+        "LONG",
+        "SHORT"
+    ):
+
+        trigger_reasons.append(
+            "No directional setup exists."
+        )
+
+        return {
+            "entry_trigger":
+                trigger,
+
+            "trigger_quality":
+                trigger_quality,
+
+            "trigger_direction":
+                trigger_direction,
+
+            "trigger_score":
+                trigger_score,
+
+            "trigger_reasons":
+                trigger_reasons
+        }
+
+    # ========================================================
+    # HARD BLOCK — SETUP CLASSIFICATION ALREADY SAYS WAIT
+    # ========================================================
+
+    if setup_classification.startswith(
+        "WAIT"
+    ):
+
+        trigger_reasons.append(
+            "Setup classification is currently "
+            "WAIT."
+        )
+
+        trigger_reasons.append(
+            "The current candle has not provided "
+            "enough confirmation for the setup."
+        )
+
+        return {
+            "entry_trigger":
+                trigger,
+
+            "trigger_quality":
+                trigger_quality,
+
+            "trigger_direction":
+                trigger_direction,
+
+            "trigger_score":
+                trigger_score,
+
+            "trigger_reasons":
+                trigger_reasons
+        }
+
+    # ========================================================
+    # HARD BLOCK — COUNTER-DIRECTIONAL CANDLE
+    # ========================================================
+
+    if (
+        candle_alignment ==
+        "COUNTER-DIRECTIONAL"
+    ):
+
+        trigger_reasons.append(
+            "Current candle is "
+            "counter-directional."
+        )
+
+        trigger_reasons.append(
+            "A counter-directional candle does not "
+            "confirm continuation."
+        )
+
+        return {
+            "entry_trigger":
+                trigger,
+
+            "trigger_quality":
+                trigger_quality,
+
+            "trigger_direction":
+                trigger_direction,
+
+            "trigger_score":
+                trigger_score,
+
+            "trigger_reasons":
+                trigger_reasons
+        }
+
+    # ========================================================
+    # HARD BLOCK — MAJOR REJECTION
+    # ========================================================
+
+    major_rejection = (
+        "MAJOR REJECTION"
+        in rejection_status
+        or
+        "STRONG REJECTION"
+        in rejection_status
+    )
+
+    if major_rejection:
+
+        trigger_reasons.append(
+            "Current candle shows strong "
+            "directional rejection."
+        )
+
+        trigger_reasons.append(
+            "The rejection prevents the candle "
+            "from being treated as a clean entry trigger."
+        )
+
+        return {
+            "entry_trigger":
+                trigger,
+
+            "trigger_quality":
+                trigger_quality,
+
+            "trigger_direction":
+                trigger_direction,
+
+            "trigger_score":
+                trigger_score,
+
+            "trigger_reasons":
+                trigger_reasons
+        }
+
+    # ========================================================
+    # DETERMINE TRIGGER DIRECTION
+    # ========================================================
+
+    if setup_direction == "LONG":
+
+        trigger_direction = "LONG"
+
+    elif setup_direction == "SHORT":
+
+        trigger_direction = "SHORT"
+
+    # ========================================================
+    # CANDLE MUST AGREE WITH SETUP
+    # ========================================================
+
+    if candle_alignment != "ALIGNED":
+
+        trigger_reasons.append(
+            "Current candle does not provide "
+            "directional confirmation."
+        )
+
+        return {
+            "entry_trigger":
+                trigger,
+
+            "trigger_quality":
+                trigger_quality,
+
+            "trigger_direction":
+                trigger_direction,
+
+            "trigger_score":
+                trigger_score,
+
+            "trigger_reasons":
+                trigger_reasons
+        }
+
+    trigger_reasons.append(
+        "Current candle agrees with the "
+        "structural setup direction."
+    )
+
+    # ========================================================
+    # BODY STRENGTH
+    # ========================================================
+
+    if candle_strength == "STRONG":
+
+        trigger_score += 40
+
+        trigger_reasons.append(
+            "Current candle has strong "
+            "body dominance."
+        )
+
+    elif candle_strength == "MODERATE":
+
+        trigger_score += 30
+
+        trigger_reasons.append(
+            "Current candle has moderate "
+            "body dominance."
+        )
+
+    elif candle_strength == "WEAK":
+
+        trigger_score += 15
+
+        trigger_reasons.append(
+            "Current candle is aligned but "
+            "body strength is weak."
+        )
+
+    else:
+
+        trigger_score += 5
+
+        trigger_reasons.append(
+            "Current candle does not show "
+            "clear body dominance."
+        )
+
+    # ========================================================
+    # LOCATION EFFECT
+    # ========================================================
+
+    if location_effect == "POSITIVE":
+
+        trigger_score += 30
+
+        trigger_reasons.append(
+            "Price location supports the "
+            "setup direction."
+        )
+
+    elif location_effect == "NEUTRAL":
+
+        trigger_score += 15
+
+        trigger_reasons.append(
+            "Price location is neutral to "
+            "the setup direction."
+        )
+
+    elif location_effect == "CAUTION":
+
+        trigger_score += 5
+
+        trigger_reasons.append(
+            "A nearby opposing level reduces "
+            "trigger quality."
+        )
+
+    elif location_effect == "NEGATIVE":
+
+        trigger_score -= 20
+
+        trigger_reasons.append(
+            "Price location conflicts with "
+            "the setup direction."
+        )
+
+    # ========================================================
+    # EVENT ALIGNMENT
+    # ========================================================
+
+    if event_alignment == "ALIGNED":
+
+        trigger_score += 20
+
+        trigger_reasons.append(
+            "The latest structural event agrees "
+            "with the setup direction."
+        )
+
+    elif event_alignment == "COUNTER-DIRECTIONAL":
+
+        trigger_score -= 10
+
+        trigger_reasons.append(
+            "The latest structural event is "
+            "counter-directional."
+        )
+
+    # ========================================================
+    # DATA QUALITY
+    # ========================================================
+
+    if detection_confidence >= 85:
+
+        trigger_score += 5
+
+    elif detection_confidence < 60:
+
+        trigger_score -= 10
+
+        trigger_reasons.append(
+            "Detection confidence is below "
+            "the preferred trigger threshold."
+        )
+
+    if sequence_integrity >= 90:
+
+        trigger_score += 5
+
+    elif sequence_integrity < 70:
+
+        trigger_score -= 10
+
+        trigger_reasons.append(
+            "Sequence integrity is below "
+            "the preferred trigger threshold."
+        )
+
+    # ========================================================
+    # NORMALISE SCORE
+    # ========================================================
+
+    trigger_score = max(
+        0,
+        min(
+            100,
+            int(
+                round(
+                    trigger_score
+                )
+            )
+        )
+    )
+
+    # ========================================================
+    # FINAL TRIGGER CLASSIFICATION
+    # ========================================================
+
+    if trigger_score >= 70:
+
+        trigger = (
+            f"VALID {trigger_direction} TRIGGER"
+        )
+
+        trigger_quality = "STRONG"
+
+        trigger_reasons.append(
+            "Current candle provides sufficient "
+            "confirmation for the classified setup."
+        )
+
+    elif trigger_score >= 50:
+
+        trigger = (
+            f"DEVELOPING {trigger_direction} TRIGGER"
+        )
+
+        trigger_quality = "MODERATE"
+
+        trigger_reasons.append(
+            "The setup has some confirmation, "
+            "but the trigger is not yet strong enough."
+        )
+
+    else:
+
+        trigger = "NO TRIGGER"
+
+        trigger_quality = "NONE"
+
+        trigger_reasons.append(
+            "Current candle confirmation is "
+            "insufficient."
+        )
+
+    # ========================================================
+    # RETURN
+    # ========================================================
+
+    return {
+
+        "entry_trigger":
+            trigger,
+
+        "trigger_quality":
+            trigger_quality,
+
+        "trigger_direction":
+            trigger_direction,
+
+        "trigger_score":
+            trigger_score,
+
+        "trigger_reasons":
+            trigger_reasons
+    }
+
+# ============================================================
+# RUN STEP 15 — ENTRY TRIGGER CLASSIFICATION
+# ============================================================
+
+entry_trigger = classify_entry_trigger(
+    sequence,
+    setup_analysis
+)
+
+# Store the trigger information for later
+# Step 14 integration.
+
+setup_analysis[
+    "entry_trigger"
+] = entry_trigger[
+    "entry_trigger"
+]
+
+setup_analysis[
+    "trigger_quality"
+] = entry_trigger[
+    "trigger_quality"
+]
+
+setup_analysis[
+    "trigger_direction"
+] = entry_trigger[
+    "trigger_direction"
+]
+
+setup_analysis[
+    "trigger_score"
+] = entry_trigger[
+    "trigger_score"
+]
+
+setup_analysis[
+    "trigger_reasons"
+] = entry_trigger[
+    "trigger_reasons"
+]
+# ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -11536,6 +12120,39 @@ if (
         st.write(
             f"• {reason}"
         )
+    
+    # ============================================================
+    # ENTRY TRIGGER
+    # ============================================================
+    
+    st.subheader(
+        "Entry Trigger"
+    )
+    
+    st.write(
+        "**Trigger:** "
+        f"`{setup_analysis.get('entry_trigger', 'NO TRIGGER')}`"
+    )
+    
+    st.write(
+        "**Trigger Quality:** "
+        f"`{setup_analysis.get('trigger_quality', 'NONE')}`"
+    )
+    
+    st.write(
+        "**Trigger Score:** "
+        f"`{setup_analysis.get('trigger_score', 0)}/100`"
+    )
+    
+    for reason in setup_analysis.get(
+        "trigger_reasons",
+        []
+    ):
+    
+        st.write(
+            f"• {reason}"
+        )
+    
     # ============================================================
     # FINAL SETUP STATUS
     # ============================================================
