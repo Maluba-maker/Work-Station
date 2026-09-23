@@ -9288,6 +9288,536 @@ if "candles" in st.session_state:
             }       
     
     # ============================================================
+    # STEP 13B — SETUP CLASSIFICATION USING PRICE LOCATION
+    # ============================================================
+    
+    def classify_setup_with_price_location(
+        setup_analysis,
+        price_location
+    ):
+        """
+        STEP 13B — NEXT-CANDLE SETUP CLASSIFICATION
+    
+        Purpose
+        -------
+        Combine the existing structural/candle setup diagnostic
+        with the newly validated price-location engine.
+    
+        This does NOT generate BUY / SELL.
+    
+        It determines what type of setup is currently developing
+        for the NEXT candle.
+    
+        Direction comes from structural bias.
+    
+        Price location determines whether the current location
+        supports, weakens, or conflicts with that direction.
+        """
+    
+        setup_analysis = setup_analysis or {}
+        price_location = price_location or {}
+    
+        # ========================================================
+        # SAFE INPUTS
+        # ========================================================
+    
+        structural_bias = str(
+            setup_analysis.get(
+                "structural_bias",
+                "UNKNOWN"
+            )
+        ).upper().strip()
+    
+        setup_direction = str(
+            setup_analysis.get(
+                "setup_direction",
+                "NONE"
+            )
+        ).upper().strip()
+    
+        candle_alignment = str(
+            setup_analysis.get(
+                "candle_alignment",
+                "UNKNOWN"
+            )
+        ).upper().strip()
+    
+        candle_strength = str(
+            setup_analysis.get(
+                "candle_strength",
+                "UNKNOWN"
+            )
+        ).upper().strip()
+    
+        location = str(
+            price_location.get(
+                "location",
+                "UNKNOWN"
+            )
+        ).upper().strip()
+    
+        location_quality = float(
+            price_location.get(
+                "location_quality",
+                0
+            ) or 0
+        )
+    
+        resistance = price_location.get(
+            "nearest_resistance"
+        )
+    
+        support = price_location.get(
+            "nearest_support"
+        )
+    
+        resistance_source = (
+            resistance.get("source")
+            if resistance
+            else None
+        )
+    
+        support_source = (
+            support.get("source")
+            if support
+            else None
+        )
+    
+        # ========================================================
+        # DEFAULT RESULT
+        # ========================================================
+    
+        classification = (
+            "WAIT — NO VALID SETUP"
+        )
+    
+        classification_direction = (
+            setup_direction
+        )
+    
+        location_effect = (
+            "NEUTRAL"
+        )
+    
+        classification_reasons = []
+    
+        # ========================================================
+        # NO STRUCTURAL DIRECTION
+        # ========================================================
+    
+        if setup_direction not in (
+            "LONG",
+            "SHORT"
+        ):
+    
+            classification = (
+                "WAIT — NO STRUCTURAL DIRECTION"
+            )
+    
+            classification_reasons.append(
+                "No confirmed structural direction "
+                "is available for the next candle."
+            )
+    
+            setup_analysis[
+                "setup_classification"
+            ] = classification
+    
+            setup_analysis[
+                "classification_direction"
+            ] = classification_direction
+    
+            setup_analysis[
+                "location_effect"
+            ] = location_effect
+    
+            setup_analysis[
+                "location_quality"
+            ] = location_quality
+    
+            setup_analysis[
+                "resistance_source"
+            ] = resistance_source
+    
+            setup_analysis[
+                "support_source"
+            ] = support_source
+    
+            setup_analysis[
+                "classification_reasons"
+            ] = classification_reasons
+    
+            return setup_analysis
+    
+        # ========================================================
+        # LONG SETUP
+        # ========================================================
+    
+        if setup_direction == "LONG":
+    
+            # ----------------------------------------------------
+            # LONG AT RESISTANCE
+            # ----------------------------------------------------
+    
+            if location == "AT RESISTANCE":
+    
+                location_effect = (
+                    "NEGATIVE"
+                )
+    
+                classification = (
+                    "WAIT — LONG AT RESISTANCE"
+                )
+    
+                classification_reasons.append(
+                    "Bullish structure is currently "
+                    "positioned at resistance."
+                )
+    
+                classification_reasons.append(
+                    "The next candle would be entering "
+                    "directly into nearby resistance."
+                )
+    
+                if resistance_source:
+    
+                    classification_reasons.append(
+                        f"Resistance source: "
+                        f"{resistance_source}."
+                    )
+    
+            # ----------------------------------------------------
+            # LONG NEAR RESISTANCE
+            # ----------------------------------------------------
+    
+            elif location == "NEAR RESISTANCE":
+    
+                location_effect = (
+                    "CAUTION"
+                )
+    
+                classification = (
+                    "DEVELOPING LONG — "
+                    "RESISTANCE NEARBY"
+                )
+    
+                classification_reasons.append(
+                    "Bullish structure is intact, "
+                    "but resistance is nearby."
+                )
+    
+                classification_reasons.append(
+                    "The next candle needs confirmation "
+                    "before continuation is considered."
+                )
+    
+            # ----------------------------------------------------
+            # LONG AT SUPPORT
+            # ----------------------------------------------------
+    
+            elif location == "AT SUPPORT":
+    
+                location_effect = (
+                    "POSITIVE"
+                )
+    
+                classification = (
+                    "LONG AT SUPPORT"
+                )
+    
+                classification_reasons.append(
+                    "Price is positioned at support "
+                    "while structural bias is bullish."
+                )
+    
+                classification_reasons.append(
+                    "The location supports a potential "
+                    "bullish continuation/reaction."
+                )
+    
+            # ----------------------------------------------------
+            # LONG NEAR SUPPORT
+            # ----------------------------------------------------
+    
+            elif location == "NEAR SUPPORT":
+    
+                location_effect = (
+                    "POSITIVE"
+                )
+    
+                classification = (
+                    "DEVELOPING LONG — "
+                    "SUPPORT NEARBY"
+                )
+    
+                classification_reasons.append(
+                    "Price is approaching support "
+                    "within the bullish structural direction."
+                )
+    
+            # ----------------------------------------------------
+            # LONG MID-RANGE
+            # ----------------------------------------------------
+    
+            elif location == "MID-RANGE":
+    
+                location_effect = (
+                    "NEUTRAL"
+                )
+    
+                classification = (
+                    "LONG CONTINUATION — "
+                    "MID-RANGE"
+                )
+    
+                classification_reasons.append(
+                    "Bullish structure remains intact."
+                )
+    
+                classification_reasons.append(
+                    "Price is not currently at a major "
+                    "support or resistance level."
+                )
+    
+            # ----------------------------------------------------
+            # UNKNOWN
+            # ----------------------------------------------------
+    
+            else:
+    
+                location_effect = (
+                    "UNKNOWN"
+                )
+    
+                classification = (
+                    "WAIT — LOCATION UNCERTAIN"
+                )
+    
+                classification_reasons.append(
+                    "Price location could not be "
+                    "reliably classified."
+                )
+    
+        # ========================================================
+        # SHORT SETUP
+        # ========================================================
+    
+        elif setup_direction == "SHORT":
+    
+            # ----------------------------------------------------
+            # SHORT AT SUPPORT
+            # ----------------------------------------------------
+    
+            if location == "AT SUPPORT":
+    
+                location_effect = (
+                    "NEGATIVE"
+                )
+    
+                classification = (
+                    "WAIT — SHORT AT SUPPORT"
+                )
+    
+                classification_reasons.append(
+                    "Bearish structure is currently "
+                    "positioned at support."
+                )
+    
+                classification_reasons.append(
+                    "The next candle would be selling "
+                    "directly into nearby support."
+                )
+    
+                if support_source:
+    
+                    classification_reasons.append(
+                        f"Support source: "
+                        f"{support_source}."
+                    )
+    
+            # ----------------------------------------------------
+            # SHORT NEAR SUPPORT
+            # ----------------------------------------------------
+    
+            elif location == "NEAR SUPPORT":
+    
+                location_effect = (
+                    "CAUTION"
+                )
+    
+                classification = (
+                    "DEVELOPING SHORT — "
+                    "SUPPORT NEARBY"
+                )
+    
+                classification_reasons.append(
+                    "Bearish structure is intact, "
+                    "but support is nearby."
+                )
+    
+                classification_reasons.append(
+                    "The next candle needs confirmation "
+                    "before continuation is considered."
+                )
+    
+            # ----------------------------------------------------
+            # SHORT AT RESISTANCE
+            # ----------------------------------------------------
+    
+            elif location == "AT RESISTANCE":
+    
+                location_effect = (
+                    "POSITIVE"
+                )
+    
+                classification = (
+                    "SHORT AT RESISTANCE"
+                )
+    
+                classification_reasons.append(
+                    "Price is positioned at resistance "
+                    "while structural bias is bearish."
+                )
+    
+                classification_reasons.append(
+                    "The location supports a potential "
+                    "bearish reaction."
+                )
+    
+            # ----------------------------------------------------
+            # SHORT NEAR RESISTANCE
+            # ----------------------------------------------------
+    
+            elif location == "NEAR RESISTANCE":
+    
+                location_effect = (
+                    "POSITIVE"
+                )
+    
+                classification = (
+                    "DEVELOPING SHORT — "
+                    "RESISTANCE NEARBY"
+                )
+    
+                classification_reasons.append(
+                    "Price is approaching resistance "
+                    "within the bearish structural direction."
+                )
+    
+            # ----------------------------------------------------
+            # SHORT MID-RANGE
+            # ----------------------------------------------------
+    
+            elif location == "MID-RANGE":
+    
+                location_effect = (
+                    "NEUTRAL"
+                )
+    
+                classification = (
+                    "SHORT CONTINUATION — "
+                    "MID-RANGE"
+                )
+    
+                classification_reasons.append(
+                    "Bearish structure remains intact."
+                )
+    
+                classification_reasons.append(
+                    "Price is not currently at a major "
+                    "support or resistance level."
+                )
+    
+            # ----------------------------------------------------
+            # UNKNOWN
+            # ----------------------------------------------------
+    
+            else:
+    
+                location_effect = (
+                    "UNKNOWN"
+                )
+    
+                classification = (
+                    "WAIT — LOCATION UNCERTAIN"
+                )
+    
+                classification_reasons.append(
+                    "Price location could not be "
+                    "reliably classified."
+                )
+    
+        # ========================================================
+        # CURRENT CANDLE OVERRIDE
+        #
+        # A strong counter-directional candle at a major level
+        # should remain WAIT rather than being treated as a
+        # confirmed continuation.
+        # ========================================================
+    
+        if (
+            candle_alignment ==
+            "COUNTER-DIRECTIONAL"
+            and
+            location in (
+                "AT RESISTANCE",
+                "AT SUPPORT"
+            )
+        ):
+    
+            classification = (
+                "WAIT — COUNTER-DIRECTIONAL "
+                "AT MAJOR LEVEL"
+            )
+    
+            location_effect = (
+                "NEGATIVE"
+            )
+    
+            classification_reasons.append(
+                "Current candle is counter-directional "
+                "while price is at a major level."
+            )
+    
+            classification_reasons.append(
+                "A continuation setup requires a "
+                "new confirmation candle."
+            )
+    
+        # ========================================================
+        # WRITE RESULTS INTO EXISTING SETUP ANALYSIS
+        # ========================================================
+    
+        setup_analysis[
+            "setup_classification"
+        ] = classification
+    
+        setup_analysis[
+            "classification_direction"
+        ] = classification_direction
+    
+        setup_analysis[
+            "location_effect"
+        ] = location_effect
+    
+        setup_analysis[
+            "location_quality"
+        ] = location_quality
+    
+        setup_analysis[
+            "resistance_source"
+        ] = resistance_source
+    
+        setup_analysis[
+            "support_source"
+        ] = support_source
+    
+        setup_analysis[
+            "classification_reasons"
+        ] = classification_reasons
+    
+        return setup_analysis
+    # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
     #
@@ -9325,6 +9855,15 @@ if "candles" in st.session_state:
         )
     )
 
+    # ============================================================
+    # STEP 13B — SETUP CLASSIFICATION
+    # ============================================================
+
+    setup_analysis = classify_setup_with_price_location(
+        setup_analysis,
+        price_location
+    )
+    
     # ============================================================
     # PRICE LOCATION ANALYSIS
     # ============================================================
@@ -10960,6 +11499,33 @@ if (
         []
     ):
     
+        st.write(
+            f"• {reason}"
+        )
+    
+    # ============================================================
+    # SETUP CLASSIFICATION
+    # ============================================================
+
+    st.subheader(
+        "Setup Classification"
+    )
+
+    st.write(
+        "**Classification:** "
+        f"`{setup_analysis.get('setup_classification', 'UNKNOWN')}`"
+    )
+
+    st.write(
+        "**Location Effect:** "
+        f"`{setup_analysis.get('location_effect', 'UNKNOWN')}`"
+    )
+
+    for reason in setup_analysis.get(
+        "classification_reasons",
+        []
+    ):
+
         st.write(
             f"• {reason}"
         )
