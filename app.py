@@ -8736,46 +8736,44 @@ def analyze_price_location(
     # ============================================================
     # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
     # ============================================================
-    with trade_setup_placeholder.container():
-        def diagnose_trade_setup(
-            sequence,
-            current_direction,
-            body_percentage,
-            upper_wick_percentage,
-            lower_wick_percentage,
-            current_confidence
-        ):
-            """
-            STEP 13 — RULE-BASED TRADE SETUP DIAGNOSTIC
+    def diagnose_trade_setup(
+        sequence,
+        current_direction,
+        body_percentage,
+        upper_wick_percentage,
+        lower_wick_percentage,
+        current_confidence
+    ):
+        """
+        STEP 13 — RULE-BASED TRADE SETUP DIAGNOSTIC
 
-            This stage does NOT generate a trading signal.
+        This stage does NOT generate a trading signal.
 
-            It evaluates whether the currently reconstructed market
-            contains enough structural and candle-level agreement
-            to qualify as a potential directional setup.
+        It evaluates whether the currently reconstructed market
+        contains enough structural and candle-level agreement
+        to qualify as a potential directional setup.
 
-            The engine deliberately separates:
+        The engine deliberately separates:
 
-                STRUCTURAL BIAS
-                from
-                CURRENT CANDLE DIRECTION
+            STRUCTURAL BIAS
+            from
+            CURRENT CANDLE DIRECTION
 
-            A single counter-directional candle does NOT invalidate
-            the structural bias.
+        A single counter-directional candle does NOT invalidate
+        the structural bias.
 
-            Returns:
-                setup_direction
-                structural_bias
-                candle_alignment
-                candle_strength
-                rejection_status
-                structure_status
-                quality
-                confluence_score
-                final_status
-                reasons
-            """
-
+        Returns:
+            setup_direction
+            structural_bias
+            candle_alignment
+            candle_strength
+            rejection_status
+            structure_status
+            quality
+            confluence_score
+            final_status
+            reasons
+        """
             # ========================================================
             # NORMALISE INPUTS
             # ========================================================
