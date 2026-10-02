@@ -10446,6 +10446,63 @@ def classify_entry_trigger(
 # RUN STEP 15 — ENTRY TRIGGER CLASSIFICATION
 # ============================================================
 
+# ============================================================
+# STEP 15 INPUT DEBUG
+# ============================================================
+
+with st.expander(
+    "Entry Trigger Input Debug",
+    expanded=True
+):
+
+    st.write(
+        "**Setup Classification received by Step 15:**",
+        setup_analysis.get(
+            "setup_classification",
+            "MISSING"
+        )
+    )
+
+    st.write(
+        "**Location Effect received by Step 15:**",
+        setup_analysis.get(
+            "location_effect",
+            "MISSING"
+        )
+    )
+
+    st.write(
+        "**Candle Alignment received by Step 15:**",
+        setup_analysis.get(
+            "candle_alignment",
+            "MISSING"
+        )
+    )
+
+    st.write(
+        "**Candle Strength received by Step 15:**",
+        setup_analysis.get(
+            "candle_strength",
+            "MISSING"
+        )
+    )
+
+    st.write(
+        "**Rejection Status received by Step 15:**",
+        setup_analysis.get(
+            "rejection_status",
+            "MISSING"
+        )
+    )
+
+    st.write(
+        "**Event Alignment received by Step 15:**",
+        setup_analysis.get(
+            "event_alignment",
+            "MISSING"
+        )
+    )
+
 entry_trigger = classify_entry_trigger(
     sequence,
     setup_analysis
