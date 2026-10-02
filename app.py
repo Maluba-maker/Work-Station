@@ -13053,9 +13053,27 @@ setup_analysis[
 # RUN PATCH 17 — STRUCTURAL CONFIRMATION ENGINE
 # ============================================================
 
+# PATCH 18 — CONNECT RECONSTRUCTED CANDLES
+# Structural Confirmation needs access to the actual
+# reconstructed candle OHLC data.
+#
+# We create a temporary copy of the sequence analysis
+# so the existing sequence_analysis object is NOT changed.
+
+structural_sequence = dict(
+    sequence
+)
+
+structural_sequence["candles"] = (
+    st.session_state.get(
+        "candles",
+        []
+    )
+)
+
 structural_confirmation_result = (
     evaluate_structural_confirmation(
-        sequence,
+        structural_sequence,
         setup_analysis
     )
 )
