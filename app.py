@@ -10538,6 +10538,552 @@ setup_analysis[
 ] = entry_trigger[
     "trigger_reasons"
 ]
+
+# ============================================================
+# PATCH 16 — CONFIRMATION ENGINE
+# ============================================================
+#
+# PURPOSE
+# -------
+# Determine whether the current setup has enough confirmation
+# to justify allowing the NEXT-CANDLE decision layer to proceed.
+#
+# IMPORTANT
+# ---------
+# This patch does NOT generate BUY / SELL.
+# It does NOT change the existing signal engine yet.
+#
+# It creates a separate confirmation state that we will test
+# before connecting it to the final signal decision.
+# ============================================================
+
+def evaluate_confirmation(
+    sequence,
+    setup_analysis
+):
+    """
+    PATCH 16 — CONFIRMATION ENGINE
+
+    Produces:
+
+        CONFIRMED LONG
+        CONFIRMED SHORT
+
+        DEVELOPING LONG CONFIRMATION
+        DEVELOPING SHORT CONFIRMATION
+
+        WAIT — STRUCTURAL CONFIRMATION REQUIRED
+        WAIT — NO ENTRY TRIGGER
+        WAIT — LOCATION CONFLICT
+
+        REJECTED — MAJOR CANDLE REJECTION
+
+        NO CONFIRMATION
+
+    This layer does not generate a trading signal.
+    """
+
+    sequence = sequence or {}
+    setup_analysis = setup_analysis or {}
+
+    # ========================================================
+    # SAFE INPUTS
+    # ========================================================
+
+    setup_direction = str(
+        setup_analysis.get(
+            "setup_direction",
+            "NONE"
+        )
+    ).upper().strip()
+
+    entry_trigger = str(
+        setup_analysis.get(
+            "entry_trigger",
+            "NO TRIGGER"
+        )
+    ).upper().strip()
+
+    trigger_quality = str(
+        setup_analysis.get(
+            "trigger_quality",
+            "NONE"
+        )
+    ).upper().strip()
+
+    try:
+
+        trigger_score = float(
+            setup_analysis.get(
+                "trigger_score",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        trigger_score = 0.0
+
+    candle_alignment = str(
+        setup_analysis.get(
+            "candle_alignment",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    candle_strength = str(
+        setup_analysis.get(
+            "candle_strength",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    rejection_status = str(
+        setup_analysis.get(
+            "rejection_status",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    event_alignment = str(
+        setup_analysis.get(
+            "event_alignment",
+            "NEUTRAL"
+        )
+    ).upper().strip()
+
+    location_effect = str(
+        setup_analysis.get(
+            "location_effect",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+
+    # ========================================================
+    # DEFAULTS
+    # ========================================================
+
+    confirmation_status = "NO CONFIRMATION"
+
+    confirmation_quality = "NONE"
+
+    confirmation_score = 0
+
+    confirmation_reasons = []
+
+    # ========================================================
+    # DIRECTION CHECK
+    # ========================================================
+
+    if setup_direction not in (
+        "LONG",
+        "SHORT"
+    ):
+
+        confirmation_reasons.append(
+            "No valid directional setup exists."
+        )
+
+        return {
+            "confirmation_status":
+                confirmation_status,
+
+            "confirmation_quality":
+                confirmation_quality,
+
+            "confirmation_score":
+                confirmation_score,
+
+            "confirmation_reasons":
+                confirmation_reasons
+        }
+
+    # ========================================================
+    # 1. ENTRY TRIGGER CONTRIBUTION — 30 POINTS
+    # ========================================================
+
+    if trigger_quality == "STRONG":
+
+        confirmation_score += 30
+
+        confirmation_reasons.append(
+            "Entry trigger is strong."
+        )
+
+    elif trigger_quality == "MODERATE":
+
+        confirmation_score += 20
+
+        confirmation_reasons.append(
+            "Entry trigger is developing with moderate quality."
+        )
+
+    else:
+
+        confirmation_reasons.append(
+            "Entry trigger has not reached a usable confirmation quality."
+        )
+
+    # ========================================================
+    # 2. CANDLE ALIGNMENT — 20 POINTS
+    # ========================================================
+
+    if candle_alignment == "ALIGNED":
+
+        confirmation_score += 20
+
+        confirmation_reasons.append(
+            "Current candle agrees with the setup direction."
+        )
+
+    else:
+
+        confirmation_reasons.append(
+            "Current candle is not fully aligned with the setup direction."
+        )
+
+    # ========================================================
+    # 3. CANDLE STRENGTH — 15 POINTS
+    # ========================================================
+
+    if candle_strength == "STRONG":
+
+        confirmation_score += 15
+
+        confirmation_reasons.append(
+            "Current candle has strong directional body strength."
+        )
+
+    elif candle_strength == "MODERATE":
+
+        confirmation_score += 10
+
+        confirmation_reasons.append(
+            "Current candle has moderate directional body strength."
+        )
+
+    elif candle_strength == "WEAK":
+
+        confirmation_score += 5
+
+        confirmation_reasons.append(
+            "Current candle is aligned but relatively weak."
+        )
+
+    # ========================================================
+    # 4. REJECTION — 15 POINTS
+    # ========================================================
+
+    major_rejection = (
+        rejection_status == "MAJOR REJECTION"
+        or
+        rejection_status == "STRONG REJECTION"
+    )
+
+    no_major_rejection = (
+        rejection_status == "NO MAJOR REJECTION"
+    )
+
+    if major_rejection:
+
+        confirmation_reasons.append(
+            "Major candle rejection prevents confirmation."
+        )
+
+    elif no_major_rejection:
+
+        confirmation_score += 15
+
+        confirmation_reasons.append(
+            "Current candle shows no major rejection."
+        )
+
+    else:
+
+        confirmation_reasons.append(
+            "Rejection status is not clean enough for full confirmation."
+        )
+
+    # ========================================================
+    # 5. STRUCTURAL EVENT — 10 POINTS
+    # ========================================================
+
+    if event_alignment == "ALIGNED":
+
+        confirmation_score += 10
+
+        confirmation_reasons.append(
+            "Latest structural event agrees with the setup direction."
+        )
+
+    elif event_alignment == "NEUTRAL":
+
+        confirmation_score += 5
+
+        confirmation_reasons.append(
+            "Latest structural event is neutral to the setup direction."
+        )
+
+    elif event_alignment == "COUNTER-DIRECTIONAL":
+
+        confirmation_reasons.append(
+            "Latest structural event conflicts with the setup direction."
+        )
+
+    # ========================================================
+    # 6. PRICE LOCATION — 10 POINTS
+    # ========================================================
+
+    if location_effect == "POSITIVE":
+
+        confirmation_score += 10
+
+        confirmation_reasons.append(
+            "Price location supports the setup direction."
+        )
+
+    elif location_effect == "NEUTRAL":
+
+        confirmation_score += 5
+
+        confirmation_reasons.append(
+            "Price location is neutral to the setup direction."
+        )
+
+    elif location_effect == "CAUTION":
+
+        confirmation_score += 2
+
+        confirmation_reasons.append(
+            "Price location introduces caution."
+        )
+
+    elif location_effect == "NEGATIVE":
+
+        confirmation_reasons.append(
+            "Price location conflicts with the setup direction."
+        )
+
+    # ========================================================
+    # NORMALISE
+    # ========================================================
+
+    confirmation_score = max(
+        0,
+        min(
+            100,
+            int(
+                round(
+                    confirmation_score
+                )
+            )
+        )
+    )
+
+    # ========================================================
+    # HARD BLOCK — MAJOR REJECTION
+    # ========================================================
+
+    if major_rejection:
+
+        confirmation_status = (
+            "REJECTED — MAJOR CANDLE REJECTION"
+        )
+
+        confirmation_quality = "NONE"
+
+        return {
+            "confirmation_status":
+                confirmation_status,
+
+            "confirmation_quality":
+                confirmation_quality,
+
+            "confirmation_score":
+                confirmation_score,
+
+            "confirmation_reasons":
+                confirmation_reasons
+        }
+
+    # ========================================================
+    # HARD BLOCK — NO ENTRY TRIGGER
+    # ========================================================
+
+    if entry_trigger == "NO TRIGGER":
+
+        confirmation_status = (
+            "WAIT — NO ENTRY TRIGGER"
+        )
+
+        confirmation_quality = "NONE"
+
+        confirmation_reasons.append(
+            "Confirmation cannot proceed until an entry trigger exists."
+        )
+
+        return {
+            "confirmation_status":
+                confirmation_status,
+
+            "confirmation_quality":
+                confirmation_quality,
+
+            "confirmation_score":
+                confirmation_score,
+
+            "confirmation_reasons":
+                confirmation_reasons
+        }
+
+    # ========================================================
+    # STRUCTURAL CONFLICT
+    #
+    # A counter-directional EVENT does not automatically mean
+    # reversal. It means the current setup is not yet fully
+    # confirmed.
+    # ========================================================
+
+    if event_alignment == "COUNTER-DIRECTIONAL":
+
+        confirmation_status = (
+            "WAIT — STRUCTURAL CONFIRMATION REQUIRED"
+        )
+
+        confirmation_quality = "MODERATE"
+
+        confirmation_reasons.append(
+            "The current candle has confirmation, but the latest "
+            "structural event is still counter-directional."
+        )
+
+        confirmation_reasons.append(
+            "The engine will not treat this as fully confirmed "
+            "until structural evidence agrees with the setup."
+        )
+
+        return {
+            "confirmation_status":
+                confirmation_status,
+
+            "confirmation_quality":
+                confirmation_quality,
+
+            "confirmation_score":
+                confirmation_score,
+
+            "confirmation_reasons":
+                confirmation_reasons
+        }
+
+    # ========================================================
+    # LOCATION CONFLICT
+    # ========================================================
+
+    if location_effect == "NEGATIVE":
+
+        confirmation_status = (
+            "WAIT — LOCATION CONFLICT"
+        )
+
+        confirmation_quality = "LOW"
+
+        confirmation_reasons.append(
+            "The setup is facing an opposing price-location condition."
+        )
+
+        return {
+            "confirmation_status":
+                confirmation_status,
+
+            "confirmation_quality":
+                confirmation_quality,
+
+            "confirmation_score":
+                confirmation_score,
+
+            "confirmation_reasons":
+                confirmation_reasons
+        }
+
+    # ========================================================
+    # FULL CONFIRMATION
+    # ========================================================
+
+    if (
+        trigger_score >= 70
+        and
+        candle_alignment == "ALIGNED"
+        and
+        event_alignment == "ALIGNED"
+        and
+        no_major_rejection
+        and
+        location_effect != "NEGATIVE"
+    ):
+
+        confirmation_status = (
+            f"CONFIRMED {setup_direction}"
+        )
+
+        confirmation_quality = "STRONG"
+
+        confirmation_reasons.append(
+            "Entry trigger, candle direction, structural event, "
+            "and price location are aligned."
+        )
+
+        confirmation_reasons.append(
+            "The setup has passed the confirmation gate."
+        )
+
+    # ========================================================
+    # DEVELOPING CONFIRMATION
+    # ========================================================
+
+    elif confirmation_score >= 50:
+
+        confirmation_status = (
+            f"DEVELOPING {setup_direction} CONFIRMATION"
+        )
+
+        confirmation_quality = "MODERATE"
+
+        confirmation_reasons.append(
+            "The setup has meaningful confirmation but has not "
+            "passed all confirmation gates."
+        )
+
+    # ========================================================
+    # INSUFFICIENT CONFIRMATION
+    # ========================================================
+
+    else:
+
+        confirmation_status = (
+            "WAIT — INSUFFICIENT CONFIRMATION"
+        )
+
+        confirmation_quality = "LOW"
+
+        confirmation_reasons.append(
+            "The current evidence is not sufficient for confirmation."
+        )
+
+    return {
+        "confirmation_status":
+            confirmation_status,
+
+        "confirmation_quality":
+            confirmation_quality,
+
+        "confirmation_score":
+            confirmation_score,
+
+        "confirmation_reasons":
+            confirmation_reasons
+    }
+
 # ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
@@ -11793,6 +12339,42 @@ def generate_signal(sequence, setup_analysis):
                 confluence_score
         }
     }
+
+# ============================================================
+# RUN PATCH 16 — CONFIRMATION ENGINE
+# ============================================================
+
+confirmation_result = evaluate_confirmation(
+    sequence,
+    setup_analysis
+)
+
+# Store confirmation information for later signal integration.
+
+setup_analysis[
+    "confirmation_status"
+] = confirmation_result[
+    "confirmation_status"
+]
+
+setup_analysis[
+    "confirmation_quality"
+] = confirmation_result[
+    "confirmation_quality"
+]
+
+setup_analysis[
+    "confirmation_score"
+] = confirmation_result[
+    "confirmation_score"
+]
+
+setup_analysis[
+    "confirmation_reasons"
+] = confirmation_result[
+    "confirmation_reasons"
+]
+
 # ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
@@ -12279,6 +12861,38 @@ if (
             f"• {reason}"
         )
     
+    # ============================================================
+    # PATCH 16 — CONFIRMATION ENGINE
+    # ============================================================
+    
+    st.subheader(
+        "Confirmation Engine"
+    )
+    
+    st.write(
+        "**Confirmation Status:** "
+        f"`{setup_analysis.get('confirmation_status', 'NO CONFIRMATION')}`"
+    )
+    
+    st.write(
+        "**Confirmation Quality:** "
+        f"`{setup_analysis.get('confirmation_quality', 'NONE')}`"
+    )
+    
+    st.write(
+        "**Confirmation Score:** "
+        f"`{setup_analysis.get('confirmation_score', 0)}/100`"
+    )
+    
+    for reason in setup_analysis.get(
+        "confirmation_reasons",
+        []
+    ):
+    
+        st.write(
+            f"• {reason}"
+        )
+
     # ============================================================
     # FINAL SETUP STATUS
     # ============================================================
