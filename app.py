@@ -11085,6 +11085,680 @@ def evaluate_confirmation(
     }
 
 # ============================================================
+# PATCH 17 — STRUCTURAL CONFIRMATION ENGINE
+# ============================================================
+#
+# PURPOSE
+# -------
+# Determine whether the current structural state has actually
+# confirmed the setup direction after a counter-directional
+# structural event.
+#
+# IMPORTANT
+# ---------
+# A counter-directional CHoCH does NOT automatically mean
+# reversal.
+#
+# A candle reclaiming the broken structural level is treated
+# as DEVELOPING evidence.
+#
+# A new directional BOS after the counter-directional event
+# is treated as STRUCTURAL CONFIRMATION.
+#
+# This patch does NOT generate BUY / SELL.
+# ============================================================
+
+def evaluate_structural_confirmation(
+    sequence,
+    setup_analysis
+):
+    """
+    PATCH 17 — STRUCTURAL CONFIRMATION ENGINE
+
+    Returns:
+
+        CONFIRMED LONG
+        CONFIRMED SHORT
+
+        DEVELOPING LONG — LEVEL RECLAIMED
+        DEVELOPING SHORT — LEVEL RECLAIMED
+
+        WAIT — STRUCTURAL BOS REQUIRED
+
+        WAIT — STRUCTURAL DATA INSUFFICIENT
+
+    The score is an evidence score.
+    It is NOT a probability of winning.
+    """
+
+    sequence = sequence or {}
+    setup_analysis = setup_analysis or {}
+
+    # ========================================================
+    # 1. SAFE INPUTS
+    # ========================================================
+
+    setup_direction = str(
+        setup_analysis.get(
+            "setup_direction",
+            "NONE"
+        )
+    ).upper().strip()
+
+    structural_bias = str(
+        sequence.get(
+            "structural_bias",
+            sequence.get(
+                "bos_choch_bias",
+                "UNKNOWN"
+            )
+        )
+    ).upper().strip()
+
+    events = sequence.get(
+        "bos_choch_events",
+        []
+    )
+
+    if not isinstance(events, list):
+
+        events = []
+
+    # ========================================================
+    # 2. CURRENT CANDLE INDEX
+    # ========================================================
+
+    try:
+
+        candle_count = int(
+            sequence.get(
+                "count",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        candle_count = 0
+
+    if candle_count > 0:
+
+        current_candle_index = (
+            candle_count - 1
+        )
+
+    else:
+
+        current_candle_index = None
+
+    # ========================================================
+    # 3. CURRENT CLOSE
+    #
+    # Chart coordinates:
+    #
+    # Smaller Y = higher price
+    # Larger Y   = lower price
+    # ========================================================
+
+    current_close_y = None
+
+    candles = sequence.get(
+        "candles",
+        []
+    )
+
+    if isinstance(candles, list) and candles:
+
+        try:
+
+            current_close_y = float(
+                candles[-1]["close"]
+            )
+
+        except Exception:
+
+            current_close_y = None
+
+    # ========================================================
+    # 4. NORMALISE EVENTS
+    # ========================================================
+
+    normalised_events = []
+
+    for event in events:
+
+        if not isinstance(event, dict):
+
+            continue
+
+        event_name = str(
+            event.get(
+                "event",
+                ""
+            )
+        ).upper().strip()
+
+        event_direction = str(
+            event.get(
+                "direction",
+                ""
+            )
+        ).upper().strip()
+
+        try:
+
+            candle_index = int(
+                event.get(
+                    "candle_index",
+                    -1
+                )
+            )
+
+        except Exception:
+
+            candle_index = -1
+
+        try:
+
+            level_price = float(
+                event.get(
+                    "level_price"
+                )
+            )
+
+        except Exception:
+
+            level_price = None
+
+        normalised_events.append(
+            {
+                "event":
+                    event_name,
+
+                "direction":
+                    event_direction,
+
+                "candle_index":
+                    candle_index,
+
+                "level_price":
+                    level_price,
+
+                "level_type":
+                    event.get(
+                        "level_type",
+                        "UNKNOWN"
+                    ),
+
+                "raw":
+                    event
+            }
+        )
+
+    normalised_events.sort(
+        key=lambda event:
+        event["candle_index"]
+    )
+
+    # ========================================================
+    # 5. DEFAULT RESULT
+    # ========================================================
+
+    confirmation_status = (
+        "WAIT — STRUCTURAL DATA INSUFFICIENT"
+    )
+
+    confirmation_quality = "NONE"
+
+    confirmation_score = 0
+
+    reference_level_y = None
+
+    reference_level_type = "NONE"
+
+    current_reclaimed = False
+
+    confirming_event = None
+
+    counter_event = None
+
+    structural_reasons = []
+
+    # ========================================================
+    # 6. VALIDATE DIRECTION
+    # ========================================================
+
+    if setup_direction not in (
+        "LONG",
+        "SHORT"
+    ):
+
+        structural_reasons.append(
+            "No valid LONG or SHORT setup direction exists."
+        )
+
+        return {
+            "structural_confirmation_status":
+                confirmation_status,
+
+            "structural_confirmation_quality":
+                confirmation_quality,
+
+            "structural_confirmation_score":
+                confirmation_score,
+
+            "structural_reference_level_y":
+                reference_level_y,
+
+            "structural_reference_level_type":
+                reference_level_type,
+
+            "structural_current_close_y":
+                current_close_y,
+
+            "structural_level_reclaimed":
+                current_reclaimed,
+
+            "structural_confirming_event":
+                confirming_event,
+
+            "structural_counter_event":
+                counter_event,
+
+            "structural_confirmation_reasons":
+                structural_reasons
+        }
+
+    # ========================================================
+    # 7. EXPECTED / OPPOSITE EVENTS
+    # ========================================================
+
+    if setup_direction == "LONG":
+
+        expected_bos = "BULLISH BOS"
+
+        expected_direction = "BULLISH"
+
+        opposite_direction = "BEARISH"
+
+    else:
+
+        expected_bos = "BEARISH BOS"
+
+        expected_direction = "BEARISH"
+
+        opposite_direction = "BULLISH"
+
+    # ========================================================
+    # 8. FIND LATEST COUNTER-DIRECTIONAL EVENT
+    # ========================================================
+
+    counter_events = [
+
+        event
+
+        for event in normalised_events
+
+        if (
+            event["direction"]
+            ==
+            opposite_direction
+        )
+    ]
+
+    if counter_events:
+
+        counter_event = counter_events[-1]
+
+        reference_level_y = (
+            counter_event[
+                "level_price"
+            ]
+        )
+
+        reference_level_type = (
+            counter_event[
+                "level_type"
+            ]
+        )
+
+    # ========================================================
+    # 9. FIND CONFIRMING BOS
+    #
+    # We specifically require a BOS in the setup direction.
+    #
+    # A CHoCH in the correct direction is NOT enough to call
+    # the structure fully confirmed.
+    # ========================================================
+
+    directional_bos_events = [
+
+        event
+
+        for event in normalised_events
+
+        if (
+            event["event"]
+            ==
+            expected_bos
+            and
+            event["direction"]
+            ==
+            expected_direction
+        )
+    ]
+
+    # --------------------------------------------------------
+    # If there was a counter-directional event, the confirming
+    # BOS must occur AFTER that event.
+    # --------------------------------------------------------
+
+    if counter_event is not None:
+
+        confirming_candidates = [
+
+            event
+
+            for event in directional_bos_events
+
+            if (
+                event["candle_index"]
+                >
+                counter_event["candle_index"]
+            )
+        ]
+
+    else:
+
+        confirming_candidates = (
+            directional_bos_events
+        )
+
+    if confirming_candidates:
+
+        confirming_event = (
+            confirming_candidates[-1]
+        )
+
+    # ========================================================
+    # 10. CONFIRMED STRUCTURAL BOS
+    # ========================================================
+
+    if confirming_event is not None:
+
+        confirmation_status = (
+            f"CONFIRMED {setup_direction}"
+        )
+
+        confirmation_quality = "STRONG"
+
+        confirmation_score = 100
+
+        structural_reasons.append(
+            f"{expected_bos} occurred after the "
+            "counter-directional structural event."
+        )
+
+        structural_reasons.append(
+            "The setup now has a fresh directional "
+            "structural confirmation."
+        )
+
+        return {
+            "structural_confirmation_status":
+                confirmation_status,
+
+            "structural_confirmation_quality":
+                confirmation_quality,
+
+            "structural_confirmation_score":
+                confirmation_score,
+
+            "structural_reference_level_y":
+                reference_level_y,
+
+            "structural_reference_level_type":
+                reference_level_type,
+
+            "structural_current_close_y":
+                current_close_y,
+
+            "structural_level_reclaimed":
+                current_reclaimed,
+
+            "structural_confirming_event":
+                confirming_event,
+
+            "structural_counter_event":
+                counter_event,
+
+            "structural_confirmation_reasons":
+                structural_reasons
+        }
+
+    # ========================================================
+    # 11. CHECK FOR LEVEL RECLAIM
+    #
+    # This is NOT full structural confirmation.
+    #
+    # It means price has recovered above/below the level that
+    # was previously broken.
+    # ========================================================
+
+    if (
+        counter_event is not None
+        and
+        reference_level_y is not None
+        and
+        current_close_y is not None
+    ):
+
+        if setup_direction == "LONG":
+
+            # Smaller Y = higher price.
+            #
+            # Therefore current close above the broken
+            # bearish level means current Y is smaller.
+
+            current_reclaimed = (
+                current_close_y
+                <
+                reference_level_y
+            )
+
+        else:
+
+            # SHORT:
+            #
+            # Current close below the broken bullish level
+            # means current Y is larger.
+
+            current_reclaimed = (
+                current_close_y
+                >
+                reference_level_y
+            )
+
+    # ========================================================
+    # 12. RECLAIMED BUT NOT YET CONFIRMED
+    # ========================================================
+
+    if current_reclaimed:
+
+        confirmation_status = (
+            f"DEVELOPING {setup_direction} "
+            "— LEVEL RECLAIMED"
+        )
+
+        confirmation_quality = "MODERATE"
+
+        confirmation_score = 70
+
+        structural_reasons.append(
+            "Price has reclaimed the structural level "
+            "broken by the counter-directional event."
+        )
+
+        structural_reasons.append(
+            f"A new {expected_bos} is still required "
+            "for full structural confirmation."
+        )
+
+        return {
+            "structural_confirmation_status":
+                confirmation_status,
+
+            "structural_confirmation_quality":
+                confirmation_quality,
+
+            "structural_confirmation_score":
+                confirmation_score,
+
+            "structural_reference_level_y":
+                reference_level_y,
+
+            "structural_reference_level_type":
+                reference_level_type,
+
+            "structural_current_close_y":
+                current_close_y,
+
+            "structural_level_reclaimed":
+                current_reclaimed,
+
+            "structural_confirming_event":
+                confirming_event,
+
+            "structural_counter_event":
+                counter_event,
+
+            "structural_confirmation_reasons":
+                structural_reasons
+        }
+
+    # ========================================================
+    # 13. COUNTER EVENT STILL ACTIVE
+    # ========================================================
+
+    if counter_event is not None:
+
+        confirmation_status = (
+            "WAIT — STRUCTURAL BOS REQUIRED"
+        )
+
+        confirmation_quality = "LOW"
+
+        confirmation_score = 40
+
+        structural_reasons.append(
+            "A counter-directional structural event "
+            "is still the latest relevant event."
+        )
+
+        structural_reasons.append(
+            f"Price has not reclaimed the broken "
+            f"{reference_level_type.lower()}."
+        )
+
+        structural_reasons.append(
+            f"A new {expected_bos} is required before "
+            "the setup can be structurally confirmed."
+        )
+
+    # ========================================================
+    # 14. NO COUNTER EVENT
+    # ========================================================
+
+    else:
+
+        latest_event = (
+            normalised_events[-1]
+            if normalised_events
+            else None
+        )
+
+        if (
+            latest_event is not None
+            and
+            latest_event["event"]
+            ==
+            expected_bos
+        ):
+
+            confirmation_status = (
+                f"CONFIRMED {setup_direction}"
+            )
+
+            confirmation_quality = "STRONG"
+
+            confirmation_score = 100
+
+            confirming_event = (
+                latest_event
+            )
+
+            structural_reasons.append(
+                f"Latest structural event is a "
+                f"{expected_bos}."
+            )
+
+            structural_reasons.append(
+                "Current structural direction has "
+                "direct BOS confirmation."
+            )
+
+        else:
+
+            confirmation_status = (
+                "WAIT — STRUCTURAL BOS REQUIRED"
+            )
+
+            confirmation_quality = "LOW"
+
+            confirmation_score = 40
+
+            structural_reasons.append(
+                f"No confirmed {expected_bos} is available "
+                "for the current setup."
+            )
+
+    # ========================================================
+    # 15. RETURN
+    # ========================================================
+
+    return {
+        "structural_confirmation_status":
+            confirmation_status,
+
+        "structural_confirmation_quality":
+            confirmation_quality,
+
+        "structural_confirmation_score":
+            confirmation_score,
+
+        "structural_reference_level_y":
+            reference_level_y,
+
+        "structural_reference_level_type":
+            reference_level_type,
+
+        "structural_current_close_y":
+            current_close_y,
+
+        "structural_level_reclaimed":
+            current_reclaimed,
+
+        "structural_confirming_event":
+            confirming_event,
+
+        "structural_counter_event":
+            counter_event,
+
+        "structural_confirmation_reasons":
+            structural_reasons
+    }
+
+# ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -12376,6 +13050,97 @@ setup_analysis[
 ]
 
 # ============================================================
+# RUN PATCH 17 — STRUCTURAL CONFIRMATION ENGINE
+# ============================================================
+
+structural_confirmation_result = (
+    evaluate_structural_confirmation(
+        sequence,
+        setup_analysis
+    )
+)
+
+setup_analysis[
+    "structural_confirmation_status"
+] = (
+    structural_confirmation_result[
+        "structural_confirmation_status"
+    ]
+)
+
+setup_analysis[
+    "structural_confirmation_quality"
+] = (
+    structural_confirmation_result[
+        "structural_confirmation_quality"
+    ]
+)
+
+setup_analysis[
+    "structural_confirmation_score"
+] = (
+    structural_confirmation_result[
+        "structural_confirmation_score"
+    ]
+)
+
+setup_analysis[
+    "structural_reference_level_y"
+] = (
+    structural_confirmation_result[
+        "structural_reference_level_y"
+    ]
+)
+
+setup_analysis[
+    "structural_reference_level_type"
+] = (
+    structural_confirmation_result[
+        "structural_reference_level_type"
+    ]
+)
+
+setup_analysis[
+    "structural_current_close_y"
+] = (
+    structural_confirmation_result[
+        "structural_current_close_y"
+    ]
+)
+
+setup_analysis[
+    "structural_level_reclaimed"
+] = (
+    structural_confirmation_result[
+        "structural_level_reclaimed"
+    ]
+)
+
+setup_analysis[
+    "structural_confirming_event"
+] = (
+    structural_confirmation_result[
+        "structural_confirming_event"
+    ]
+)
+
+setup_analysis[
+    "structural_counter_event"
+] = (
+    structural_confirmation_result[
+        "structural_counter_event"
+    ]
+)
+
+setup_analysis[
+    "structural_confirmation_reasons"
+] = (
+    structural_confirmation_result[
+        "structural_confirmation_reasons"
+    ]
+)
+
+# ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -12886,6 +13651,76 @@ if (
     
     for reason in setup_analysis.get(
         "confirmation_reasons",
+        []
+    ):
+    
+        st.write(
+            f"• {reason}"
+        )
+
+    # ============================================================
+    # PATCH 17 — STRUCTURAL CONFIRMATION
+    # ============================================================
+    
+    st.subheader(
+        "Structural Confirmation"
+    )
+    
+    st.write(
+        "**Structural Confirmation Status:** "
+        f"`{setup_analysis.get('structural_confirmation_status', 'WAIT — STRUCTURAL DATA INSUFFICIENT')}`"
+    )
+    
+    st.write(
+        "**Structural Confirmation Quality:** "
+        f"`{setup_analysis.get('structural_confirmation_quality', 'NONE')}`"
+    )
+    
+    st.write(
+        "**Structural Confirmation Score:** "
+        f"`{setup_analysis.get('structural_confirmation_score', 0)}/100`"
+    )
+    
+    st.write(
+        "**Reference Level Y:** "
+        f"`{setup_analysis.get('structural_reference_level_y', '—')}`"
+    )
+    
+    st.write(
+        "**Reference Level Type:** "
+        f"`{setup_analysis.get('structural_reference_level_type', 'NONE')}`"
+    )
+    
+    st.write(
+        "**Current Close Y:** "
+        f"`{setup_analysis.get('structural_current_close_y', '—')}`"
+    )
+    
+    st.write(
+        "**Level Reclaimed:** "
+        f"`{setup_analysis.get('structural_level_reclaimed', False)}`"
+    )
+    
+    confirming_event = setup_analysis.get(
+        "structural_confirming_event"
+    )
+    
+    counter_event = setup_analysis.get(
+        "structural_counter_event"
+    )
+    
+    st.write(
+        "**Counter-Directional Event:** "
+        f"`{counter_event.get('event') if counter_event else 'NONE'}`"
+    )
+    
+    st.write(
+        "**Confirming Event:** "
+        f"`{confirming_event.get('event') if confirming_event else 'NONE'}`"
+    )
+    
+    for reason in setup_analysis.get(
+        "structural_confirmation_reasons",
         []
     ):
     
