@@ -10150,11 +10150,9 @@ def classify_entry_trigger(
     # ========================================================
 
     major_rejection = (
-        "MAJOR REJECTION"
-        in rejection_status
+        rejection_status == "MAJOR REJECTION"
         or
-        "STRONG REJECTION"
-        in rejection_status
+        rejection_status == "STRONG REJECTION"
     )
 
     if major_rejection:
