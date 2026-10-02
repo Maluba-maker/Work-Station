@@ -11921,6 +11921,77 @@ if (
         )
     
     # ============================================================
+    # CANDLE GEOMETRY DEBUG
+    # ============================================================
+    #
+    # Diagnostic only.
+    # This does NOT change any trading logic.
+    #
+    # It exposes the actual candle geometry being used by
+    # the setup and entry-trigger logic.
+    # ============================================================
+
+    with st.expander(
+        "Candle Geometry Debug",
+        expanded=True
+    ):
+
+        st.write(
+            "**Current Direction:**",
+            sequence.get(
+                "current_direction",
+                "UNKNOWN"
+            )
+        )
+
+        st.write(
+            "**Body Percentage:**",
+            sequence.get(
+                "body_percentage",
+                0
+            )
+        )
+
+        st.write(
+            "**Upper Wick Percentage:**",
+            sequence.get(
+                "upper_wick_percentage",
+                0
+            )
+        )
+
+        st.write(
+            "**Lower Wick Percentage:**",
+            sequence.get(
+                "lower_wick_percentage",
+                0
+            )
+        )
+
+        st.write(
+            "**Candle Strength:**",
+            setup_analysis.get(
+                "candle_strength",
+                "UNKNOWN"
+            )
+        )
+
+        st.write(
+            "**Candle Alignment:**",
+            setup_analysis.get(
+                "candle_alignment",
+                "UNKNOWN"
+            )
+        )
+
+        st.write(
+            "**Rejection Status:**",
+            setup_analysis.get(
+                "rejection_status",
+                "UNKNOWN"
+            )
+        )
+    # ============================================================
     # PRICE LOCATION
     # ============================================================
     
