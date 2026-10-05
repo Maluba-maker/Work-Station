@@ -11481,60 +11481,155 @@ def evaluate_structural_confirmation(
         )
 
     # ========================================================
-    # 10. CONFIRMED STRUCTURAL BOS
+    # 10. FRESH CONFIRMING STRUCTURAL BOS
     # ========================================================
-
+    #
+    # A directional BOS is only considered a confirming BOS
+    # when:
+    #
+    #   1. It is in the setup direction.
+    #   2. It occurred after the counter-directional event.
+    #   3. It is recent enough to support a NEXT-CANDLE decision.
+    #
+    # IMPORTANT:
+    #
+    # A historical BOS may still exist in the event history,
+    # but it must NOT be treated as current structural
+    # confirmation for the next candle.
+    #
+    # Fresh BOS window:
+    #
+    #   0–5 candles old = fresh
+    #
+    # Age 0 is allowed because the reconstructed current
+    # candle may itself be the candle that produced the BOS.
+    # ========================================================
+    
+    fresh_confirming_event = None
+    
     if confirming_event is not None:
-
+    
+        if current_candle_index is not None:
+    
+            try:
+    
+                confirming_event_age = (
+                    current_candle_index
+                    -
+                    confirming_event[
+                        "candle_index"
+                    ]
+                )
+    
+            except Exception:
+    
+                confirming_event_age = None
+    
+        else:
+    
+            confirming_event_age = None
+    
+    else:
+    
+        confirming_event_age = None
+    
+    
+    # ========================================================
+    # ACCEPT FRESH CONFIRMING BOS
+    # ========================================================
+    
+    if (
+        confirming_event is not None
+        and
+        confirming_event_age is not None
+        and
+        0 <= confirming_event_age <= 5
+    ):
+    
+        fresh_confirming_event = (
+            confirming_event
+        )
+    
         confirmation_status = (
             f"CONFIRMED {setup_direction}"
         )
-
+    
         confirmation_quality = "STRONG"
-
+    
         confirmation_score = 100
-
+    
         structural_reasons.append(
             f"{expected_bos} occurred after the "
             "counter-directional structural event."
         )
-
+    
         structural_reasons.append(
-            "The setup now has a fresh directional "
-            "structural confirmation."
+            f"The confirming {expected_bos} is fresh "
+            f"({confirming_event_age} candle(s) old)."
         )
-
+    
         return {
             "structural_confirmation_status":
                 confirmation_status,
-
+    
             "structural_confirmation_quality":
                 confirmation_quality,
-
+    
             "structural_confirmation_score":
                 confirmation_score,
-
+    
             "structural_reference_level_y":
                 reference_level_y,
-
+    
             "structural_reference_level_type":
                 reference_level_type,
-
+    
             "structural_current_close_y":
                 current_close_y,
-
+    
             "structural_level_reclaimed":
                 current_reclaimed,
-
+    
             "structural_confirming_event":
-                confirming_event,
-
+                fresh_confirming_event,
+    
             "structural_counter_event":
                 counter_event,
-
+    
             "structural_confirmation_reasons":
-                structural_reasons
+                structural_reasons,
+    
+            "structural_confirming_event_age":
+                confirming_event_age
         }
+    
+    
+    # ========================================================
+    # HISTORICAL BOS EXISTS BUT IS TOO OLD
+    # ========================================================
+    
+    if (
+        confirming_event is not None
+        and
+        confirming_event_age is not None
+        and
+        confirming_event_age > 5
+    ):
+    
+        structural_reasons.append(
+            f"{expected_bos} occurred after the "
+            "counter-directional structural event, "
+            f"but it is {confirming_event_age} candles old."
+        )
+    
+        structural_reasons.append(
+            f"A fresh {expected_bos} within the next "
+            "5 candles is required for current "
+            "structural confirmation."
+        )
+    
+        # Do NOT treat the old BOS as a confirming event.
+        confirming_event = None
 
     # ========================================================
     # 11. CHECK FOR LEVEL RECLAIM
@@ -11629,6 +11724,9 @@ def evaluate_structural_confirmation(
             "structural_confirming_event":
                 confirming_event,
 
+            "structural_confirming_event_age":
+                None,
+            
             "structural_counter_event":
                 counter_event,
 
@@ -11751,6 +11849,9 @@ def evaluate_structural_confirmation(
         "structural_confirming_event":
             confirming_event,
 
+        "structural_confirming_event_age":
+            confirming_event_age,
+        
         "structural_counter_event":
             counter_event,
 
