@@ -11805,21 +11805,131 @@ def evaluate_structural_confirmation(
                 "direct BOS confirmation."
             )
 
-        else:
+    else:
 
+        latest_event = (
+            normalised_events[-1]
+            if normalised_events
+            else None
+        )
+    
+        latest_event_age = None
+    
+        # ----------------------------------------------------
+        # Determine the age of the latest directional BOS.
+        # ----------------------------------------------------
+    
+        if latest_event is not None:
+    
+            try:
+    
+                latest_event_age = (
+                    current_candle_index
+                    -
+                    latest_event[
+                        "candle_index"
+                    ]
+                )
+    
+            except Exception:
+    
+                latest_event_age = None
+    
+        # ----------------------------------------------------
+        # A BOS with no counter-event is still required to be
+        # fresh before it can confirm the NEXT candle.
+        # ----------------------------------------------------
+    
+        if (
+            latest_event is not None
+            and
+            latest_event["event"]
+            ==
+            expected_bos
+            and
+            latest_event_age is not None
+            and
+            0 <= latest_event_age <= 5
+        ):
+    
+            confirmation_status = (
+                f"CONFIRMED {setup_direction}"
+            )
+    
+            confirmation_quality = "STRONG"
+    
+            confirmation_score = 100
+    
+            confirming_event = (
+                latest_event
+            )
+    
+            confirming_event_age = (
+                latest_event_age
+            )
+    
+            structural_reasons.append(
+                f"Latest structural event is a "
+                f"fresh {expected_bos}."
+            )
+    
+            structural_reasons.append(
+                f"The confirming {expected_bos} is "
+                f"{latest_event_age} candle(s) old."
+            )
+    
+        elif (
+            latest_event is not None
+            and
+            latest_event["event"]
+            ==
+            expected_bos
+        ):
+    
+            confirmation_status = (
+                "WAIT — FRESH STRUCTURAL BOS REQUIRED"
+            )
+    
+            confirmation_quality = "LOW"
+    
+            confirmation_score = 40
+    
+            confirming_event = None
+    
+            confirming_event_age = (
+                latest_event_age
+            )
+    
+            structural_reasons.append(
+                f"The latest {expected_bos} is "
+                f"{latest_event_age} candle(s) old."
+            )
+    
+            structural_reasons.append(
+                f"A fresh {expected_bos} within "
+                "the last 5 candles is required "
+                "for next-candle confirmation."
+            )
+    
+        else:
+    
             confirmation_status = (
                 "WAIT — STRUCTURAL BOS REQUIRED"
             )
-
+    
             confirmation_quality = "LOW"
-
+    
             confirmation_score = 40
-
+    
+            confirming_event = None
+    
+            confirming_event_age = None
+    
             structural_reasons.append(
-                f"No confirmed {expected_bos} is available "
-                "for the current setup."
+                f"No confirmed {expected_bos} is "
+                "available for the current setup."
             )
-
+    
     # ========================================================
     # 15. RETURN
     # ========================================================
@@ -13201,27 +13311,60 @@ def generate_signal(sequence, setup_analysis):
         )
     
     # ========================================================
-    # 13. BOS AGE
+    # 13. AUTHORITATIVE STRUCTURAL BOS AGE
+    # ========================================================
+    #
+    # IMPORTANT:
+    #
+    # Do NOT use Step 14's event_age here.
+    #
+    # The Structural Confirmation Engine is the authority on
+    # whether the BOS actually confirms the current setup.
     # ========================================================
     
-    if event_age is None:
+    structural_confirming_event_age = (
+        setup_analysis.get(
+            "structural_confirming_event_age"
+        )
+    )
+    
+    if structural_confirming_event_age is None:
     
         final_gate_blockers.append(
-            "CONFIRMING BOS AGE IS UNKNOWN"
+            "STRUCTURAL CONFIRMING BOS AGE IS UNKNOWN"
         )
     
     else:
     
-        if (
-            event_age < 1
-            or
-            event_age > 5
-        ):
+        try:
+    
+            structural_confirming_event_age = int(
+                structural_confirming_event_age
+            )
+    
+        except Exception:
+    
+            structural_confirming_event_age = None
     
             final_gate_blockers.append(
-                "CONFIRMING BOS IS NOT FRESH "
-                f"(AGE: {event_age} CANDLES)"
+                "STRUCTURAL CONFIRMING BOS AGE "
+                "COULD NOT BE VALIDATED"
             )
+    
+    if (
+        structural_confirming_event_age is not None
+        and
+        (
+            structural_confirming_event_age < 0
+            or
+            structural_confirming_event_age > 5
+        )
+    ):
+    
+        final_gate_blockers.append(
+            "STRUCTURAL CONFIRMING BOS IS NOT FRESH "
+            f"(AGE: {structural_confirming_event_age} CANDLES)"
+        )
     
     # ========================================================
     # 14. STRUCTURAL COUNTER-EVENT CHECK
@@ -13582,6 +13725,13 @@ setup_analysis[
     ]
 )
 
+setup_analysis[
+    "structural_confirming_event_age"
+] = (
+    structural_confirmation_result.get(
+        "structural_confirming_event_age"
+    )
+)
 setup_analysis[
     "structural_counter_event"
 ] = (
