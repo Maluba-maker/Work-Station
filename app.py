@@ -11299,29 +11299,58 @@ def evaluate_structural_confirmation(
         key=lambda event:
         event["candle_index"]
     )
-
+    
+    # ========================================================
+    # PATCH 18 — LATEST STRUCTURAL EVENT
+    # ========================================================
+    
+    latest_structural_event = None
+    latest_structural_event_age = None
+    
+    if normalised_events:
+    
+        latest_structural_event = (
+            normalised_events[-1]
+        )
+    
+        if current_candle_index is not None:
+    
+            try:
+    
+                latest_structural_event_age = (
+                    current_candle_index
+                    -
+                    latest_structural_event[
+                        "candle_index"
+                    ]
+                )
+    
+            except Exception:
+    
+                latest_structural_event_age = None
+    
     # ========================================================
     # 5. DEFAULT RESULT
     # ========================================================
-
+    
     confirmation_status = (
         "WAIT — STRUCTURAL DATA INSUFFICIENT"
     )
-
+    
     confirmation_quality = "NONE"
-
+    
     confirmation_score = 0
-
+    
     reference_level_y = None
-
+    
     reference_level_type = "NONE"
-
+    
     current_reclaimed = False
-
+    
     confirming_event = None
-
+    
     counter_event = None
-
+    
     structural_reasons = []
 
     # ========================================================
@@ -11366,7 +11395,13 @@ def evaluate_structural_confirmation(
                 counter_event,
 
             "structural_confirmation_reasons":
-                structural_reasons
+                structural_reasons,
+            
+            "structural_latest_event":
+                latest_structural_event,
+            
+            "structural_latest_event_age":
+                latest_structural_event_age
         }
 
     # ========================================================
@@ -11598,7 +11633,13 @@ def evaluate_structural_confirmation(
     
             "structural_confirmation_reasons":
                 structural_reasons,
-    
+            
+            "structural_latest_event":
+                latest_structural_event,
+            
+            "structural_latest_event_age":
+                latest_structural_event_age,
+            
             "structural_confirming_event_age":
                 confirming_event_age
         }
@@ -14267,6 +14308,29 @@ if (
     st.write(
         "**Level Reclaimed:** "
         f"`{setup_analysis.get('structural_level_reclaimed', False)}`"
+    )
+    
+    # ============================================================
+    # PATCH 18 — STRUCTURAL EVENT AUDIT
+    # ============================================================
+    
+    latest_structural_event = setup_analysis.get(
+        "structural_latest_event"
+    )
+    
+    latest_structural_event_age = setup_analysis.get(
+        "structural_latest_event_age"
+    )
+    
+    st.write(
+        "**Latest Structural Event:** "
+        f"`{latest_structural_event.get('event') if latest_structural_event else 'NONE'}`"
+    )
+    
+    st.write(
+        "**Latest Structural Event Age:** "
+        f"`{latest_structural_event_age if latest_structural_event_age is not None else 'UNKNOWN'}"
+        "`"
     )
     
     confirming_event = setup_analysis.get(
