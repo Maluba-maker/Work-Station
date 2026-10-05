@@ -12842,6 +12842,345 @@ def generate_signal(sequence, setup_analysis):
     )
 
     # ========================================================
+    # PATCH 19 — FINAL NEXT-CANDLE SIGNAL GATE
+    # ========================================================
+    #
+    # PURPOSE
+    # -------
+    # This is the FINAL permission gate before BUY / SELL.
+    #
+    # Step 14 may calculate a high score, but a high score alone
+    # is NOT sufficient to generate a next-candle signal.
+    #
+    # A BUY / SELL signal requires ALL mandatory conditions below:
+    #
+    #   1. Confirmed structural confirmation
+    #   2. Confirmed Step 16 confirmation
+    #   3. Valid entry trigger
+    #   4. Same-direction BOS
+    #   5. Fresh BOS (1–5 candles old)
+    #   6. Current candle aligned with setup
+    #   7. Strong candle body (>=70%)
+    #   8. Detection confidence >=85%
+    #   9. Sequence integrity >=90%
+    #  10. Confluence >=75
+    #  11. No major rejection
+    #  12. No negative price-location conflict
+    #
+    # A CHoCH alone can NEVER authorize BUY / SELL.
+    #
+    # This patch does NOT replace Step 14.
+    # It acts as the final safety gate.
+    # ========================================================
+    
+    final_gate_blockers = []
+    
+    # ========================================================
+    # 1. STRUCTURAL CONFIRMATION
+    # ========================================================
+    
+    structural_confirmation_status = str(
+        setup_analysis.get(
+            "structural_confirmation_status",
+            ""
+        )
+    ).upper().strip()
+    
+    expected_structural_confirmation = (
+        f"CONFIRMED {direction}"
+    )
+    
+    if (
+        structural_confirmation_status
+        !=
+        expected_structural_confirmation
+    ):
+    
+        final_gate_blockers.append(
+            "STRUCTURAL CONFIRMATION IS NOT FULLY CONFIRMED"
+        )
+    
+    # ========================================================
+    # 2. STEP 16 CONFIRMATION
+    # ========================================================
+    
+    confirmation_status = str(
+        setup_analysis.get(
+            "confirmation_status",
+            ""
+        )
+    ).upper().strip()
+    
+    expected_confirmation = (
+        f"CONFIRMED {direction}"
+    )
+    
+    if (
+        confirmation_status
+        !=
+        expected_confirmation
+    ):
+    
+        final_gate_blockers.append(
+            "CONFIRMATION ENGINE HAS NOT FULLY CONFIRMED "
+            f"{direction}"
+        )
+    
+    # ========================================================
+    # 3. ENTRY TRIGGER
+    # ========================================================
+    
+    entry_trigger = str(
+        setup_analysis.get(
+            "entry_trigger",
+            ""
+        )
+    ).upper().strip()
+    
+    expected_trigger = (
+        f"VALID {direction} TRIGGER"
+    )
+    
+    if (
+        entry_trigger
+        !=
+        expected_trigger
+    ):
+    
+        final_gate_blockers.append(
+            "ENTRY TRIGGER IS NOT VALID"
+        )
+    
+    # ========================================================
+    # 4. CANDLE ALIGNMENT
+    # ========================================================
+    
+    if candle_alignment != "ALIGNED":
+    
+        final_gate_blockers.append(
+            "CURRENT CANDLE IS NOT ALIGNED "
+            "WITH THE STRUCTURAL DIRECTION"
+        )
+    
+    # ========================================================
+    # 5. CANDLE BODY STRENGTH
+    # ========================================================
+    
+    try:
+    
+        body_percentage = float(
+            sequence.get(
+                "body_percentage",
+                0
+            ) or 0
+        )
+    
+    except Exception:
+    
+        body_percentage = 0.0
+    
+    if body_percentage < 70:
+    
+        final_gate_blockers.append(
+            "CURRENT CANDLE BODY IS BELOW "
+            f"THE 70% MINIMUM ({body_percentage:.1f}%)"
+        )
+    
+    # ========================================================
+    # 6. DETECTION CONFIDENCE
+    # ========================================================
+    
+    if detection_confidence < 85:
+    
+        final_gate_blockers.append(
+            "DETECTION CONFIDENCE IS BELOW "
+            f"85% ({detection_confidence:.1f}%)"
+        )
+    
+    # ========================================================
+    # 7. SEQUENCE INTEGRITY
+    # ========================================================
+    
+    if sequence_integrity < 90:
+    
+        final_gate_blockers.append(
+            "SEQUENCE INTEGRITY IS BELOW "
+            f"90% ({sequence_integrity:.1f}%)"
+        )
+    
+    # ========================================================
+    # 8. CONFLUENCE
+    # ========================================================
+    
+    if confluence < 75:
+    
+        final_gate_blockers.append(
+            "CONFLUENCE IS BELOW "
+            f"75 ({confluence:.1f})"
+        )
+    
+    # ========================================================
+    # 9. MAJOR REJECTION
+    # ========================================================
+    
+    if major_rejection:
+    
+        final_gate_blockers.append(
+            "MAJOR CANDLE REJECTION INVALIDATES "
+            "THE NEXT-CANDLE SIGNAL"
+        )
+    
+    # ========================================================
+    # 10. PRICE LOCATION
+    # ========================================================
+    
+    location_effect = str(
+        setup_analysis.get(
+            "location_effect",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+    
+    if location_effect == "NEGATIVE":
+    
+        final_gate_blockers.append(
+            "PRICE LOCATION CONFLICTS WITH "
+            "THE SETUP DIRECTION"
+        )
+    
+    # ========================================================
+    # 11. EVENT ALIGNMENT
+    # ========================================================
+    
+    if event_alignment != "ALIGNED":
+    
+        final_gate_blockers.append(
+            "LATEST STRUCTURAL EVENT IS NOT "
+            "ALIGNED WITH THE SETUP DIRECTION"
+        )
+    
+    # ========================================================
+    # 12. FRESH DIRECTIONAL BOS
+    # ========================================================
+    #
+    # A CHoCH is NOT a confirming BOS.
+    #
+    # The confirming event must be the expected BOS and must
+    # be recent enough to support a next-candle decision.
+    # ========================================================
+    
+    structural_confirming_event = (
+        setup_analysis.get(
+            "structural_confirming_event"
+        )
+    )
+    
+    confirming_event_name = ""
+    
+    if isinstance(
+        structural_confirming_event,
+        dict
+    ):
+    
+        confirming_event_name = str(
+            structural_confirming_event.get(
+                "event",
+                ""
+            )
+        ).upper().strip()
+    
+    if (
+        confirming_event_name
+        !=
+        expected_bos
+    ):
+    
+        final_gate_blockers.append(
+            f"NO CONFIRMING {expected_bos} EXISTS"
+        )
+    
+    # ========================================================
+    # 13. BOS AGE
+    # ========================================================
+    
+    if event_age is None:
+    
+        final_gate_blockers.append(
+            "CONFIRMING BOS AGE IS UNKNOWN"
+        )
+    
+    else:
+    
+        if (
+            event_age < 1
+            or
+            event_age > 5
+        ):
+    
+            final_gate_blockers.append(
+                "CONFIRMING BOS IS NOT FRESH "
+                f"(AGE: {event_age} CANDLES)"
+            )
+    
+    # ========================================================
+    # 14. STRUCTURAL COUNTER-EVENT CHECK
+    # ========================================================
+    #
+    # A counter-directional CHoCH by itself must never produce
+    # a signal.
+    #
+    # If the structural confirmation engine still says the setup
+    # is developing or waiting, the signal is blocked.
+    # ========================================================
+    
+    if (
+        "DEVELOPING"
+        in
+        structural_confirmation_status
+    ):
+    
+        final_gate_blockers.append(
+            "STRUCTURAL SETUP IS STILL DEVELOPING"
+        )
+    
+    elif (
+        "WAIT"
+        in
+        structural_confirmation_status
+    ):
+    
+        final_gate_blockers.append(
+            "STRUCTURAL CONFIRMATION IS STILL WAITING"
+        )
+    
+    # ========================================================
+    # 15. FINAL GATE RESULT
+    # ========================================================
+    
+    if final_gate_blockers:
+    
+        blockers.extend(
+            final_gate_blockers
+        )
+    
+        reasons.append(
+            "FINAL NEXT-CANDLE SIGNAL GATE: "
+            "BLOCKED"
+        )
+    
+        for gate_reason in final_gate_blockers:
+    
+            reasons.append(
+                f"FINAL GATE — {gate_reason}"
+            )
+    
+    else:
+    
+        reasons.append(
+            "FINAL NEXT-CANDLE SIGNAL GATE: "
+            "PASSED"
+        )
+    # ========================================================
     # 27. HARD BLOCKERS
     # ========================================================
 
