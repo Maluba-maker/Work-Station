@@ -11766,47 +11766,9 @@ def evaluate_structural_confirmation(
     # ========================================================
     # 14. NO COUNTER EVENT
     # ========================================================
-
+    
     else:
-
-        latest_event = (
-            normalised_events[-1]
-            if normalised_events
-            else None
-        )
-
-        if (
-            latest_event is not None
-            and
-            latest_event["event"]
-            ==
-            expected_bos
-        ):
-
-            confirmation_status = (
-                f"CONFIRMED {setup_direction}"
-            )
-
-            confirmation_quality = "STRONG"
-
-            confirmation_score = 100
-
-            confirming_event = (
-                latest_event
-            )
-
-            structural_reasons.append(
-                f"Latest structural event is a "
-                f"{expected_bos}."
-            )
-
-            structural_reasons.append(
-                "Current structural direction has "
-                "direct BOS confirmation."
-            )
-
-    else:
-
+    
         latest_event = (
             normalised_events[-1]
             if normalised_events
@@ -11816,7 +11778,7 @@ def evaluate_structural_confirmation(
         latest_event_age = None
     
         # ----------------------------------------------------
-        # Determine the age of the latest directional BOS.
+        # Determine the age of the latest structural event.
         # ----------------------------------------------------
     
         if latest_event is not None:
@@ -11836,8 +11798,7 @@ def evaluate_structural_confirmation(
                 latest_event_age = None
     
         # ----------------------------------------------------
-        # A BOS with no counter-event is still required to be
-        # fresh before it can confirm the NEXT candle.
+        # A BOS without a counter-event must still be fresh.
         # ----------------------------------------------------
     
         if (
@@ -11929,7 +11890,6 @@ def evaluate_structural_confirmation(
                 f"No confirmed {expected_bos} is "
                 "available for the current setup."
             )
-    
     # ========================================================
     # 15. RETURN
     # ========================================================
