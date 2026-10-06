@@ -13180,6 +13180,13 @@ def generate_signal(sequence, setup_analysis):
         )
     ).upper().strip()
     
+    structural_confirmation_quality = str(
+        setup_analysis.get(
+            "structural_confirmation_quality",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+    
     expected_structural_confirmation = (
         f"CONFIRMED {direction}"
     )
