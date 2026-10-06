@@ -8733,7 +8733,8 @@ def analyze_price_location(
         "reasons":
             reasons
     }
-    # ============================================================
+
+# ============================================================
 # STEP 13 — TRADE SETUP / CONFLUENCE DIAGNOSTIC
 # ============================================================
 def diagnose_trade_setup(
@@ -9309,6 +9310,462 @@ def diagnose_trade_setup(
             reasons
     }       
 
+# ============================================================
+# PATCH 22 — BREAKOUT / ENTRY LOCATION VALIDATION
+# ============================================================
+#
+# PURPOSE
+# -------
+# Determine whether the current candle has actually cleared
+# an important price-location barrier.
+#
+# This does NOT generate BUY / SELL.
+#
+# It distinguishes:
+#
+#     APPROACHING RESISTANCE
+#     AT RESISTANCE
+#     BREAKING ABOVE RESISTANCE
+#     ACCEPTED ABOVE RESISTANCE
+#
+# and the equivalent bearish conditions at support.
+#
+# IMPORTANT:
+# Chart Y coordinates increase downward.
+#
+# Therefore:
+#
+#     Smaller Y = higher price
+#     Larger Y  = lower price
+#
+# ============================================================
+
+def analyze_breakout_location(
+    candles,
+    price_location,
+    setup_direction,
+    body_percentage,
+    rejection_status
+):
+
+    candles = candles or []
+    price_location = price_location or {}
+
+    setup_direction = str(
+        setup_direction or ""
+    ).upper().strip()
+
+    rejection_status = str(
+        rejection_status or ""
+    ).upper().strip()
+
+    result = {
+
+        "breakout_status":
+            "NO BREAKOUT",
+
+        "breakout_direction":
+            "NONE",
+
+        "breakout_level_y":
+            None,
+
+        "breakout_source":
+            None,
+
+        "breakout_distance":
+            None,
+
+        "breakout_strength":
+            "NONE",
+
+        "breakout_confirmed":
+            False,
+
+        "breakout_reasons":
+            []
+    }
+
+    # --------------------------------------------------------
+    # Need at least two candles.
+    # --------------------------------------------------------
+
+    if len(candles) < 2:
+
+        result["breakout_reasons"].append(
+            "Insufficient candle history for breakout validation."
+        )
+
+        return result
+
+    current = candles[-1]
+    previous = candles[-2]
+
+    try:
+
+        current_close = float(
+            current["close"]
+        )
+
+        current_high = float(
+            current["high"]
+        )
+
+        current_low = float(
+            current["low"]
+        )
+
+        previous_close = float(
+            previous["close"]
+        )
+
+    except Exception:
+
+        result["breakout_reasons"].append(
+            "Current or previous candle coordinates are unavailable."
+        )
+
+        return result
+
+    # --------------------------------------------------------
+    # Adaptive threshold
+    # --------------------------------------------------------
+
+    median_range = price_location.get(
+        "median_candle_range",
+        8.0
+    )
+
+    try:
+
+        median_range = float(
+            median_range or 8.0
+        )
+
+    except Exception:
+
+        median_range = 8.0
+
+    break_threshold = max(
+        median_range * 0.50,
+        3.0
+    )
+
+    # ========================================================
+    # LONG BREAKOUT
+    # ========================================================
+
+    if setup_direction == "LONG":
+
+        resistance = price_location.get(
+            "nearest_resistance"
+        )
+
+        if not resistance:
+
+            result["breakout_reasons"].append(
+                "No nearby resistance level is available for breakout validation."
+            )
+
+            return result
+
+        try:
+
+            resistance_y = float(
+                resistance["y"]
+            )
+
+        except Exception:
+
+            result["breakout_reasons"].append(
+                "Resistance level is invalid."
+            )
+
+            return result
+
+        result["breakout_level_y"] = (
+            resistance_y
+        )
+
+        result["breakout_source"] = (
+            resistance.get(
+                "source",
+                "UNKNOWN"
+            )
+        )
+
+        # ----------------------------------------------------
+        # Price must move ABOVE resistance.
+        #
+        # Smaller Y = higher price.
+        # ----------------------------------------------------
+
+        close_above_distance = (
+            resistance_y
+            -
+            current_close
+        )
+
+        result["breakout_distance"] = round(
+            close_above_distance,
+            2
+        )
+
+        if (
+            close_above_distance
+            >=
+            break_threshold
+        ):
+
+            result["breakout_direction"] = (
+                "BULLISH"
+            )
+
+            result["breakout_status"] = (
+                "BREAKING ABOVE RESISTANCE"
+            )
+
+            result["breakout_reasons"].append(
+                "Current close has moved above the identified resistance level."
+            )
+
+            # ------------------------------------------------
+            # Previous candle should not already be clearly
+            # above the same level.
+            # ------------------------------------------------
+
+            previous_was_below = (
+                previous_close
+                >=
+                resistance_y
+            )
+
+            if previous_was_below:
+
+                result["breakout_confirmed"] = True
+
+                result["breakout_status"] = (
+                    "ACCEPTED ABOVE RESISTANCE"
+                )
+
+                result["breakout_strength"] = (
+                    "STRONG"
+                )
+
+                result["breakout_reasons"].append(
+                    "Current candle closed above resistance after approaching from below."
+                )
+
+            else:
+
+                result["breakout_strength"] = (
+                    "MODERATE"
+                )
+
+                result["breakout_reasons"].append(
+                    "Price is above resistance, but the previous candle was already above the level."
+                )
+
+        else:
+
+            # ------------------------------------------------
+            # Current candle has not actually cleared
+            # resistance.
+            # ------------------------------------------------
+
+            if (
+                current_high
+                <=
+                resistance_y
+                +
+                break_threshold
+            ):
+
+                result["breakout_status"] = (
+                    "RESISTANCE NOT CLEARED"
+                )
+
+                result["breakout_reasons"].append(
+                    "Current candle has not established a meaningful close above resistance."
+                )
+
+    # ========================================================
+    # SHORT BREAKOUT
+    # ========================================================
+
+    elif setup_direction == "SHORT":
+
+        support = price_location.get(
+            "nearest_support"
+        )
+
+        if not support:
+
+            result["breakout_reasons"].append(
+                "No nearby support level is available for breakdown validation."
+            )
+
+            return result
+
+        try:
+
+            support_y = float(
+                support["y"]
+            )
+
+        except Exception:
+
+            result["breakout_reasons"].append(
+                "Support level is invalid."
+            )
+
+            return result
+
+        result["breakout_level_y"] = (
+            support_y
+        )
+
+        result["breakout_source"] = (
+            support.get(
+                "source",
+                "UNKNOWN"
+            )
+        )
+
+        # ----------------------------------------------------
+        # Price must move BELOW support.
+        #
+        # Larger Y = lower price.
+        # ----------------------------------------------------
+
+        close_below_distance = (
+            current_close
+            -
+            support_y
+        )
+
+        result["breakout_distance"] = round(
+            close_below_distance,
+            2
+        )
+
+        if (
+            close_below_distance
+            >=
+            break_threshold
+        ):
+
+            result["breakout_direction"] = (
+                "BEARISH"
+            )
+
+            result["breakout_status"] = (
+                "BREAKING BELOW SUPPORT"
+            )
+
+            result["breakout_reasons"].append(
+                "Current close has moved below the identified support level."
+            )
+
+            previous_was_above = (
+                previous_close
+                <=
+                support_y
+            )
+
+            if previous_was_above:
+
+                result["breakout_confirmed"] = True
+
+                result["breakout_status"] = (
+                    "ACCEPTED BELOW SUPPORT"
+                )
+
+                result["breakout_strength"] = (
+                    "STRONG"
+                )
+
+                result["breakout_reasons"].append(
+                    "Current candle closed below support after approaching from above."
+                )
+
+            else:
+
+                result["breakout_strength"] = (
+                    "MODERATE"
+                )
+
+                result["breakout_reasons"].append(
+                    "Price is below support, but the previous candle was already below the level."
+                )
+
+        else:
+
+            if (
+                current_low
+                >=
+                support_y
+                -
+                break_threshold
+            ):
+
+                result["breakout_status"] = (
+                    "SUPPORT NOT CLEARED"
+                )
+
+                result["breakout_reasons"].append(
+                    "Current candle has not established a meaningful close below support."
+                )
+
+    else:
+
+        result["breakout_reasons"].append(
+            "No valid directional setup exists for breakout validation."
+        )
+
+        return result
+
+    # ========================================================
+    # CANDLE QUALITY CHECK
+    # ========================================================
+
+    try:
+
+        body_percentage = float(
+            body_percentage or 0
+        )
+
+    except Exception:
+
+        body_percentage = 0.0
+
+    if (
+        result["breakout_confirmed"]
+        and
+        body_percentage >= 70
+        and
+        "MAJOR" not in rejection_status
+    ):
+
+        result["breakout_strength"] = (
+            "STRONG"
+        )
+
+        result["breakout_reasons"].append(
+            "Breakout candle has strong body dominance without major rejection."
+        )
+
+    elif result["breakout_confirmed"]:
+
+        result["breakout_strength"] = (
+            "MODERATE"
+        )
+
+        result["breakout_reasons"].append(
+            "Breakout exists, but candle quality is not yet strong enough for premium confirmation."
+        )
+
+    return result
 # ============================================================
 # STEP 13B — SETUP CLASSIFICATION USING PRICE LOCATION
 # ============================================================
@@ -9913,6 +10370,38 @@ price_location = analyze_price_location(
 # Store it inside the sequence so Step 14 can use it later.
 
 sequence["price_location"] = price_location
+
+# ============================================================
+# PATCH 22 — RUN BREAKOUT / ENTRY LOCATION VALIDATION
+# ============================================================
+
+breakout_location = analyze_breakout_location(
+    st.session_state.get(
+        "candles",
+        []
+    ),
+
+    price_location,
+
+    setup_analysis.get(
+        "setup_direction",
+        "NONE"
+    ),
+
+    sequence.get(
+        "body_percentage",
+        0
+    ),
+
+    setup_analysis.get(
+        "rejection_status",
+        "NO MAJOR REJECTION"
+    )
+)
+
+setup_analysis[
+    "breakout_location"
+] = breakout_location
 
 # ============================================================
 # STEP 13B — SETUP CLASSIFICATION
@@ -14428,7 +14917,76 @@ if (
                 "current_candle_touches_support"
             )
         )
-    
+        # ============================================================
+        # PATCH 22 — BREAKOUT LOCATION DEBUG
+        # ============================================================
+        
+        with st.expander(
+            "Breakout / Entry Location Debug",
+            expanded=True
+        ):
+        
+            st.write(
+                "**Breakout Status:**",
+                breakout_location.get(
+                    "breakout_status",
+                    "UNKNOWN"
+                )
+            )
+        
+            st.write(
+                "**Breakout Direction:**",
+                breakout_location.get(
+                    "breakout_direction",
+                    "NONE"
+                )
+            )
+        
+            st.write(
+                "**Breakout Level Y:**",
+                breakout_location.get(
+                    "breakout_level_y"
+                )
+            )
+        
+            st.write(
+                "**Breakout Source:**",
+                breakout_location.get(
+                    "breakout_source"
+                )
+            )
+        
+            st.write(
+                "**Breakout Distance:**",
+                breakout_location.get(
+                    "breakout_distance"
+                )
+            )
+        
+            st.write(
+                "**Breakout Strength:**",
+                breakout_location.get(
+                    "breakout_strength",
+                    "NONE"
+                )
+            )
+        
+            st.write(
+                "**Breakout Confirmed:**",
+                breakout_location.get(
+                    "breakout_confirmed",
+                    False
+                )
+            )
+        
+            for reason in breakout_location.get(
+                "breakout_reasons",
+                []
+            ):
+        
+                st.write(
+                    f"• {reason}"
+                )
     # ------------------------------------------------------------
     # PRICE LOCATION REASONS
     # ------------------------------------------------------------
