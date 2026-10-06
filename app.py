@@ -10730,6 +10730,64 @@ def classify_entry_trigger(
         )
     ).upper().strip()
 
+    # ========================================================
+    # PATCH 26 — POST-BREAKOUT CONTINUATION INPUTS
+    # ========================================================
+
+    breakout_location = (
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        )
+        or {}
+    )
+
+    post_breakout_continuation = bool(
+        breakout_location.get(
+            "post_breakout_continuation",
+            False
+        )
+    )
+
+    breakout_direction = str(
+        breakout_location.get(
+            "breakout_direction",
+            "NONE"
+        )
+    ).upper().strip()
+
+    holding_above_resistance = bool(
+        breakout_location.get(
+            "holding_above_resistance",
+            False
+        )
+    )
+
+    holding_below_support = bool(
+        breakout_location.get(
+            "holding_below_support",
+            False
+        )
+    )
+
+    breakout_age = (
+        breakout_location.get(
+            "breakout_age"
+        )
+    )
+
+    try:
+
+        breakout_age = (
+            int(breakout_age)
+            if breakout_age is not None
+            else None
+        )
+
+    except Exception:
+
+        breakout_age = None
+    
     try:
 
         body_percentage = float(
@@ -10969,6 +11027,70 @@ def classify_entry_trigger(
     )
 
     # ========================================================
+    # PATCH 26 — POST-BREAKOUT CONTINUATION
+    # ========================================================
+    #
+    # A recent breakout that is still holding beyond the
+    # broken level is stronger evidence than ordinary
+    # mid-range continuation.
+    #
+    # This does NOT create a BUY / SELL signal.
+    # It only improves the ENTRY TRIGGER assessment.
+    # ========================================================
+
+    if (
+        post_breakout_continuation
+        and
+        breakout_age is not None
+        and
+        breakout_age <= 5
+    ):
+
+        if (
+            setup_direction == "LONG"
+            and
+            breakout_direction == "BULLISH"
+            and
+            holding_above_resistance
+        ):
+
+            trigger_score += 15
+
+            trigger_reasons.append(
+                "Recent bullish breakout is holding above resistance."
+            )
+
+            trigger_reasons.append(
+                f"Breakout occurred {breakout_age} candle(s) ago."
+            )
+
+            trigger_reasons.append(
+                "Post-breakout continuation supports the LONG trigger."
+            )
+
+        elif (
+            setup_direction == "SHORT"
+            and
+            breakout_direction == "BEARISH"
+            and
+            holding_below_support
+        ):
+
+            trigger_score += 15
+
+            trigger_reasons.append(
+                "Recent bearish breakdown is holding below support."
+            )
+
+            trigger_reasons.append(
+                f"Breakdown occurred {breakout_age} candle(s) ago."
+            )
+
+            trigger_reasons.append(
+                "Post-breakdown continuation supports the SHORT trigger."
+            )
+
+    # ========================================================
     # BODY STRENGTH
     # ========================================================
 
@@ -11122,11 +11244,42 @@ def classify_entry_trigger(
 
     if trigger_score >= 70:
 
-        trigger = (
-            f"VALID {trigger_direction} TRIGGER"
-        )
+        if (
+            post_breakout_continuation
+            and
+            breakout_direction == "BULLISH"
+            and
+            trigger_direction == "LONG"
+        ):
+
+            trigger = (
+                "VALID LONG POST-BREAKOUT TRIGGER"
+            )
+
+        elif (
+            post_breakout_continuation
+            and
+            breakout_direction == "BEARISH"
+            and
+            trigger_direction == "SHORT"
+        ):
+
+            trigger = (
+                "VALID SHORT POST-BREAKDOWN TRIGGER"
+            )
+
+        else:
+
+            trigger = (
+                f"VALID {trigger_direction} TRIGGER"
+            )
 
         trigger_quality = "STRONG"
+
+        trigger_reasons.append(
+            "Current candle provides sufficient "
+            "confirmation for the classified setup."
+        )
 
         trigger_reasons.append(
             "Current candle provides sufficient "
@@ -11240,6 +11393,38 @@ with st.expander(
         )
     )
 
+    st.write(
+        "**Post-Breakout Continuation received by Step 15:**",
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        ).get(
+            "post_breakout_continuation",
+            False
+        )
+    )
+
+    st.write(
+        "**Breakout Direction received by Step 15:**",
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        ).get(
+            "breakout_direction",
+            "NONE"
+        )
+    )
+
+    st.write(
+        "**Breakout Age received by Step 15:**",
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        ).get(
+            "breakout_age",
+            "UNKNOWN"
+        )
+    )
 entry_trigger = classify_entry_trigger(
     sequence,
     setup_analysis
