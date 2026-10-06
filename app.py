@@ -9422,9 +9422,23 @@ def analyze_breakout_location(
 
         median_range = 8.0
 
-    break_threshold = max(
-        median_range * 0.50,
-        3.0
+    # ========================================================
+    # BREAKOUT THRESHOLD
+    # ========================================================
+    # The screenshot coordinate system uses pixel distance.
+    # A very large median candle range can otherwise make the
+    # breakout threshold unrealistically large.
+    #
+    # Keep the threshold adaptive, but cap it so that a genuine
+    # close beyond a structural level can be recognised.
+    # ========================================================
+    
+    break_threshold = min(
+        max(
+            median_range * 0.50,
+            3.0
+        ),
+        20.0
     )
 
     # ========================================================
