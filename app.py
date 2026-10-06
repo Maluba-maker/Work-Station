@@ -9358,6 +9358,18 @@ def analyze_breakout_location(
         "breakout_confirmed":
             False,
 
+        "post_breakout_continuation":
+            False,
+
+        "breakout_age":
+            None,
+
+        "holding_above_resistance":
+            False,
+
+        "holding_below_support":
+            False,
+
         "breakout_reasons":
             []
     }
@@ -9556,6 +9568,122 @@ def analyze_breakout_location(
                     "Price is above resistance, but the previous candle was already above the level."
                 )
 
+                # ------------------------------------------------
+                # POST-BREAKOUT CONTINUATION
+                # ------------------------------------------------
+                # The current candle is still above resistance.
+                # Determine whether price crossed this level
+                # recently and is now holding above it.
+                # ------------------------------------------------
+
+                crossing_index = None
+
+                for i in range(
+                    len(candles) - 2,
+                    -1,
+                    -1
+                ):
+
+                    try:
+
+                        candle_close = float(
+                            candles[i]["close"]
+                        )
+
+                    except Exception:
+
+                        continue
+
+                    if (
+                        candle_close
+                        >=
+                        resistance_y
+                    ):
+
+                        if i < len(candles) - 1:
+
+                            try:
+
+                                next_close = float(
+                                    candles[i + 1]["close"]
+                                )
+
+                            except Exception:
+
+                                continue
+
+                            if (
+                                next_close
+                                <
+                                resistance_y
+                            ):
+
+                                crossing_index = (
+                                    i + 1
+                                )
+
+                                break
+
+                if crossing_index is not None:
+
+                    breakout_age = (
+                        len(candles)
+                        -
+                        1
+                        -
+                        crossing_index
+                    )
+
+                    result["breakout_age"] = (
+                        breakout_age
+                    )
+
+                    result["holding_above_resistance"] = (
+                        current_close
+                        <
+                        resistance_y
+                    )
+
+                    # A recent crossing followed by continued
+                    # closes above the level is continuation,
+                    # not a fresh breakout.
+
+                    if (
+                        result[
+                            "holding_above_resistance"
+                        ]
+                        and
+                        breakout_age <= 5
+                    ):
+
+                        result[
+                            "post_breakout_continuation"
+                        ] = True
+
+                        result[
+                            "breakout_status"
+                        ] = (
+                            "POST-BREAKOUT CONTINUATION"
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            "Price recently broke above resistance and is continuing to hold above the level."
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            f"Recent bullish breakout occurred {breakout_age} candle(s) ago."
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            "Current price remains above the former resistance level."
+                        )
+
         else:
 
             # ------------------------------------------------
@@ -9688,6 +9816,114 @@ def analyze_breakout_location(
                 result["breakout_reasons"].append(
                     "Price is below support, but the previous candle was already below the level."
                 )
+
+                # ------------------------------------------------
+                # POST-BREAKDOWN CONTINUATION
+                # ------------------------------------------------
+
+                crossing_index = None
+
+                for i in range(
+                    len(candles) - 2,
+                    -1,
+                    -1
+                ):
+
+                    try:
+
+                        candle_close = float(
+                            candles[i]["close"]
+                        )
+
+                    except Exception:
+
+                        continue
+
+                    if (
+                        candle_close
+                        <=
+                        support_y
+                    ):
+
+                        if i < len(candles) - 1:
+
+                            try:
+
+                                next_close = float(
+                                    candles[i + 1]["close"]
+                                )
+
+                            except Exception:
+
+                                continue
+
+                            if (
+                                next_close
+                                >
+                                support_y
+                            ):
+
+                                crossing_index = (
+                                    i + 1
+                                )
+
+                                break
+
+                if crossing_index is not None:
+
+                    breakout_age = (
+                        len(candles)
+                        -
+                        1
+                        -
+                        crossing_index
+                    )
+
+                    result["breakout_age"] = (
+                        breakout_age
+                    )
+
+                    result["holding_below_support"] = (
+                        current_close
+                        >
+                        support_y
+                    )
+
+                    if (
+                        result[
+                            "holding_below_support"
+                        ]
+                        and
+                        breakout_age <= 5
+                    ):
+
+                        result[
+                            "post_breakout_continuation"
+                        ] = True
+
+                        result[
+                            "breakout_status"
+                        ] = (
+                            "POST-BREAKDOWN CONTINUATION"
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            "Price recently broke below support and is continuing to hold below the level."
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            f"Recent bearish breakdown occurred {breakout_age} candle(s) ago."
+                        )
+
+                        result[
+                            "breakout_reasons"
+                        ].append(
+                            "Current price remains below the former support level."
+                        )
 
         else:
 
