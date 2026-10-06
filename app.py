@@ -11772,7 +11772,13 @@ def evaluate_structural_confirmation(
                 counter_event,
 
             "structural_confirmation_reasons":
-                structural_reasons
+                structural_reasons,
+
+            "structural_latest_event":
+                latest_structural_event,
+    
+            "structural_latest_event_age":
+                latest_structural_event_age
         }
 
     # ========================================================
@@ -11967,7 +11973,13 @@ def evaluate_structural_confirmation(
             counter_event,
 
         "structural_confirmation_reasons":
-            structural_reasons
+            structural_reasons,
+
+        "structural_latest_event":
+            latest_structural_event,
+
+        "structural_latest_event_age":
+            latest_structural_event_age
     }
 
 # ============================================================
@@ -13749,6 +13761,21 @@ setup_analysis[
     ]
 )
 
+setup_analysis[
+    "structural_latest_event"
+] = (
+    structural_confirmation_result.get(
+        "structural_latest_event"
+    )
+)
+
+setup_analysis[
+    "structural_latest_event_age"
+] = (
+    structural_confirmation_result.get(
+        "structural_latest_event_age"
+    )
+)
 # ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
