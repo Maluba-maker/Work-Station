@@ -7488,46 +7488,46 @@ def analyze_price_location(
     
     for level in active_highs:
 
-    try:
-
-        level_copy = level.copy()
-
-        level_y = float(
-            level_copy["y"]
-        )
-
-        # ------------------------------------------------
-        # IMPORTANT:
-        #
-        # DO NOT discard a recent resistance merely
-        # because price has crossed it.
-        #
-        # Smaller Y = higher price.
-        #
-        # A crossed resistance is still important because
-        # it may represent a fresh breakout level.
-        # ------------------------------------------------
-
-        level_copy["distance"] = abs(
-            current_close_y -
-            level_y
-        )
-
-        # Keep recent resistance when it is reasonably
-        # close to current price.
-
-        if (
-            level_copy["distance"]
-            <= active_threshold
-        ):
-
-            resistance_candidates.append(
-                level_copy
+        try:
+    
+            level_copy = level.copy()
+    
+            level_y = float(
+                level_copy["y"]
             )
-
-    except Exception:
-
-        continue
+    
+            # ------------------------------------------------
+            # IMPORTANT:
+            #
+            # DO NOT discard a recent resistance merely
+            # because price has crossed it.
+            #
+            # Smaller Y = higher price.
+            #
+            # A crossed resistance is still important because
+            # it may represent a fresh breakout level.
+            # ------------------------------------------------
+    
+            level_copy["distance"] = abs(
+                current_close_y -
+                level_y
+            )
+    
+            # Keep recent resistance when it is reasonably
+            # close to current price.
+    
+            if (
+                level_copy["distance"]
+                <= active_threshold
+            ):
+    
+                resistance_candidates.append(
+                    level_copy
+                )
+    
+        except Exception:
+    
+            continue
 
     # --------------------------------------------------------
     # DEVELOPING RESISTANCE
