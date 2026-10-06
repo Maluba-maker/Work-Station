@@ -8961,35 +8961,59 @@ def diagnose_trade_setup(
     # ========================================================
     # REJECTION ANALYSIS
     # ========================================================
-
+    
     rejection_status = "NO MAJOR REJECTION"
-
+    
     if setup_direction == "LONG":
-
+    
         if (
+            upper_wick_percentage >= 60
+            and
+            upper_wick_percentage
+            >
+            lower_wick_percentage * 1.50
+        ):
+    
+            rejection_status = (
+                "MAJOR BULLISH SETUP UPPER-WICK REJECTION"
+            )
+    
+        elif (
             upper_wick_percentage >= 45
             and
             upper_wick_percentage
             >
             lower_wick_percentage * 1.25
         ):
-
+    
             rejection_status = (
-                "BULLISH SETUP HAS UPPER-WICK REJECTION"
+                "BULLISH SETUP HAS MODERATE UPPER-WICK REJECTION"
             )
-
+    
     elif setup_direction == "SHORT":
-
+    
         if (
+            lower_wick_percentage >= 60
+            and
+            lower_wick_percentage
+            >
+            upper_wick_percentage * 1.50
+        ):
+    
+            rejection_status = (
+                "MAJOR BEARISH SETUP LOWER-WICK REJECTION"
+            )
+    
+        elif (
             lower_wick_percentage >= 45
             and
             lower_wick_percentage
             >
             upper_wick_percentage * 1.25
         ):
-
+    
             rejection_status = (
-                "BEARISH SETUP HAS LOWER-WICK REJECTION"
+                "BEARISH SETUP HAS MODERATE LOWER-WICK REJECTION"
             )
 
     # ========================================================
@@ -12312,13 +12336,15 @@ def generate_signal(sequence, setup_analysis):
     # ========================================================
 
     major_rejection = (
-        "MAJOR REJECTION" in rejection_status
-        or
-        "STRONG REJECTION" in rejection_status
+        rejection_status.startswith(
+            "MAJOR "
+        )
     )
-
+    
     moderate_rejection = (
-        "REJECTION" in rejection_status
+        "MODERATE "
+        in
+        rejection_status
     )
 
     if major_rejection:
