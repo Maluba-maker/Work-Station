@@ -7580,44 +7580,44 @@ def analyze_price_location(
     
     for level in active_lows:
 
-    try:
-
-        level_copy = level.copy()
-
-        level_y = float(
-            level_copy["y"]
-        )
-
-        # ------------------------------------------------
-        # IMPORTANT:
-        #
-        # DO NOT discard a recent support merely because
-        # price has crossed it.
-        #
-        # A crossed support may become the reference level
-        # for a fresh bearish breakdown.
-        # ------------------------------------------------
-
-        level_copy["distance"] = abs(
-            current_close_y -
-            level_y
-        )
-
-        # Keep recent support when it is reasonably
-        # close to current price.
-
-        if (
-            level_copy["distance"]
-            <= active_threshold
-        ):
-
-            support_candidates.append(
-                level_copy
+        try:
+    
+            level_copy = level.copy()
+    
+            level_y = float(
+                level_copy["y"]
             )
-
-    except Exception:
-
-        continue
+    
+            # ------------------------------------------------
+            # IMPORTANT:
+            #
+            # DO NOT discard a recent support merely because
+            # price has crossed it.
+            #
+            # A crossed support may become the reference level
+            # for a fresh bearish breakdown.
+            # ------------------------------------------------
+    
+            level_copy["distance"] = abs(
+                current_close_y -
+                level_y
+            )
+    
+            # Keep recent support when it is reasonably
+            # close to current price.
+    
+            if (
+                level_copy["distance"]
+                <= active_threshold
+            ):
+    
+                support_candidates.append(
+                    level_copy
+                )
+    
+        except Exception:
+    
+            continue
 
     # ========================================================
     # SELECT NEAREST RESISTANCE
