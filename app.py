@@ -7487,40 +7487,47 @@ def analyze_price_location(
     # --------------------------------------------------------
     
     for level in active_highs:
-    
-        try:
-    
-            level_copy = level.copy()
-    
-            level_y = float(
-                level_copy["y"]
+
+    try:
+
+        level_copy = level.copy()
+
+        level_y = float(
+            level_copy["y"]
+        )
+
+        # ------------------------------------------------
+        # IMPORTANT:
+        #
+        # DO NOT discard a recent resistance merely
+        # because price has crossed it.
+        #
+        # Smaller Y = higher price.
+        #
+        # A crossed resistance is still important because
+        # it may represent a fresh breakout level.
+        # ------------------------------------------------
+
+        level_copy["distance"] = abs(
+            current_close_y -
+            level_y
+        )
+
+        # Keep recent resistance when it is reasonably
+        # close to current price.
+
+        if (
+            level_copy["distance"]
+            <= active_threshold
+        ):
+
+            resistance_candidates.append(
+                level_copy
             )
-    
-            # Resistance must be ABOVE current price.
-            # Smaller Y = higher on chart.
-    
-            if level_y < current_close_y:
-    
-                level_copy["distance"] = (
-                    current_close_y -
-                    level_y
-                )
-    
-                # Keep the level if it is within the
-                # broader NEAR threshold.
-    
-                if (
-                    level_copy["distance"]
-                    <= near_threshold
-                ):
-    
-                    resistance_candidates.append(
-                        level_copy
-                    )
-    
-        except Exception:
-    
-            continue
+
+    except Exception:
+
+        continue
 
     # --------------------------------------------------------
     # DEVELOPING RESISTANCE
@@ -7572,40 +7579,45 @@ def analyze_price_location(
     # --------------------------------------------------------
     
     for level in active_lows:
-    
-        try:
-    
-            level_copy = level.copy()
-    
-            level_y = float(
-                level_copy["y"]
+
+    try:
+
+        level_copy = level.copy()
+
+        level_y = float(
+            level_copy["y"]
+        )
+
+        # ------------------------------------------------
+        # IMPORTANT:
+        #
+        # DO NOT discard a recent support merely because
+        # price has crossed it.
+        #
+        # A crossed support may become the reference level
+        # for a fresh bearish breakdown.
+        # ------------------------------------------------
+
+        level_copy["distance"] = abs(
+            current_close_y -
+            level_y
+        )
+
+        # Keep recent support when it is reasonably
+        # close to current price.
+
+        if (
+            level_copy["distance"]
+            <= active_threshold
+        ):
+
+            support_candidates.append(
+                level_copy
             )
-    
-            # Support must be BELOW current price.
-            # Larger Y = lower on chart.
-    
-            if level_y > current_close_y:
-    
-                level_copy["distance"] = (
-                    level_y -
-                    current_close_y
-                )
-    
-                # Keep the level if it is within the
-                # broader NEAR threshold.
-    
-                if (
-                    level_copy["distance"]
-                    <= near_threshold
-                ):
-    
-                    support_candidates.append(
-                        level_copy
-                    )
-    
-        except Exception:
-    
-            continue
+
+    except Exception:
+
+        continue
 
     # ========================================================
     # SELECT NEAREST RESISTANCE
@@ -7622,38 +7634,20 @@ def analyze_price_location(
     #
     # ========================================================
     
-    valid_resistance_candidates = []
-    
-    for level in resistance_candidates:
-    
-        try:
-    
-            level_y = float(
-                level["y"]
-            )
-    
-            if level_y < current_close_y:
-    
-                valid_resistance_candidates.append(
-                    level
-                )
-    
-        except Exception:
-    
-            continue
-    
-    
     nearest_resistance = None
-    
-    if valid_resistance_candidates:
+
+    if resistance_candidates:
     
         nearest_resistance = min(
-            valid_resistance_candidates,
+            resistance_candidates,
             key=lambda x: (
                 abs(
                     current_close_y -
                     float(x["y"])
                 ),
+    
+                # Prefer structural levels when distances
+                # are essentially equal.
                 0
                 if x.get("source") ==
                 "STRUCTURAL"
@@ -7676,38 +7670,20 @@ def analyze_price_location(
     #
     # ========================================================
     
-    valid_support_candidates = []
-    
-    for level in support_candidates:
-    
-        try:
-    
-            level_y = float(
-                level["y"]
-            )
-    
-            if level_y > current_close_y:
-    
-                valid_support_candidates.append(
-                    level
-                )
-    
-        except Exception:
-    
-            continue
-    
-    
     nearest_support = None
-    
-    if valid_support_candidates:
+
+    if support_candidates:
     
         nearest_support = min(
-            valid_support_candidates,
+            support_candidates,
             key=lambda x: (
                 abs(
                     current_close_y -
                     float(x["y"])
                 ),
+    
+                # Prefer structural levels when distances
+                # are essentially equal.
                 0
                 if x.get("source") ==
                 "STRUCTURAL"
