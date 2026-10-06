@@ -12336,6 +12336,83 @@ def generate_signal(sequence, setup_analysis):
         )
 
     # ========================================================
+    # PATCH 20 — AUTHORITATIVE STRUCTURAL EVENT
+    # ========================================================
+    #
+    # Structural Confirmation is the authority on the latest
+    # structural event used by the final decision engine.
+    #
+    # Step 14 may still use historical BOS information for
+    # continuation scoring, but it must not override the
+    # authoritative latest-event state.
+    # ========================================================
+
+    authoritative_latest_event = (
+        setup_analysis.get(
+            "structural_latest_event"
+        )
+    )
+
+    authoritative_latest_event_age = (
+        setup_analysis.get(
+            "structural_latest_event_age"
+        )
+    )
+
+    authoritative_event_name = "NONE"
+
+    if isinstance(
+        authoritative_latest_event,
+        dict
+    ):
+
+        authoritative_event_name = str(
+            authoritative_latest_event.get(
+                "event",
+                "NONE"
+            )
+        ).upper().strip()
+
+    try:
+
+        if (
+            authoritative_latest_event_age
+            is not None
+        ):
+
+            authoritative_latest_event_age = int(
+                authoritative_latest_event_age
+            )
+
+    except Exception:
+
+        authoritative_latest_event_age = None
+
+    if authoritative_event_name != "NONE":
+
+        reasons.append(
+            "AUTHORITATIVE STRUCTURAL EVENT: "
+            f"{authoritative_event_name}"
+        )
+
+        if (
+            authoritative_latest_event_age
+            is not None
+        ):
+
+            reasons.append(
+                "AUTHORITATIVE STRUCTURAL EVENT AGE: "
+                f"{authoritative_latest_event_age} CANDLES"
+            )
+
+    else:
+
+        warnings.append(
+            "AUTHORITATIVE STRUCTURAL EVENT "
+            "IS UNAVAILABLE"
+        )
+
+    # ========================================================
     # 9. STRUCTURAL EVENTS
     # ========================================================
 
@@ -12534,34 +12611,27 @@ def generate_signal(sequence, setup_analysis):
                 break
 
     # --------------------------------------------------------
-    # If the latest structural event itself is opposite to the
-    # current bias, that is also a structural contradiction.
+    # PATCH 20 — AUTHORITATIVE LATEST EVENT CHECK
+    # --------------------------------------------------------
+    #
+    # Structural Confirmation now supplies the authoritative
+    # latest structural event.
+    #
+    # This prevents Step 14 from silently selecting a different
+    # "latest event" than the structural confirmation engine.
     # --------------------------------------------------------
 
-    last_structural_event = None
+    if (
+        authoritative_event_name
+        ==
+        opposite_bos
+    ):
 
-    if normalised_events:
+        later_opposite_bos = True
 
-        last_structural_event = max(
-            normalised_events,
-            key=lambda event:
-            event["candle_index"]
-        )
-
-    if last_structural_event is not None:
-
-        if (
-            last_structural_event["event"]
-            == opposite_bos
-        ):
-
-            later_opposite_bos = True
-
-    if later_opposite_bos:
-
-        blockers.append(
-            "OPPOSITE BOS INVALIDATES CURRENT "
-            "DIRECTIONAL SETUP"
+        reasons.append(
+            "AUTHORITATIVE LATEST EVENT CONFLICTS "
+            "WITH CURRENT STRUCTURAL BIAS"
         )
 
     # ========================================================
@@ -13451,10 +13521,10 @@ def generate_signal(sequence, setup_analysis):
                 blockers[0],
 
             "event":
-                expected_bos,
+                authoritative_event_name,
 
             "event_age":
-                event_age,
+                authoritative_latest_event_age,
 
             "score":
                 total_score,
@@ -13571,10 +13641,10 @@ def generate_signal(sequence, setup_analysis):
             trigger,
 
         "event":
-            expected_bos,
+            authoritative_event_name,
 
         "event_age":
-            event_age,
+            authoritative_latest_event_age,
 
         "score":
             total_score,
