@@ -13532,6 +13532,34 @@ def generate_signal(sequence, setup_analysis):
             "decision":
                 "NO SIGNAL",
 
+            # ====================================================
+            # PATCH 21 — DECISION STATE FOR HARD BLOCK
+            # ====================================================
+
+            "structural_confirmation_status":
+                structural_confirmation_status,
+
+            "structural_confirmation_quality":
+                structural_confirmation_quality,
+
+            "structural_confirming_event":
+                confirming_event_name,
+
+            "structural_confirming_event_age":
+                structural_confirming_event_age,
+
+            "signal_path":
+                signal_path,
+
+            "direction":
+                direction,
+
+            "final_gate_blocked":
+                True,
+
+            "final_gate_blockers":
+                final_gate_blockers,
+            
             "reasons":
                 blockers
                 +
@@ -13651,6 +13679,34 @@ def generate_signal(sequence, setup_analysis):
 
         "decision":
             decision,
+
+        # ====================================================
+        # PATCH 21 — DECISION STATE FOR SIGNAL AUDIT
+        # ====================================================
+
+        "structural_confirmation_status":
+            structural_confirmation_status,
+
+        "structural_confirmation_quality":
+            structural_confirmation_quality,
+
+        "structural_confirming_event":
+            confirming_event_name,
+
+        "structural_confirming_event_age":
+            structural_confirming_event_age,
+
+        "signal_path":
+            signal_path,
+
+        "direction":
+            direction,
+
+        "final_gate_blocked":
+            bool(final_gate_blockers),
+
+        "final_gate_blockers":
+            final_gate_blockers,
 
         "reasons":
             warnings + reasons,
@@ -13934,9 +13990,89 @@ if (
             f"`{event_age_display}`"
         )
 
+        # ====================================================
+        # PATCH 21 — SIGNAL DECISION AUDIT
+        # ====================================================
+
         with st.expander(
             "🔎 Signal decision audit"
         ):
+
+            st.write(
+                "**Decision:** "
+                f"`{signal_result['decision']}`"
+            )
+
+            st.write(
+                "**Setup Direction:** "
+                f"`{signal_result['direction']}`"
+            )
+
+            st.write(
+                "**Signal Path:** "
+                f"`{signal_result['signal_path']}`"
+            )
+
+            st.write(
+                "**Structural Confirmation:** "
+                f"`{signal_result['structural_confirmation_status']}`"
+            )
+
+            st.write(
+                "**Latest Structural Event:** "
+                f"`{signal_result['event']}`"
+            )
+
+            st.write(
+                "**Latest Event Age:** "
+                f"`{signal_result['event_age']}` "
+                "candles"
+            )
+
+            st.write(
+                "**Confirming Event:** "
+                f"`{signal_result['structural_confirming_event'] or 'NONE'}`"
+            )
+
+            confirming_age = (
+                signal_result[
+                    "structural_confirming_event_age"
+                ]
+            )
+
+            st.write(
+                "**Confirming Event Age:** "
+                f"`{confirming_age}` "
+                "candles"
+                if confirming_age is not None
+                else
+                "**Confirming Event Age:** `UNKNOWN`"
+            )
+
+            st.write(
+                "**Final Gate:** "
+                f"`{'BLOCKED' if signal_result['final_gate_blocked'] else 'PASSED'}`"
+            )
+
+            if signal_result[
+                "final_gate_blockers"
+            ]:
+
+                st.write(
+                    "**Final Gate Blockers:**"
+                )
+
+                for gate_reason in signal_result[
+                    "final_gate_blockers"
+                ]:
+
+                    st.write(
+                        f"• {gate_reason}"
+                    )
+
+            st.write(
+                "**Decision Reasons:**"
+            )
 
             for reason in signal_result[
                 "reasons"
