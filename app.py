@@ -9343,6 +9343,28 @@ def analyze_breakout_location(
         "breakout_direction":
             "NONE",
 
+        # ========================================================
+        # PATCH 28 — BREAKOUT QUALITY VALIDATION
+        # ========================================================
+    
+        "breakout_quality_score":
+            0,
+    
+        "breakout_quality":
+            "INVALID",
+    
+        "breakout_candle_index":
+            None,
+    
+        "breakout_candle_body_percentage":
+            0.0,
+    
+        "breakout_candle_rejection":
+            "UNKNOWN",
+    
+        "structural_level_valid":
+            False,
+        
         "breakout_level_y":
             None,
 
@@ -9991,7 +10013,321 @@ def analyze_breakout_location(
             "Breakout exists, but candle quality is not yet strong enough for premium confirmation."
         )
 
+    # ========================================================
+    # PATCH 28 — BREAKOUT QUALITY VALIDATION
+    # ========================================================
+    #
+    # A breakout may be technically detected without being
+    # strong enough to serve as structural confirmation.
+    #
+    # This layer does NOT create a signal.
+    #
+    # It only determines whether the breakout is strong
+    # enough to be promoted by PATCH 27 into a synthetic BOS.
+    # ========================================================
+
+    breakout_quality_score = 0
+
+    structural_level_valid = (
+        result.get(
+            "breakout_source"
+        ) == "STRUCTURAL"
+        and
+        result.get(
+            "breakout_level_y"
+        ) is not None
+    )
+
+    if structural_level_valid:
+
+        breakout_quality_score += 30
+
+        result[
+            "structural_level_valid"
+        ] = True
+
+    # --------------------------------------------------------
+    # Breakout distance
+    # --------------------------------------------------------
+
+    try:
+
+        breakout_distance = float(
+            result.get(
+                "breakout_distance",
+                0
+            ) or 0
+        )
+
+    except Exception:
+
+        breakout_distance = 0.0
+
+    if (
+        breakout_distance
+        >=
+        break_threshold
+    ):
+
+        breakout_quality_score += 25
+
+    elif (
+        breakout_distance
+        >=
+        break_threshold * 0.75
+    ):
+
+        breakout_quality_score += 15
+
+    # --------------------------------------------------------
+    # Breakout candle body quality
+    # --------------------------------------------------------
+
+    breakout_body_percentage = 0.0
+    breakout_candle_index = None
+
+    # Fresh breakout
+    #
+    # The current candle is the breakout candle when the
+    # breakout was accepted directly.
+    #
+    # For post-breakout continuation, PATCH 27 already knows
+    # the breakout age. Therefore we can reconstruct the
+    # original breakout candle index.
+    # --------------------------------------------------------
+
+    if result.get(
+        "breakout_confirmed",
+        False
+    ):
+
+        breakout_candle_index = (
+            len(candles) - 1
+        )
+
+    elif result.get(
+        "post_breakout_continuation",
+        False
+    ):
+
+        try:
+
+            breakout_age_value = int(
+                result.get(
+                    "breakout_age"
+                )
+            )
+
+            breakout_candle_index = (
+                len(candles)
+                -
+                1
+                -
+                breakout_age_value
+            )
+
+        except Exception:
+
+            breakout_candle_index = None
+
+    # --------------------------------------------------------
+    # Calculate the ACTUAL breakout candle body percentage.
+    # --------------------------------------------------------
+
+    if (
+        breakout_candle_index is not None
+        and
+        0 <= breakout_candle_index < len(candles)
+    ):
+
+        try:
+
+            breakout_candle = candles[
+                breakout_candle_index
+            ]
+
+            breakout_open = float(
+                breakout_candle["open"]
+            )
+
+            breakout_close = float(
+                breakout_candle["close"]
+            )
+
+            breakout_high = float(
+                breakout_candle["high"]
+            )
+
+            breakout_low = float(
+                breakout_candle["low"]
+            )
+
+            breakout_range = abs(
+                breakout_high
+                -
+                breakout_low
+            )
+
+            breakout_body = abs(
+                breakout_close
+                -
+                breakout_open
+            )
+
+            if breakout_range > 0:
+
+                breakout_body_percentage = (
+                    breakout_body
+                    /
+                    breakout_range
+                ) * 100.0
+
+        except Exception:
+
+            breakout_body_percentage = 0.0
+
+    result[
+        "breakout_candle_index"
+    ] = breakout_candle_index
+
+    result[
+        "breakout_candle_body_percentage"
+    ] = round(
+        breakout_body_percentage,
+        1
+    )
+
+    if breakout_body_percentage >= 70:
+
+        breakout_quality_score += 25
+
+    elif breakout_body_percentage >= 55:
+
+        breakout_quality_score += 18
+
+    elif breakout_body_percentage >= 45:
+
+        breakout_quality_score += 10
+
+    # --------------------------------------------------------
+    # Rejection quality
+    # --------------------------------------------------------
+
+    if (
+        "MAJOR"
+        not in
+        rejection_status
+    ):
+
+        breakout_quality_score += 10
+
+        result[
+            "breakout_candle_rejection"
+        ] = "NO MAJOR REJECTION"
+
+    else:
+
+        result[
+            "breakout_candle_rejection"
+        ] = "MAJOR REJECTION"
+
+    # --------------------------------------------------------
+    # Freshness
+    # --------------------------------------------------------
+
+    breakout_age_value = result.get(
+        "breakout_age"
+    )
+
+    if (
+        breakout_age_value is not None
+    ):
+
+        try:
+
+            breakout_age_value = int(
+                breakout_age_value
+            )
+
+        except Exception:
+
+            breakout_age_value = None
+
+    if (
+        breakout_age_value is not None
+        and
+        0 <= breakout_age_value <= 5
+    ):
+
+        breakout_quality_score += 10
+
+    # --------------------------------------------------------
+    # Final quality classification
+    # --------------------------------------------------------
+
+    breakout_quality_score = max(
+        0,
+        min(
+            100,
+            int(
+                round(
+                    breakout_quality_score
+                )
+            )
+        )
+    )
+
+    result[
+        "breakout_quality_score"
+    ] = breakout_quality_score
+
+    if breakout_quality_score >= 80:
+
+        result[
+            "breakout_quality"
+        ] = "STRONG"
+
+    elif breakout_quality_score >= 65:
+
+        result[
+            "breakout_quality"
+        ] = "ACCEPTABLE"
+
+    elif breakout_quality_score >= 50:
+
+        result[
+            "breakout_quality"
+        ] = "WEAK"
+
+    else:
+
+        result[
+            "breakout_quality"
+        ] = "INVALID"
+
+    result[
+        "breakout_reasons"
+    ].append(
+        "BREAKOUT QUALITY: "
+        f"{result['breakout_quality']} "
+        f"({breakout_quality_score}/100)"
+    )
+
+    result[
+        "breakout_reasons"
+    ].append(
+        "BREAKOUT CANDLE BODY: "
+        f"{breakout_body_percentage:.1f}%"
+    )
+
+    result[
+        "breakout_reasons"
+    ].append(
+        "BREAKOUT LEVEL VALID: "
+        f"{result['structural_level_valid']}"
+    )
     return result
+
 # ============================================================
 # STEP 13B — SETUP CLASSIFICATION USING PRICE LOCATION
 # ============================================================
@@ -12931,20 +13267,60 @@ def evaluate_structural_confirmation(
     
     
     # ========================================================
+    # PATCH 28 — BREAKOUT QUALITY INPUT
+    # ========================================================
+    
+    breakout_quality = str(
+        breakout_location.get(
+            "breakout_quality",
+            "INVALID"
+        )
+    ).upper().strip()
+    
+    try:
+    
+        breakout_quality_score = float(
+            breakout_location.get(
+                "breakout_quality_score",
+                0
+            ) or 0
+        )
+    
+    except Exception:
+    
+        breakout_quality_score = 0.0
+    
+    structural_level_valid = bool(
+        breakout_location.get(
+            "structural_level_valid",
+            False
+        )
+    )
+    # ========================================================
     # VALIDATE STRUCTURAL BREAKOUT
     # ========================================================
     
     structural_breakout_confirmed = False
     
-    if (
-        post_breakout_continuation
-        and
-        breakout_source == "STRUCTURAL"
-        and
-        breakout_age is not None
-        and
-        0 <= breakout_age <= 5
-    ):
+        if (
+            post_breakout_continuation
+            and
+            breakout_source == "STRUCTURAL"
+            and
+            structural_level_valid
+            and
+            breakout_quality
+            in (
+                "STRONG",
+                "ACCEPTABLE"
+            )
+            and
+            breakout_quality_score >= 65
+            and
+            breakout_age is not None
+            and
+            0 <= breakout_age <= 5
+        ):
     
         if (
             setup_direction == "LONG"
@@ -13084,6 +13460,40 @@ def evaluate_structural_confirmation(
             "structural_latest_event_age":
                 latest_structural_event_age
         }
+    
+    # ========================================================
+    # PATCH 28 — BREAKOUT QUALITY FAILURE DIAGNOSTICS
+    # ========================================================
+    
+    if (
+        post_breakout_continuation
+        and
+        breakout_source == "STRUCTURAL"
+        and
+        not structural_breakout_confirmed
+    ):
+    
+        if not structural_level_valid:
+    
+            structural_reasons.append(
+                "STRUCTURAL BREAKOUT REJECTED — "
+                "BREAKOUT LEVEL DID NOT PASS QUALITY VALIDATION."
+            )
+    
+        elif breakout_quality_score < 65:
+    
+            structural_reasons.append(
+                "STRUCTURAL BREAKOUT REJECTED — "
+                f"BREAKOUT QUALITY TOO LOW "
+                f"({breakout_quality_score:.0f}/100)."
+            )
+    
+        else:
+    
+            structural_reasons.append(
+                "STRUCTURAL BREAKOUT WAS NOT ELIGIBLE "
+                "FOR SYNTHETIC BOS CONFIRMATION."
+            )
     # ========================================================
     # 12. RECLAIMED BUT NOT YET CONFIRMED
     # ========================================================
@@ -15853,6 +16263,37 @@ if (
                 )
             )
         
+            st.write(
+                "**Breakout Quality:**",
+                breakout_location.get(
+                    "breakout_quality",
+                    "INVALID"
+                )
+            )
+            
+            st.write(
+                "**Breakout Quality Score:**",
+                breakout_location.get(
+                    "breakout_quality_score",
+                    0
+                )
+            )
+            
+            st.write(
+                "**Breakout Candle Body:**",
+                f"{breakout_location.get(
+                    'breakout_candle_body_percentage',
+                    0
+                ):.1f}%"
+            )
+            
+            st.write(
+                "**Structural Level Valid:**",
+                breakout_location.get(
+                    "structural_level_valid",
+                    False
+                )
+            )
             st.write(
                 "**Breakout Confirmed:**",
                 breakout_location.get(
