@@ -16576,14 +16576,6 @@ if (
                     False
                 )
             )
-            
-            st.write(
-                "**Structural Breakout Validated:**",
-                breakout_location.get(
-                    "structural_breakout_validated",
-                    False
-                )
-            )
         
             for reason in breakout_location.get(
                 "breakout_reasons",
