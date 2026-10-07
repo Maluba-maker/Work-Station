@@ -9353,6 +9353,22 @@ def analyze_breakout_location(
         "breakout_quality":
             "INVALID",
     
+        # ========================================================
+        # PATCH 29 — ENTRY TIMING / EXTENSION
+        # ========================================================
+        
+        "entry_extension_distance":
+            None,
+        
+        "entry_extension_multiple":
+            None,
+        
+        "entry_timing":
+            "UNKNOWN",
+        
+        "entry_timing_score":
+            0,
+        
         "breakout_candle_index":
             None,
     
@@ -10326,6 +10342,172 @@ def analyze_breakout_location(
         "BREAKOUT LEVEL VALID: "
         f"{result['structural_level_valid']}"
     )
+    
+    # ========================================================
+    # PATCH 29 — ENTRY TIMING / EXTENSION ANALYSIS
+    # ========================================================
+    #
+    # This measures how far current price has travelled beyond
+    # the breakout level.
+    #
+    # It does NOT assume that every post-breakout continuation
+    # is a bad entry.
+    #
+    # The purpose is to distinguish:
+    #
+    #   TIMELY
+    #   EXTENDED
+    #   SEVERELY EXTENDED
+    #
+    # from one another.
+    # ========================================================
+    
+    try:
+    
+        current_price_for_extension = float(
+            current_close
+        )
+    
+    except Exception:
+    
+        current_price_for_extension = None
+    
+    try:
+    
+        breakout_level_for_extension = float(
+            result.get(
+                "breakout_level_y"
+            )
+        )
+    
+    except Exception:
+    
+        breakout_level_for_extension = None
+    
+    try:
+    
+        median_range_for_extension = float(
+            median_range
+        )
+    
+    except Exception:
+    
+        median_range_for_extension = 0.0
+    
+    
+    if (
+        current_price_for_extension is not None
+        and
+        breakout_level_for_extension is not None
+        and
+        median_range_for_extension > 0
+    ):
+    
+        if setup_direction == "LONG":
+    
+            entry_extension_distance = (
+                breakout_level_for_extension
+                -
+                current_price_for_extension
+            )
+    
+        elif setup_direction == "SHORT":
+    
+            entry_extension_distance = (
+                current_price_for_extension
+                -
+                breakout_level_for_extension
+            )
+    
+        else:
+    
+            entry_extension_distance = 0.0
+    
+        entry_extension_distance = max(
+            0.0,
+            float(
+                entry_extension_distance
+            )
+        )
+    
+        entry_extension_multiple = (
+            entry_extension_distance
+            /
+            median_range_for_extension
+        )
+    
+        result[
+            "entry_extension_distance"
+        ] = round(
+            entry_extension_distance,
+            2
+        )
+    
+        result[
+            "entry_extension_multiple"
+        ] = round(
+            entry_extension_multiple,
+            2
+        )
+    
+        # ----------------------------------------------------
+        # TIMING CLASSIFICATION
+        # ----------------------------------------------------
+    
+        if entry_extension_multiple <= 1.25:
+    
+            result[
+                "entry_timing"
+            ] = "TIMELY"
+    
+            result[
+                "entry_timing_score"
+            ] = 100
+    
+        elif entry_extension_multiple <= 2.0:
+    
+            result[
+                "entry_timing"
+            ] = "EXTENDED"
+    
+            result[
+                "entry_timing_score"
+            ] = 75
+    
+        elif entry_extension_multiple <= 3.0:
+    
+            result[
+                "entry_timing"
+            ] = "LATE"
+    
+            result[
+                "entry_timing_score"
+            ] = 50
+    
+        else:
+    
+            result[
+                "entry_timing"
+            ] = "SEVERELY EXTENDED"
+    
+            result[
+                "entry_timing_score"
+            ] = 20
+    
+        result[
+            "breakout_reasons"
+        ].append(
+            "ENTRY TIMING: "
+            f"{result['entry_timing']}"
+        )
+    
+        result[
+            "breakout_reasons"
+        ].append(
+            "ENTRY EXTENSION: "
+            f"{result['entry_extension_multiple']:.2f}x "
+            "MEDIAN RANGE"
+        )
     return result
 
 # ============================================================
@@ -13855,6 +14037,51 @@ def generate_signal(sequence, setup_analysis):
     sequence = sequence or {}
     setup_analysis = setup_analysis or {}
 
+    # ========================================================
+    # PATCH 29 — ENTRY TIMING INPUT
+    # ========================================================
+    
+    breakout_location = (
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        )
+        or {}
+    )
+    
+    entry_timing = str(
+        breakout_location.get(
+            "entry_timing",
+            "UNKNOWN"
+        )
+    ).upper().strip()
+    
+    try:
+    
+        entry_extension_multiple = float(
+            breakout_location.get(
+                "entry_extension_multiple",
+                0
+            ) or 0
+        )
+    
+    except Exception:
+    
+        entry_extension_multiple = 0.0
+    
+    try:
+    
+        entry_timing_score = float(
+            breakout_location.get(
+                "entry_timing_score",
+                0
+            ) or 0
+        )
+    
+    except Exception:
+    
+        entry_timing_score = 0.0
+    
     reasons = []
     warnings = []
     blockers = []
@@ -14900,6 +15127,15 @@ def generate_signal(sequence, setup_analysis):
         f"{confluence:.1f}"
     )
 
+    reasons.append(
+        "ENTRY TIMING: "
+        f"{entry_timing}"
+    )
+    
+    reasons.append(
+        "ENTRY EXTENSION: "
+        f"{entry_extension_multiple:.2f}x MEDIAN RANGE"
+    )
     # ========================================================
     # 26. SCORE BREAKDOWN
     # ========================================================
@@ -16269,6 +16505,30 @@ if (
                     "breakout_quality",
                     "INVALID"
                 )
+            )
+            
+            st.write(
+                "**Entry Timing:**",
+                breakout_location.get(
+                    "entry_timing",
+                    "UNKNOWN"
+                )
+            )
+            
+            st.write(
+                "**Entry Timing Score:**",
+                breakout_location.get(
+                    "entry_timing_score",
+                    0
+                )
+            )
+            
+            st.write(
+                "**Entry Extension:**",
+                f"{breakout_location.get(
+                    'entry_extension_multiple',
+                    0
+                ):.2f}x median range"
             )
             
             st.write(
