@@ -13302,25 +13302,25 @@ def evaluate_structural_confirmation(
     
     structural_breakout_confirmed = False
     
-        if (
-            post_breakout_continuation
-            and
-            breakout_source == "STRUCTURAL"
-            and
-            structural_level_valid
-            and
-            breakout_quality
-            in (
-                "STRONG",
-                "ACCEPTABLE"
-            )
-            and
-            breakout_quality_score >= 65
-            and
-            breakout_age is not None
-            and
-            0 <= breakout_age <= 5
-        ):
+    if (
+        post_breakout_continuation
+        and
+        breakout_source == "STRUCTURAL"
+        and
+        structural_level_valid
+        and
+        breakout_quality
+        in (
+            "STRONG",
+            "ACCEPTABLE"
+        )
+        and
+        breakout_quality_score >= 65
+        and
+        breakout_age is not None
+        and
+        0 <= breakout_age <= 5
+    ):
     
         if (
             setup_direction == "LONG"
