@@ -14597,9 +14597,26 @@ def generate_signal(sequence, setup_analysis):
             "CONFIRMATION ENGINE HAS NOT FULLY CONFIRMED "
             f"{direction}"
         )
-    
+       
     # ========================================================
-    # 3. ENTRY TRIGGER
+    # ENTRY TRIGGER VALIDATION
+    # ========================================================
+    #
+    # The Entry Trigger engine may return direction-specific
+    # trigger types such as:
+    #
+    #   VALID LONG POST-BREAKOUT TRIGGER
+    #   VALID SHORT POST-BREAKDOWN TRIGGER
+    #
+    # Therefore we must NOT require an exact generic string
+    # such as:
+    #
+    #   VALID LONG TRIGGER
+    #
+    # The trigger must instead:
+    #   1. Be VALID
+    #   2. Match the setup direction
+    #   3. End with TRIGGER
     # ========================================================
     
     entry_trigger = str(
@@ -14609,15 +14626,24 @@ def generate_signal(sequence, setup_analysis):
         )
     ).upper().strip()
     
-    expected_trigger = (
-        f"VALID {direction} TRIGGER"
+    
+    expected_direction_trigger = (
+        f"VALID {direction}"
     )
     
-    if (
-        entry_trigger
-        !=
-        expected_trigger
-    ):
+    
+    entry_trigger_valid = (
+        entry_trigger.startswith(
+            expected_direction_trigger
+        )
+        and
+        entry_trigger.endswith(
+            "TRIGGER"
+        )
+    )
+    
+    
+    if not entry_trigger_valid:
     
         final_gate_blockers.append(
             "ENTRY TRIGGER IS NOT VALID"
