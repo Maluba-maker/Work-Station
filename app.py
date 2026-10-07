@@ -15205,12 +15205,19 @@ def generate_signal(sequence, setup_analysis):
             f"LATEST DIRECTIONAL BOS: "
             f"{expected_bos}"
         )
-
+    
         reasons.append(
             f"BOS AGE: "
             f"{event_age} CANDLES"
         )
-
+    
+    else:
+    
+        reasons.append(
+            "NO HISTORICAL DIRECTIONAL BOS FOUND"
+        )
+    
+    
     if (
         confirming_event_name
         == expected_bos
