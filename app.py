@@ -13524,6 +13524,13 @@ def evaluate_structural_confirmation(
     
             structural_breakout_confirmed = True
     
+    # ========================================================
+    # PATCH 30 — EXPOSE STRUCTURAL BREAKOUT VALIDATION
+    # ========================================================
+    
+    breakout_location["structural_breakout_validated"] = (
+        structural_breakout_confirmed
+    )
     
     # ========================================================
     # CREATE STRUCTURAL CONFIRMATION FROM BREAKOUT
@@ -16555,9 +16562,25 @@ if (
                 )
             )
             st.write(
-                "**Breakout Confirmed:**",
+                "**Raw Breakout Confirmed:**",
                 breakout_location.get(
                     "breakout_confirmed",
+                    False
+                )
+            )
+            
+            st.write(
+                "**Structural Breakout Validated:**",
+                breakout_location.get(
+                    "structural_breakout_validated",
+                    False
+                )
+            )
+            
+            st.write(
+                "**Structural Breakout Validated:**",
+                breakout_location.get(
+                    "structural_breakout_validated",
                     False
                 )
             )
