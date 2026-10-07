@@ -15507,6 +15507,49 @@ def generate_signal(sequence, setup_analysis):
         )
     
     # ========================================================
+    # PATCH 31 — ENTRY TIMING SAFETY GATE
+    # ========================================================
+    #
+    # Entry timing is now a FINAL SIGNAL QUALITY CONTROL.
+    #
+    # TIMELY:
+    #     <= 1.25x median range
+    #     Fully acceptable.
+    #
+    # EXTENDED:
+    #     <= 2.00x median range
+    #     Allowed, but only as a weaker entry.
+    #
+    # LATE:
+    #     <= 3.00x median range
+    #     Too extended for a next-candle signal.
+    #
+    # SEVERELY EXTENDED:
+    #     > 3.00x median range
+    #     Never authorize a next-candle signal.
+    # ========================================================
+    
+    if entry_timing == "LATE":
+    
+        final_gate_blockers.append(
+            "ENTRY IS TOO EXTENDED FOR A NEXT-CANDLE SIGNAL "
+            f"({entry_extension_multiple:.2f}x MEDIAN RANGE)"
+        )
+    
+    elif entry_timing == "SEVERELY EXTENDED":
+    
+        final_gate_blockers.append(
+            "ENTRY IS SEVERELY EXTENDED "
+            f"({entry_extension_multiple:.2f}x MEDIAN RANGE)"
+        )
+    
+    elif entry_timing == "UNKNOWN":
+    
+        final_gate_blockers.append(
+            "ENTRY TIMING COULD NOT BE VALIDATED"
+        )
+    
+    # ========================================================
     # 14. STRUCTURAL COUNTER-EVENT CHECK
     # ========================================================
     #
