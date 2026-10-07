@@ -9399,6 +9399,12 @@ def analyze_breakout_location(
         "post_breakout_continuation":
             False,
 
+        "breakout_confirmation_mode":
+            "NONE",
+        
+        "breakout_confirmation_explanation":
+            "",
+        
         "breakout_age":
             None,
 
@@ -13533,6 +13539,73 @@ def evaluate_structural_confirmation(
     )
     
     # ========================================================
+    # PATCH 33 — BREAKOUT CONFIRMATION AUTHORITY
+    # ========================================================
+    #
+    # A raw breakout and a structural breakout validation are
+    # NOT the same thing.
+    #
+    # RAW BREAKOUT:
+    #   Current candle itself newly clears the level.
+    #
+    # STRUCTURAL VALIDATION:
+    #   A previous breakout already occurred and the current
+    #   price action is continuing to hold beyond that level.
+    #
+    # Therefore:
+    #
+    #   Raw Breakout Confirmed = False
+    #   Structural Breakout Validated = True
+    #
+    # is a valid post-breakout continuation state.
+    # ========================================================
+    
+    if structural_breakout_confirmed:
+    
+        breakout_location[
+            "breakout_confirmation_mode"
+        ] = "STRUCTURAL VALIDATION"
+    
+        breakout_location[
+            "breakout_confirmation_explanation"
+        ] = (
+            "Raw breakout is not required because the "
+            "structural breakout was previously established "
+            "and the current price is holding beyond the "
+            "validated structural level."
+        )
+    
+    elif bool(
+        breakout_location.get(
+            "breakout_confirmed",
+            False
+        )
+    ):
+    
+        breakout_location[
+            "breakout_confirmation_mode"
+        ] = "RAW BREAKOUT"
+    
+        breakout_location[
+            "breakout_confirmation_explanation"
+        ] = (
+            "The current candle directly established "
+            "the breakout beyond the identified level."
+        )
+    
+    else:
+    
+        breakout_location[
+            "breakout_confirmation_mode"
+        ] = "NONE"
+    
+        breakout_location[
+            "breakout_confirmation_explanation"
+        ] = (
+            "Neither a raw breakout nor a validated "
+            "structural breakout is currently established."
+        )
+    # ========================================================
     # CREATE STRUCTURAL CONFIRMATION FROM BREAKOUT
     # ========================================================
     
@@ -16749,6 +16822,27 @@ if (
                 )
             )
         
+            st.write(
+                "**Breakout Confirmation Mode:**",
+                breakout_location.get(
+                    "breakout_confirmation_mode",
+                    "NONE"
+                )
+            )
+            
+            confirmation_explanation = (
+                breakout_location.get(
+                    "breakout_confirmation_explanation",
+                    ""
+                )
+            )
+            
+            if confirmation_explanation:
+            
+                st.write(
+                    f"• {confirmation_explanation}"
+                )
+            
             for reason in breakout_location.get(
                 "breakout_reasons",
                 []
