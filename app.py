@@ -14403,6 +14403,59 @@ def generate_signal(sequence, setup_analysis):
 
         authoritative_latest_event_age = None
 
+    # ========================================================
+    # PATCH 32 — AUTHORITATIVE STRUCTURAL FRESHNESS INPUT
+    # ========================================================
+    #
+    # The Structural Confirmation Engine is the authority on
+    # the BOS that actually confirms the current setup.
+    #
+    # Step 14 may still contain an older historical BOS.
+    # That historical BOS remains useful for continuation
+    # context, but it must NOT override a newer confirming BOS.
+    # ========================================================
+    
+    structural_confirming_event = (
+        setup_analysis.get(
+            "structural_confirming_event"
+        )
+    )
+    
+    structural_confirming_event_age = (
+        setup_analysis.get(
+            "structural_confirming_event_age"
+        )
+    )
+    
+    confirming_event_name = ""
+    
+    if isinstance(
+        structural_confirming_event,
+        dict
+    ):
+    
+        confirming_event_name = str(
+            structural_confirming_event.get(
+                "event",
+                ""
+            )
+        ).upper().strip()
+    
+    try:
+    
+        if (
+            structural_confirming_event_age
+            is not None
+        ):
+    
+            structural_confirming_event_age = int(
+                structural_confirming_event_age
+            )
+    
+    except Exception:
+    
+        structural_confirming_event_age = None
+    
     if authoritative_event_name != "NONE":
 
         reasons.append(
@@ -14850,52 +14903,97 @@ def generate_signal(sequence, setup_analysis):
         structural_confirmation_score = 5
 
     # ========================================================
-    # 20. FRESHNESS SCORE
-    #
-    # Freshness is now a QUALITY FACTOR ONLY.
-    #
-    # It NEVER blocks a structurally valid continuation.
+    # PATCH 32 — AUTHORITATIVE FRESHNESS SCORE
     # ========================================================
-
-    if event_age is None:
-
-        freshness_score = 4
-
-    elif event_age <= 2:
-
-        freshness_score = 10
-
-    elif event_age <= 4:
-
-        freshness_score = 9
-
-    elif event_age <= 6:
-
-        freshness_score = 8
-
-    elif event_age <= 8:
-
-        freshness_score = 7
-
-    elif event_age <= 15:
-
-        freshness_score = 5
-
-    elif event_age <= 30:
-
-        freshness_score = 3
-
-    elif event_age <= 60:
-
-        freshness_score = 2
-
+    #
+    # Freshness hierarchy:
+    #
+    # 1. Fresh Structural Confirmation BOS
+    #    -> PRIMARY
+    #
+    # 2. Historical directional BOS
+    #    -> FALLBACK
+    #
+    # This prevents an old historical BOS from penalising a
+    # setup that has just received a fresh structural BOS
+    # confirmation.
+    #
+    # IMPORTANT:
+    # Freshness remains a QUALITY FACTOR.
+    # It does NOT independently authorize a signal.
+    # ========================================================
+    
+    if (
+        confirming_event_name
+        == expected_bos
+        and
+        structural_confirming_event_age
+        is not None
+    ):
+    
+        freshness_reference_age = (
+            structural_confirming_event_age
+        )
+    
+        freshness_reference = (
+            "STRUCTURAL CONFIRMING BOS"
+        )
+    
     else:
-
+    
+        freshness_reference_age = event_age
+    
+        freshness_reference = (
+            "HISTORICAL DIRECTIONAL BOS"
+        )
+    
+    
+    if freshness_reference_age is None:
+    
+        freshness_score = 4
+    
+    elif freshness_reference_age <= 2:
+    
+        freshness_score = 10
+    
+    elif freshness_reference_age <= 4:
+    
+        freshness_score = 9
+    
+    elif freshness_reference_age <= 6:
+    
+        freshness_score = 8
+    
+    elif freshness_reference_age <= 8:
+    
+        freshness_score = 7
+    
+    elif freshness_reference_age <= 15:
+    
+        freshness_score = 5
+    
+    elif freshness_reference_age <= 30:
+    
+        freshness_score = 3
+    
+    elif freshness_reference_age <= 60:
+    
+        freshness_score = 2
+    
+    else:
+    
         freshness_score = 1
-
+    
+    
+    if (
+        freshness_reference_age is not None
+        and
+        freshness_reference_age > 8
+    ):
+    
         warnings.append(
-            f"DIRECTIONAL BOS IS HISTORICAL "
-            f"({event_age} CANDLES OLD)"
+            f"{freshness_reference} IS HISTORICAL "
+            f"({freshness_reference_age} CANDLES OLD)"
         )
 
     # ========================================================
@@ -15113,6 +15211,35 @@ def generate_signal(sequence, setup_analysis):
             f"{event_age} CANDLES"
         )
 
+    if (
+        confirming_event_name
+        == expected_bos
+        and
+        structural_confirming_event_age
+        is not None
+    ):
+    
+        reasons.append(
+            "AUTHORITATIVE CONFIRMING BOS: "
+            f"{confirming_event_name}"
+        )
+    
+        reasons.append(
+            "AUTHORITATIVE CONFIRMING BOS AGE: "
+            f"{structural_confirming_event_age} CANDLES"
+        )
+    
+        reasons.append(
+            "FRESHNESS BASIS: "
+            "STRUCTURAL CONFIRMING BOS"
+        )
+    
+    else:
+    
+        reasons.append(
+            "FRESHNESS BASIS: "
+            "HISTORICAL DIRECTIONAL BOS"
+        )
     else:
 
         reasons.append(
