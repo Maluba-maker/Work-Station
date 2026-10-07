@@ -10639,6 +10639,198 @@ setup_analysis = classify_setup_with_price_location(
 )
     
 # ============================================================
+# PATCH 26 — POST-BREAKOUT SETUP OVERRIDE
+# ============================================================
+#
+# IMPORTANT
+# ---------
+# A confirmed recent breakout changes the meaning of the
+# previous resistance/support condition.
+#
+# Once price has broken through resistance and is holding
+# above it, the old "AT RESISTANCE" conflict must NOT continue
+# to block the bullish continuation setup.
+#
+# Likewise, once price has broken through support and is
+# holding below it, the old "AT SUPPORT" conflict must NOT
+# continue to block bearish continuation.
+#
+# This does NOT generate BUY / SELL.
+# It only corrects the setup state before Step 15.
+# ============================================================
+
+breakout_patch = (
+    setup_analysis.get(
+        "breakout_location",
+        {}
+    )
+    or {}
+)
+
+post_breakout_continuation = bool(
+    breakout_patch.get(
+        "post_breakout_continuation",
+        False
+    )
+)
+
+breakout_direction = str(
+    breakout_patch.get(
+        "breakout_direction",
+        "NONE"
+    )
+).upper().strip()
+
+holding_above_resistance = bool(
+    breakout_patch.get(
+        "holding_above_resistance",
+        False
+    )
+)
+
+holding_below_support = bool(
+    breakout_patch.get(
+        "holding_below_support",
+        False
+    )
+)
+
+breakout_age = breakout_patch.get(
+    "breakout_age"
+)
+
+try:
+
+    breakout_age = (
+        int(breakout_age)
+        if breakout_age is not None
+        else None
+    )
+
+except Exception:
+
+    breakout_age = None
+
+
+# ============================================================
+# LONG POST-BREAKOUT CONTINUATION
+# ============================================================
+
+if (
+    post_breakout_continuation
+    and
+    breakout_direction == "BULLISH"
+    and
+    holding_above_resistance
+    and
+    breakout_age is not None
+    and
+    breakout_age <= 5
+    and
+    setup_analysis.get(
+        "setup_direction",
+        "NONE"
+    ) == "LONG"
+):
+
+    setup_analysis[
+        "setup_classification"
+    ] = (
+        "LONG POST-BREAKOUT "
+        "CONTINUATION"
+    )
+
+    setup_analysis[
+        "location_effect"
+    ] = "POSITIVE"
+
+    setup_analysis[
+        "location_quality"
+    ] = "POSITIVE"
+
+    setup_analysis.setdefault(
+        "classification_reasons",
+        []
+    ).append(
+        "Recent bullish breakout changes "
+        "the previous resistance condition "
+        "into a post-breakout continuation state."
+    )
+
+    setup_analysis[
+        "classification_reasons"
+    ].append(
+        "Price is holding above the former "
+        "resistance level."
+    )
+
+    setup_analysis[
+        "classification_reasons"
+    ].append(
+        f"Breakout occurred "
+        f"{breakout_age} candle(s) ago."
+    )
+
+
+# ============================================================
+# SHORT POST-BREAKDOWN CONTINUATION
+# ============================================================
+
+elif (
+    post_breakout_continuation
+    and
+    breakout_direction == "BEARISH"
+    and
+    holding_below_support
+    and
+    breakout_age is not None
+    and
+    breakout_age <= 5
+    and
+    setup_analysis.get(
+        "setup_direction",
+        "NONE"
+    ) == "SHORT"
+):
+
+    setup_analysis[
+        "setup_classification"
+    ] = (
+        "SHORT POST-BREAKDOWN "
+        "CONTINUATION"
+    )
+
+    setup_analysis[
+        "location_effect"
+    ] = "POSITIVE"
+
+    setup_analysis[
+        "location_quality"
+    ] = "POSITIVE"
+
+    setup_analysis.setdefault(
+        "classification_reasons",
+        []
+    ).append(
+        "Recent bearish breakdown changes "
+        "the previous support condition "
+        "into a post-breakdown continuation state."
+    )
+
+    setup_analysis[
+        "classification_reasons"
+    ].append(
+        "Price is holding below the former "
+        "support level."
+    )
+
+    setup_analysis[
+        "classification_reasons"
+    ].append(
+        f"Breakdown occurred "
+        f"{breakout_age} candle(s) ago."
+    )
+# ============================================================
 # STEP 15 — ENTRY TRIGGER CLASSIFICATION
 # ============================================================
 #
