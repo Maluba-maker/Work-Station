@@ -12832,6 +12832,259 @@ def evaluate_structural_confirmation(
             )
 
     # ========================================================
+    # PATCH 27 — STRUCTURAL BREAKOUT CONFIRMATION BRIDGE
+    # ========================================================
+    #
+    # PURPOSE
+    # -------
+    # A validated structural breakout can provide the fresh
+    # directional confirmation required after a counter-directional
+    # structural event.
+    #
+    # This does NOT weaken the structural confirmation engine.
+    #
+    # It requires ALL of the following:
+    #
+    #   1. A post-breakout continuation is actually detected.
+    #   2. The breakout comes from a STRUCTURAL level.
+    #   3. Breakout direction matches the setup direction.
+    #   4. Price is still holding beyond the broken level.
+    #   5. Breakout is fresh (0–5 candles).
+    #
+    # When all conditions are satisfied, the breakout is treated as
+    # the current confirming structural BOS.
+    #
+    # This is especially important when the breakout detector has
+    # recognised the structural break but the historical BOS event
+    # detector has not created a matching BULLISH/BEARISH BOS event.
+    # ========================================================
+    
+    breakout_location = (
+        setup_analysis.get(
+            "breakout_location",
+            {}
+        )
+        or {}
+    )
+    
+    post_breakout_continuation = bool(
+        breakout_location.get(
+            "post_breakout_continuation",
+            False
+        )
+    )
+    
+    breakout_direction = str(
+        breakout_location.get(
+            "breakout_direction",
+            "NONE"
+        )
+    ).upper().strip()
+    
+    breakout_source = str(
+        breakout_location.get(
+            "breakout_source",
+            ""
+        )
+    ).upper().strip()
+    
+    breakout_status = str(
+        breakout_location.get(
+            "breakout_status",
+            ""
+        )
+    ).upper().strip()
+    
+    holding_above_resistance = bool(
+        breakout_location.get(
+            "holding_above_resistance",
+            False
+        )
+    )
+    
+    holding_below_support = bool(
+        breakout_location.get(
+            "holding_below_support",
+            False
+        )
+    )
+    
+    breakout_level_y = breakout_location.get(
+        "breakout_level_y"
+    )
+    
+    breakout_age = breakout_location.get(
+        "breakout_age"
+    )
+    
+    try:
+    
+        breakout_age = (
+            int(breakout_age)
+            if breakout_age is not None
+            else None
+        )
+    
+    except Exception:
+    
+        breakout_age = None
+    
+    
+    # ========================================================
+    # VALIDATE STRUCTURAL BREAKOUT
+    # ========================================================
+    
+    structural_breakout_confirmed = False
+    
+    if (
+        post_breakout_continuation
+        and
+        breakout_source == "STRUCTURAL"
+        and
+        breakout_age is not None
+        and
+        0 <= breakout_age <= 5
+    ):
+    
+        if (
+            setup_direction == "LONG"
+            and
+            breakout_direction == "BULLISH"
+            and
+            holding_above_resistance
+        ):
+    
+            structural_breakout_confirmed = True
+    
+        elif (
+            setup_direction == "SHORT"
+            and
+            breakout_direction == "BEARISH"
+            and
+            holding_below_support
+        ):
+    
+            structural_breakout_confirmed = True
+    
+    
+    # ========================================================
+    # CREATE STRUCTURAL CONFIRMATION FROM BREAKOUT
+    # ========================================================
+    
+    if structural_breakout_confirmed:
+    
+        synthetic_bos_index = -1
+    
+        if (
+            current_candle_index is not None
+            and
+            breakout_age is not None
+        ):
+    
+            synthetic_bos_index = (
+                current_candle_index
+                -
+                breakout_age
+            )
+    
+        confirming_event = {
+    
+            "event":
+                expected_bos,
+    
+            "direction":
+                expected_direction,
+    
+            "candle_index":
+                synthetic_bos_index,
+    
+            "level_price":
+                breakout_level_y,
+    
+            "level_type":
+                "STRUCTURAL BREAKOUT",
+    
+            "source":
+                "STRUCTURAL_BREAKOUT_VALIDATION",
+    
+            "synthetic":
+                True
+        }
+    
+        confirming_event_age = (
+            breakout_age
+        )
+    
+        confirmation_status = (
+            f"CONFIRMED {setup_direction}"
+        )
+    
+        confirmation_quality = "STRONG"
+    
+        confirmation_score = 100
+    
+        structural_reasons.append(
+            f"Fresh structural {expected_bos} "
+            "is confirmed by the breakout engine."
+        )
+    
+        structural_reasons.append(
+            f"Structural breakout occurred "
+            f"{breakout_age} candle(s) ago."
+        )
+    
+        structural_reasons.append(
+            "Price is holding beyond the broken "
+            "structural level."
+        )
+    
+        structural_reasons.append(
+            "The validated structural breakout "
+            "provides current directional confirmation."
+        )
+    
+        return {
+    
+            "structural_confirmation_status":
+                confirmation_status,
+    
+            "structural_confirmation_quality":
+                confirmation_quality,
+    
+            "structural_confirmation_score":
+                confirmation_score,
+    
+            "structural_reference_level_y":
+                reference_level_y,
+    
+            "structural_reference_level_type":
+                reference_level_type,
+    
+            "structural_current_close_y":
+                current_close_y,
+    
+            "structural_level_reclaimed":
+                current_reclaimed,
+    
+            "structural_confirming_event":
+                confirming_event,
+    
+            "structural_confirming_event_age":
+                confirming_event_age,
+    
+            "structural_counter_event":
+                counter_event,
+    
+            "structural_confirmation_reasons":
+                structural_reasons,
+    
+            "structural_latest_event":
+                latest_structural_event,
+    
+            "structural_latest_event_age":
+                latest_structural_event_age
+        }
+    # ========================================================
     # 12. RECLAIMED BUT NOT YET CONFIRMED
     # ========================================================
 
