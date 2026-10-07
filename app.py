@@ -15247,11 +15247,6 @@ def generate_signal(sequence, setup_analysis):
             "FRESHNESS BASIS: "
             "HISTORICAL DIRECTIONAL BOS"
         )
-    else:
-
-        reasons.append(
-            "NO HISTORICAL DIRECTIONAL BOS FOUND"
-        )
 
     reasons.append(
         f"DETECTION CONFIDENCE: "
