@@ -12300,6 +12300,144 @@ def evaluate_confirmation(
     ).upper().strip()
 
     # ========================================================
+    # PATCH 36 — EFFECTIVE STRUCTURAL EVENT ALIGNMENT
+    # ========================================================
+    #
+    # The displayed/latest BOS-CHoCH event can be historical.
+    # If a newer completed HH->HL / LL->LH sequence has formed
+    # after that event and the current structural bias agrees
+    # with the setup, the newer regime supersedes the stale event.
+    #
+    # Keep the original event_alignment unchanged for audit
+    # transparency. Use effective_event_alignment only for this
+    # confirmation decision.
+    # ========================================================
+
+    effective_event_alignment = event_alignment
+    stale_event_superseded_for_confirmation = False
+
+    try:
+        current_candle_index = int(
+            sequence.get(
+                "count",
+                0
+            ) or 0
+        ) - 1
+    except Exception:
+        current_candle_index = -1
+
+    try:
+        current_sequence_index = int(
+            sequence.get(
+                "structural_sequence_index",
+                -1
+            )
+        )
+    except Exception:
+        current_sequence_index = -1
+
+    last_event = sequence.get(
+        "last_bos_choch",
+        None
+    )
+
+    try:
+        last_event_index = int(
+            last_event.get(
+                "candle_index",
+                -1
+            )
+        ) if isinstance(last_event, dict) else -1
+    except Exception:
+        last_event_index = -1
+
+    last_event_age = (
+        current_candle_index - last_event_index
+        if current_candle_index >= 0 and last_event_index >= 0
+        else None
+    )
+
+    current_sequence_age = (
+        current_candle_index - current_sequence_index
+        if current_candle_index >= 0 and current_sequence_index >= 0
+        else None
+    )
+
+    current_structure_for_confirmation = str(
+        sequence.get(
+            "swing_current_structure",
+            sequence.get(
+                "current_structure",
+                sequence.get(
+                    "structural_sequence",
+                    "UNKNOWN"
+                )
+            )
+        )
+    ).upper().strip()
+
+    current_bias_for_confirmation = str(
+        sequence.get(
+            "structural_bias",
+            sequence.get(
+                "bos_choch_bias",
+                "UNKNOWN"
+            )
+        )
+    ).upper().strip()
+
+    current_regime_aligned = (
+        (
+            setup_direction == "LONG"
+            and
+            current_bias_for_confirmation == "BULLISH"
+            and
+            (
+                "HIGHER HIGH" in current_structure_for_confirmation
+                or "HIGHER LOW" in current_structure_for_confirmation
+                or "BULLISH" in current_structure_for_confirmation
+                or "HH" in current_structure_for_confirmation
+                or "HL" in current_structure_for_confirmation
+            )
+        )
+        or
+        (
+            setup_direction == "SHORT"
+            and
+            current_bias_for_confirmation == "BEARISH"
+            and
+            (
+                "LOWER HIGH" in current_structure_for_confirmation
+                or "LOWER LOW" in current_structure_for_confirmation
+                or "BEARISH" in current_structure_for_confirmation
+                or "LH" in current_structure_for_confirmation
+                or "LL" in current_structure_for_confirmation
+            )
+        )
+    )
+
+    if (
+        event_alignment == "COUNTER-DIRECTIONAL"
+        and
+        last_event_age is not None
+        and
+        last_event_age > 12
+        and
+        current_sequence_index >= 0
+        and
+        current_sequence_age is not None
+        and
+        current_sequence_age <= 12
+        and
+        current_sequence_index > last_event_index
+        and
+        current_regime_aligned
+    ):
+
+        effective_event_alignment = "ALIGNED"
+        stale_event_superseded_for_confirmation = True
+
+    # ========================================================
     # DEFAULTS
     # ========================================================
 
@@ -12448,15 +12586,24 @@ def evaluate_confirmation(
     # 5. STRUCTURAL EVENT — 10 POINTS
     # ========================================================
 
-    if event_alignment == "ALIGNED":
+    if effective_event_alignment == "ALIGNED":
 
         confirmation_score += 10
 
-        confirmation_reasons.append(
-            "Latest structural event agrees with the setup direction."
-        )
+        if stale_event_superseded_for_confirmation:
 
-    elif event_alignment == "NEUTRAL":
+            confirmation_reasons.append(
+                "Latest structural event is stale; a newer current "
+                "structural regime supersedes it."
+            )
+
+        else:
+
+            confirmation_reasons.append(
+                "Latest structural event agrees with the setup direction."
+            )
+
+    elif effective_event_alignment == "NEUTRAL":
 
         confirmation_score += 5
 
@@ -12464,7 +12611,7 @@ def evaluate_confirmation(
             "Latest structural event is neutral to the setup direction."
         )
 
-    elif event_alignment == "COUNTER-DIRECTIONAL":
+    elif effective_event_alignment == "COUNTER-DIRECTIONAL":
 
         confirmation_reasons.append(
             "Latest structural event conflicts with the setup direction."
@@ -12584,7 +12731,7 @@ def evaluate_confirmation(
     # confirmed.
     # ========================================================
 
-    if event_alignment == "COUNTER-DIRECTIONAL":
+    if effective_event_alignment == "COUNTER-DIRECTIONAL":
 
         confirmation_status = (
             "WAIT — STRUCTURAL CONFIRMATION REQUIRED"
@@ -12655,7 +12802,7 @@ def evaluate_confirmation(
         and
         candle_alignment == "ALIGNED"
         and
-        event_alignment == "ALIGNED"
+        effective_event_alignment == "ALIGNED"
         and
         no_major_rejection
         and
@@ -13842,6 +13989,92 @@ def evaluate_structural_confirmation(
         )
     )
 
+    # ========================================================
+    # PATCH 35 — CURRENT REGIME OVERRIDES STALE EVENT HISTORY
+    # ========================================================
+    #
+    # A CHOCH/BOS is an event in history. It is NOT the market
+    # regime forever.
+    #
+    # If the latest event is very old but a NEW completed
+    # HH->HL / LL->LH sequence has formed after that event, the
+    # newer swing sequence is the authoritative current regime.
+    #
+    # Example:
+    #     BULLISH CHOCH — 61 candles ago
+    #     newer LL -> LH sequence
+    #     current bias = BEARISH
+    #
+    # The 61-candle-old CHOCH must remain visible in the audit,
+    # but it must not veto a valid current bearish continuation.
+    # ========================================================
+
+    try:
+        current_sequence_index = int(
+            sequence.get(
+                "structural_sequence_index",
+                -1
+            )
+        )
+    except Exception:
+        current_sequence_index = -1
+
+    current_sequence_age = None
+
+    if (
+        current_candle_index is not None
+        and
+        current_sequence_index >= 0
+    ):
+        current_sequence_age = (
+            current_candle_index
+            -
+            current_sequence_index
+        )
+
+    stale_event_superseded = False
+
+    if (
+        latest_structural_event is not None
+        and
+        latest_structural_event_age is not None
+        and
+        latest_structural_event_age > 12
+        and
+        current_sequence_index >= 0
+        and
+        current_sequence_age is not None
+        and
+        current_sequence_age <= 12
+        and
+        current_sequence_index
+        >
+        latest_structural_event.get(
+            "candle_index",
+            -1
+        )
+        and
+        bias_aligned
+        and
+        structure_aligned
+    ):
+        stale_event_superseded = True
+
+        structural_reasons.append(
+            "LATEST STRUCTURAL EVENT IS STALE AND HAS BEEN "
+            "SUPERSEDED BY A NEWER COMPLETED SWING SEQUENCE."
+        )
+
+        structural_reasons.append(
+            f"CURRENT STRUCTURAL SEQUENCE AGE: "
+            f"{current_sequence_age} CANDLES."
+        )
+
+        structural_reasons.append(
+            "CURRENT STRUCTURAL REGIME IS AUTHORITATIVE "
+            "OVER THE STALE EVENT."
+        )
+
     newer_counter_event = False
 
     if latest_structural_event is not None:
@@ -13870,19 +14103,27 @@ def evaluate_structural_confirmation(
                 newer_counter_event = True
                 break
 
-    if (
+    continuation_authorized_by_regime = (
         bias_aligned
-        and
-        latest_event_aligned
-        and
-        latest_event_age_for_continuation is not None
-        and
-        0 <= latest_event_age_for_continuation <= 12
         and
         structure_aligned
         and
+        (
+            (
+                latest_event_aligned
+                and
+                latest_event_age_for_continuation is not None
+                and
+                0 <= latest_event_age_for_continuation <= 12
+            )
+            or
+            stale_event_superseded
+        )
+        and
         not newer_counter_event
-    ):
+    )
+
+    if continuation_authorized_by_regime:
 
         confirmation_status = (
             f"CONFIRMED {setup_direction}"
@@ -13894,32 +14135,50 @@ def evaluate_structural_confirmation(
 
         confirming_event = None
 
-        confirming_event_age = (
-            latest_event_age_for_continuation
-        )
+        if stale_event_superseded:
+            confirming_event_age = (
+                current_sequence_age
+            )
+        else:
+            confirming_event_age = (
+                latest_event_age_for_continuation
+            )
 
         structural_reasons.append(
             "CURRENT STRUCTURAL BIAS AGREES WITH SETUP DIRECTION."
         )
 
-        structural_reasons.append(
-            "LATEST STRUCTURAL EVENT AGREES WITH SETUP DIRECTION."
-        )
-
-        structural_reasons.append(
-            f"LATEST STRUCTURAL EVENT AGE: {latest_event_age_for_continuation} CANDLES."
-        )
+        if latest_event_aligned:
+            structural_reasons.append(
+                "LATEST STRUCTURAL EVENT AGREES WITH SETUP DIRECTION."
+            )
+            structural_reasons.append(
+                f"LATEST STRUCTURAL EVENT AGE: "
+                f"{latest_event_age_for_continuation} CANDLES."
+            )
+        else:
+            structural_reasons.append(
+                "LATEST STRUCTURAL EVENT IS HISTORICAL; "
+                "CURRENT REGIME HAS SUPERSEDED IT."
+            )
 
         structural_reasons.append(
             "CURRENT STRUCTURE SUPPORTS THE SAME DIRECTION."
         )
 
         structural_reasons.append(
-            "NO NEWER COUNTER-DIRECTIONAL STRUCTURAL EVENT EXISTS."
+            "CURRENT COMPLETED SWING SEQUENCE SUPPORTS "
+            "THE CURRENT STRUCTURAL BIAS."
         )
 
         structural_reasons.append(
-            "STRUCTURAL CONTINUATION CONFIRMED WITHOUT REQUIRING A NEW BOS."
+            "NO NEWER COUNTER-DIRECTIONAL STRUCTURAL EVENT "
+            "OVERRIDES THE CURRENT REGIME."
+        )
+
+        structural_reasons.append(
+            "STRUCTURAL CONTINUATION CONFIRMED WITHOUT "
+            "REQUIRING A NEW BOS."
         )
 
         return {
@@ -13935,7 +14194,10 @@ def evaluate_structural_confirmation(
             "structural_counter_event": counter_event,
             "structural_confirmation_reasons": structural_reasons,
             "structural_latest_event": latest_structural_event,
-            "structural_latest_event_age": latest_structural_event_age
+            "structural_latest_event_age": latest_structural_event_age,
+            "structural_current_sequence_index": current_sequence_index,
+            "structural_current_sequence_age": current_sequence_age,
+            "structural_latest_event_superseded": stale_event_superseded
         }
 
     # ========================================================
@@ -15840,13 +16102,39 @@ def generate_signal(sequence, setup_analysis):
     # 11. EVENT ALIGNMENT
     # ========================================================
     
-    if event_alignment != "ALIGNED":
-    
-        final_gate_blockers.append(
-            "LATEST STRUCTURAL EVENT IS NOT "
-            "ALIGNED WITH THE SETUP DIRECTION"
+    stale_event_superseded = bool(
+        setup_analysis.get(
+            "structural_latest_event_superseded",
+            False
         )
-    
+    )
+
+    if event_alignment != "ALIGNED":
+
+        if (
+            stale_event_superseded
+            and
+            structural_confirmation_status
+            ==
+            f"CONFIRMED {direction}"
+            and
+            structural_confirmation_quality
+            ==
+            "CONTINUATION"
+        ):
+
+            reasons.append(
+                "STALE COUNTER-DIRECTIONAL EVENT IS "
+                "OVERRIDDEN BY THE NEWER CURRENT STRUCTURAL REGIME"
+            )
+
+        else:
+
+            final_gate_blockers.append(
+                "LATEST STRUCTURAL EVENT IS NOT "
+                "ALIGNED WITH THE SETUP DIRECTION"
+            )
+
     # ========================================================
     # 12. STRUCTURAL AUTHORIZATION — FRESH BOS OR CONTINUATION
     # ========================================================
@@ -16451,6 +16739,31 @@ setup_analysis[
 ] = (
     structural_confirmation_result.get(
         "structural_latest_event_age"
+    )
+)
+
+setup_analysis[
+    "structural_current_sequence_index"
+] = (
+    structural_confirmation_result.get(
+        "structural_current_sequence_index"
+    )
+)
+
+setup_analysis[
+    "structural_current_sequence_age"
+] = (
+    structural_confirmation_result.get(
+        "structural_current_sequence_age"
+    )
+)
+
+setup_analysis[
+    "structural_latest_event_superseded"
+] = (
+    structural_confirmation_result.get(
+        "structural_latest_event_superseded",
+        False
     )
 )
 # ============================================================
