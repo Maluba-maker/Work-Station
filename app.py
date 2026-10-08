@@ -14024,6 +14024,15 @@ def evaluate_structural_confirmation(
     }
 
 # ============================================================
+# STABILIZATION BASELINE
+# ============================================================
+# Existing trading logic is frozen in this baseline.
+# Stabilization changes only: authoritative confirmation
+# scoring, authoritative latest-event alignment, and
+# duplicate audit-message suppression.
+# ============================================================
+
+# ============================================================
 # STEP 14 — REFINED BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -14423,6 +14432,17 @@ def generate_signal(sequence, setup_analysis):
             "— SMALL QUALITY PENALTY"
         )
 
+    # STABILIZATION — keep audit order while suppressing exact
+    # duplicate messages emitted by multiple decision layers.
+    def unique_messages(items):
+        seen = set()
+        output = []
+        for item in items:
+            if item not in seen:
+                seen.add(item)
+                output.append(item)
+        return output
+
     # ========================================================
     # PATCH 20 — AUTHORITATIVE STRUCTURAL EVENT
     # ========================================================
@@ -14552,6 +14572,28 @@ def generate_signal(sequence, setup_analysis):
             "AUTHORITATIVE STRUCTURAL EVENT "
             "IS UNAVAILABLE"
         )
+
+    # STABILIZATION — the final gate uses the same authoritative
+    # structural event that the Structural Confirmation engine uses.
+    authoritative_event_alignment = "NEUTRAL"
+
+    if authoritative_event_name != "NONE":
+
+        if (
+            direction == "LONG"
+            and
+            authoritative_event_name.startswith("BULLISH")
+        ) or (
+            direction == "SHORT"
+            and
+            authoritative_event_name.startswith("BEARISH")
+        ):
+
+            authoritative_event_alignment = "ALIGNED"
+
+        else:
+
+            authoritative_event_alignment = "COUNTER-DIRECTIONAL"
 
     # ========================================================
     # 9. STRUCTURAL EVENTS
@@ -14949,7 +14991,19 @@ def generate_signal(sequence, setup_analysis):
     # provide partial continuation confirmation.
     # ========================================================
 
-    if signal_path == "FRESH_BOS":
+    authoritative_confirming_bos = (
+        confirming_event_name == expected_bos
+        and
+        structural_confirming_event_age is not None
+        and
+        0 <= structural_confirming_event_age <= 5
+    )
+
+    if authoritative_confirming_bos:
+
+        structural_confirmation_score = 15
+
+    elif signal_path == "FRESH_BOS":
 
         structural_confirmation_score = 15
 
@@ -15863,11 +15917,13 @@ def generate_signal(sequence, setup_analysis):
                 final_gate_blockers,
             
             "reasons":
-                blockers
-                +
-                warnings
-                +
-                reasons,
+                unique_messages(
+                    blockers
+                    +
+                    warnings
+                    +
+                    reasons
+                ),
 
             "components": {
 
@@ -16011,7 +16067,9 @@ def generate_signal(sequence, setup_analysis):
             final_gate_blockers,
 
         "reasons":
-            warnings + reasons,
+            unique_messages(
+                warnings + reasons
+            ),
 
         "components": {
 
