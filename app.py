@@ -16767,6 +16767,326 @@ setup_analysis[
     )
 )
 # ============================================================
+# NEXT-CANDLE DIRECTION PREDICTION ENGINE
+# ============================================================
+#
+# This engine is intentionally independent from the validated
+# BUY / SELL trade engine below.  Its job is NOT to decide whether
+# a trade is valid.  Its only question is:
+#
+#     "Given the candles visible in this screenshot, which
+#      direction is the NEXT candle more likely to take?"
+#
+# It therefore ALWAYS returns UP or DOWN when enough candles exist.
+# The score is a model-strength score, NOT a calibrated probability.
+# ============================================================
+
+def predict_next_candle(candles, sequence=None, setup_analysis=None):
+
+    if candles is None or len(candles) < 3:
+        return {
+            "prediction": "UNKNOWN",
+            "direction": "UNKNOWN",
+            "strength": 0.0,
+            "bullish_score": 0.0,
+            "bearish_score": 0.0,
+            "net_score": 0.0,
+            "reasons": [
+                "At least 3 reconstructed candles are required."
+            ],
+            "evidence": [],
+        }
+
+    sequence = sequence or {}
+    setup_analysis = setup_analysis or {}
+
+    # ------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------
+    def clamp(value, low=0.0, high=100.0):
+        return max(low, min(high, float(value)))
+
+    def candle_direction(c):
+        return 1 if str(c.get("color", "")).upper() == "GREEN" else -1
+
+    def safe_float(value, default=0.0):
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    recent = candles[-min(len(candles), 8):]
+    current = recent[-1]
+
+    bullish = 0.0
+    bearish = 0.0
+    evidence = []
+    reasons = []
+
+    def add_signed(score, label):
+        nonlocal bullish, bearish
+        score = float(score)
+        if score > 0:
+            bullish += score
+            evidence.append((label, "BULLISH", round(score, 1)))
+        elif score < 0:
+            bearish += abs(score)
+            evidence.append((label, "BEARISH", round(abs(score), 1)))
+
+    # ------------------------------------------------------------
+    # 1. Recent candle momentum
+    # ------------------------------------------------------------
+    # Weight the most recent candles more heavily.  This is a
+    # directional continuation signal, not a simple green/red count.
+    momentum_score = 0.0
+    weights = list(range(1, len(recent) + 1))
+    for c, weight in zip(recent, weights):
+        direction = candle_direction(c)
+        height = max(safe_float(c.get("height", 1)), 1.0)
+        body = abs(safe_float(c.get("body_height", 0)))
+        body_ratio = clamp(body / height * 100.0, 0, 100) / 100.0
+        momentum_score += direction * weight * (0.35 + 0.65 * body_ratio)
+
+    max_momentum = max(sum(weights), 1) * 1.0
+    momentum_score = (momentum_score / max_momentum) * 24.0
+    add_signed(momentum_score, "Recent candle momentum")
+
+    # ------------------------------------------------------------
+    # 2. Short-term close slope
+    # ------------------------------------------------------------
+    # Pixel Y coordinates are inverted: a smaller Y means a higher
+    # market price. Therefore previous_close - current_close is
+    # bullish in the reconstructed coordinate system.
+    closes = [safe_float(c.get("close", 0)) for c in recent]
+    slope_score = 0.0
+
+    if len(closes) >= 3:
+        x = np.arange(len(closes), dtype=float)
+        try:
+            slope = float(np.polyfit(x, np.array(closes), 1)[0])
+            avg_range = np.mean([
+                max(abs(safe_float(c.get("height", 1))), 1.0)
+                for c in recent
+            ])
+            normalized_slope = (-slope) / max(avg_range, 1.0)
+            slope_score = float(np.tanh(normalized_slope * 4.0) * 14.0)
+        except Exception:
+            slope_score = 0.0
+
+    add_signed(slope_score, "Short-term price slope")
+
+    # ------------------------------------------------------------
+    # 3. Latest candle body direction and strength
+    # ------------------------------------------------------------
+    current_height = max(safe_float(current.get("height", 1)), 1.0)
+    current_body = abs(safe_float(current.get("body_height", 0)))
+    body_ratio = clamp(current_body / current_height * 100.0, 0, 100)
+    body_direction = candle_direction(current)
+
+    # A strong body is useful evidence, but it is capped so one candle
+    # cannot dominate all other evidence.
+    body_score = (body_ratio / 100.0) * 16.0 * body_direction
+    add_signed(body_score, "Latest candle body")
+
+    # ------------------------------------------------------------
+    # 4. Wick / rejection analysis
+    # ------------------------------------------------------------
+    upper_wick = safe_float(current.get("upper_wick", 0))
+    lower_wick = safe_float(current.get("lower_wick", 0))
+    total_height = max(current_height, 1.0)
+
+    upper_ratio = upper_wick / total_height
+    lower_ratio = lower_wick / total_height
+
+    # A large lower wick can indicate rejection of lower prices;
+    # a large upper wick can indicate rejection of higher prices.
+    rejection_score = 0.0
+    if lower_ratio > upper_ratio * 1.25 and lower_ratio >= 0.18:
+        rejection_score += min(10.0, lower_ratio * 18.0)
+        reasons.append("Latest candle shows meaningful lower-price rejection.")
+    elif upper_ratio > lower_ratio * 1.25 and upper_ratio >= 0.18:
+        rejection_score -= min(10.0, upper_ratio * 18.0)
+        reasons.append("Latest candle shows meaningful upper-price rejection.")
+
+    add_signed(rejection_score, "Latest candle rejection")
+
+    # ------------------------------------------------------------
+    # 5. Candle sequence acceleration / exhaustion
+    # ------------------------------------------------------------
+    # If three or more candles run in the same direction but bodies
+    # are clearly shrinking, reduce continuation confidence.
+    if len(recent) >= 4:
+        last_four = recent[-4:]
+        dirs = [candle_direction(c) for c in last_four]
+        if len(set(dirs)) == 1:
+            body_sizes = [
+                abs(safe_float(c.get("body_height", 0)))
+                for c in last_four
+            ]
+            if body_sizes[-1] < body_sizes[-2] * 0.75:
+                exhaustion_penalty = -7.0 * dirs[-1]
+                add_signed(exhaustion_penalty, "Momentum exhaustion")
+                reasons.append(
+                    "Recent candles are moving in one direction but the latest body is shrinking."
+                )
+
+    # ------------------------------------------------------------
+    # 6. Structural bias
+    # ------------------------------------------------------------
+    structural_bias = str(
+        sequence.get(
+            "structural_bias",
+            setup_analysis.get("structural_bias", "")
+        )
+    ).upper().strip()
+
+    if "BULL" in structural_bias:
+        add_signed(18.0, "Structural bias")
+        reasons.append("Current market structure is bullish.")
+    elif "BEAR" in structural_bias:
+        add_signed(-18.0, "Structural bias")
+        reasons.append("Current market structure is bearish.")
+
+    # ------------------------------------------------------------
+    # 7. Latest BOS / CHoCH event
+    # ------------------------------------------------------------
+    events = sequence.get("bos_choch_events", []) or []
+    latest_event = sequence.get("last_bos_choch")
+
+    if latest_event is None and events:
+        latest_event = events[-1]
+
+    event_name = "NONE"
+    event_age = None
+
+    if isinstance(latest_event, dict):
+        event_name = str(
+            latest_event.get("event", "NONE")
+        ).upper().strip()
+        try:
+            event_age = int(
+                latest_event.get(
+                    "age",
+                    latest_event.get("event_age")
+                )
+            )
+        except Exception:
+            event_age = None
+
+        # The structural event records in this application normally
+        # store candle_index rather than age. Derive the age from the
+        # last visible candle so historical events are not mistaken
+        # for fresh confirmations.
+        if event_age is None:
+            try:
+                event_index = int(
+                    latest_event.get("candle_index")
+                )
+                event_age = max(
+                    0,
+                    (len(candles) - 1) - event_index
+                )
+            except Exception:
+                event_age = None
+
+    # Only recent structural events get strong predictive weight.
+    recent_event = (
+        event_age is not None
+        and event_age <= 5
+    )
+
+    if recent_event:
+        if event_name.startswith("BULLISH"):
+            add_signed(15.0, "Recent bullish BOS / CHoCH")
+            reasons.append(f"Latest structural event is {event_name}.")
+        elif event_name.startswith("BEARISH"):
+            add_signed(-15.0, "Recent bearish BOS / CHoCH")
+            reasons.append(f"Latest structural event is {event_name}.")
+
+    # ------------------------------------------------------------
+    # 8. Swing structure / trend
+    # ------------------------------------------------------------
+    swing_trend = str(
+        sequence.get("trend", "")
+    ).upper().strip()
+    current_structure = str(
+        sequence.get("current_structure", "")
+    ).upper().strip()
+
+    if "BULL" in swing_trend or "HIGHER" in current_structure:
+        add_signed(10.0, "Swing structure")
+    elif "BEAR" in swing_trend or "LOWER" in current_structure:
+        add_signed(-10.0, "Swing structure")
+
+    # ------------------------------------------------------------
+    # 9. Recent direction agreement
+    # ------------------------------------------------------------
+    # If the latest three candles agree, add modest continuation weight.
+    if len(recent) >= 3:
+        last_three = [candle_direction(c) for c in recent[-3:]]
+        if len(set(last_three)) == 1:
+            add_signed(6.0 * last_three[-1], "Three-candle directional agreement")
+
+    # ------------------------------------------------------------
+    # 10. Resolve direction
+    # ------------------------------------------------------------
+    net_score = bullish - bearish
+
+    # Never return NO SIGNAL here.  The old trade engine owns that
+    # decision.  This engine must make a directional prediction.
+    if net_score >= 0:
+        prediction = "UP"
+    else:
+        prediction = "DOWN"
+
+    # Strength is deliberately described as model strength rather than
+    # probability.  It is not statistically calibrated yet.
+    total_evidence = bullish + bearish
+    if total_evidence <= 0:
+        strength = 50.0
+    else:
+        directional_purity = abs(net_score) / total_evidence
+        strength = 50.0 + directional_purity * 45.0
+
+    # Keep extreme confidence rare until we have empirical calibration.
+    strength = round(clamp(strength, 50.0, 95.0), 1)
+
+    # Human-readable summary of the dominant evidence.
+    evidence_sorted = sorted(
+        evidence,
+        key=lambda item: item[2],
+        reverse=True
+    )
+
+    if prediction == "UP":
+        reasons.insert(
+            0,
+            f"Prediction favors UP with a net directional score of {net_score:.1f}."
+        )
+    else:
+        reasons.insert(
+            0,
+            f"Prediction favors DOWN with a net directional score of {abs(net_score):.1f}."
+        )
+
+    return {
+        "prediction": prediction,
+        "direction": prediction,
+        "strength": strength,
+        "bullish_score": round(bullish, 1),
+        "bearish_score": round(bearish, 1),
+        "net_score": round(net_score, 1),
+        "latest_event": event_name,
+        "latest_event_age": event_age,
+        "body_percentage": round(body_ratio, 1),
+        "upper_wick_percentage": round(upper_ratio * 100.0, 1),
+        "lower_wick_percentage": round(lower_ratio * 100.0, 1),
+        "reasons": reasons[:8],
+        "evidence": evidence_sorted[:8],
+    }
+
+
+# ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -16944,6 +17264,70 @@ if (
 
                 st.write(
                     f"• {reason}"
+                )
+
+        # ====================================================
+        # NEXT-CANDLE PREDICTION ENGINE
+        # ====================================================
+        # This is intentionally independent from the validated
+        # BUY / SELL signal engine above.
+        # ====================================================
+
+        prediction_result = predict_next_candle(
+            st.session_state.get("candles", []),
+            sequence,
+            setup_analysis
+        )
+
+        st.divider()
+        st.subheader("🔮 Next Candle Prediction")
+
+        prediction_value = prediction_result["prediction"]
+        prediction_strength = prediction_result["strength"]
+
+        pred_col1, pred_col2, pred_col3 = st.columns(3)
+
+        if prediction_value == "UP":
+            pred_col1.success("🟢 NEXT CANDLE: UP")
+        elif prediction_value == "DOWN":
+            pred_col1.error("🔴 NEXT CANDLE: DOWN")
+        else:
+            pred_col1.warning("⚪ NEXT CANDLE: UNKNOWN")
+
+        pred_col2.metric(
+            "Prediction Strength",
+            f"{prediction_strength:.1f}/100"
+        )
+
+        pred_col3.metric(
+            "Directional Score",
+            f"{prediction_result['net_score']:+.1f}"
+        )
+
+        score_col1, score_col2 = st.columns(2)
+        score_col1.metric(
+            "Bullish Evidence",
+            f"{prediction_result['bullish_score']:.1f}"
+        )
+        score_col2.metric(
+            "Bearish Evidence",
+            f"{prediction_result['bearish_score']:.1f}"
+        )
+
+        with st.expander("🔬 Prediction evidence", expanded=True):
+            st.caption(
+                "Prediction Strength is a model-strength score, not a calibrated probability. "
+                "The prediction engine always chooses UP or DOWN when enough candles are available."
+            )
+
+            for reason in prediction_result["reasons"]:
+                st.write(f"• {reason}")
+
+            st.write("**Strongest evidence:**")
+            for label, direction_label, score in prediction_result["evidence"]:
+                icon = "🟢" if direction_label == "BULLISH" else "🔴"
+                st.write(
+                    f"{icon} **{label}:** {direction_label} ({score:.1f})"
                 )
 
         # ====================================================
