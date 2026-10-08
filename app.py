@@ -13757,6 +13757,195 @@ def evaluate_structural_confirmation(
                 "FOR SYNTHETIC BOS CONFIRMATION."
             )
     # ========================================================
+    # PATCH 34 — STRUCTURAL CONTINUATION CONFIRMATION
+    # ========================================================
+    #
+    # A fresh BOS is NOT the only valid way to confirm a setup.
+    # If the market has already established directional structure,
+    # and the latest structural event is aligned with the current
+    # bias, we allow a continuation pathway provided there is no
+    # newer counter-directional structural event.
+    #
+    # This prevents the final engine from demanding a brand-new BOS
+    # on every chart, which was causing legitimate trend continuation
+    # setups to die before reaching the signal gate.
+    # ========================================================
+
+    latest_event_aligned = False
+
+    if latest_structural_event is not None:
+
+        latest_event_direction = str(
+            latest_structural_event.get(
+                "direction",
+                ""
+            )
+        ).upper().strip()
+
+        latest_event_aligned = (
+            latest_event_direction
+            ==
+            expected_direction
+        )
+
+    counter_event_is_active = False
+
+    if (
+        counter_event is not None
+        and
+        latest_structural_event is not None
+    ):
+
+        counter_event_is_active = (
+            counter_event.get("candle_index", -1)
+            >=
+            latest_structural_event.get("candle_index", -1)
+        )
+
+    continuation_structure = str(
+        sequence.get(
+            "swing_current_structure",
+            sequence.get(
+                "structural_sequence",
+                sequence.get(
+                    "current_structure",
+                    ""
+                )
+            )
+        )
+    ).upper().strip()
+
+    continuation_structure_aligned = (
+        (
+            setup_direction == "LONG"
+            and
+            (
+                "HIGHER HIGH" in continuation_structure
+                or
+                "HIGHER LOW" in continuation_structure
+                or
+                "BULLISH" in continuation_structure
+                or
+                "HH" in continuation_structure
+                or
+                "HL" in continuation_structure
+            )
+        )
+        or
+        (
+            setup_direction == "SHORT"
+            and
+            (
+                "LOWER HIGH" in continuation_structure
+                or
+                "LOWER LOW" in continuation_structure
+                or
+                "BEARISH" in continuation_structure
+                or
+                "LH" in continuation_structure
+                or
+                "LL" in continuation_structure
+            )
+        )
+    )
+
+    continuation_event_age_valid = (
+        latest_structural_event_age is not None
+        and
+        0 <= latest_structural_event_age <= 12
+    )
+
+    if (
+        latest_event_aligned
+        and
+        not counter_event_is_active
+        and
+        structural_bias == (
+            "BULLISH"
+            if setup_direction == "LONG"
+            else "BEARISH"
+        )
+        and
+        continuation_structure_aligned
+        and
+        continuation_event_age_valid
+    ):
+
+        confirmation_status = (
+            f"CONFIRMED {setup_direction}"
+        )
+
+        confirmation_quality = "CONTINUATION"
+
+        confirmation_score = 85
+
+        # The latest aligned structural event is the authority
+        # for the continuation path. It does not need to be a BOS.
+        confirming_event = latest_structural_event
+        confirming_event_age = latest_structural_event_age
+
+        structural_reasons.append(
+            "CURRENT STRUCTURE SUPPORTS "
+            f"{setup_direction} CONTINUATION."
+        )
+
+        structural_reasons.append(
+            "LATEST STRUCTURAL EVENT IS ALIGNED "
+            "WITH CURRENT STRUCTURAL BIAS."
+        )
+
+        structural_reasons.append(
+            f"CONTINUATION STRUCTURAL EVENT AGE: "
+            f"{latest_structural_event_age} CANDLES."
+        )
+
+        structural_reasons.append(
+            "NO NEWER COUNTER-DIRECTIONAL "
+            "STRUCTURAL EVENT IS ACTIVE."
+        )
+
+        return {
+            "structural_confirmation_status":
+                confirmation_status,
+
+            "structural_confirmation_quality":
+                confirmation_quality,
+
+            "structural_confirmation_score":
+                confirmation_score,
+
+            "structural_reference_level_y":
+                reference_level_y,
+
+            "structural_reference_level_type":
+                reference_level_type,
+
+            "structural_current_close_y":
+                current_close_y,
+
+            "structural_level_reclaimed":
+                current_reclaimed,
+
+            "structural_confirming_event":
+                confirming_event,
+
+            "structural_confirming_event_age":
+                confirming_event_age,
+
+            "structural_counter_event":
+                counter_event,
+
+            "structural_confirmation_reasons":
+                structural_reasons,
+
+            "structural_latest_event":
+                latest_structural_event,
+
+            "structural_latest_event_age":
+                latest_structural_event_age
+        }
+
+    # ========================================================
     # 12. RECLAIMED BUT NOT YET CONFIRMED
     # ========================================================
 
@@ -15431,8 +15620,8 @@ def generate_signal(sequence, setup_analysis):
     #   1. Confirmed structural confirmation
     #   2. Confirmed Step 16 confirmation
     #   3. Valid entry trigger
-    #   4. Same-direction BOS
-    #   5. Fresh BOS (1–5 candles old)
+    #   4. Valid structural confirmation path
+    #      (fresh BOS / structural breakout OR continuation)
     #   6. Current candle aligned with setup
     #   7. Strong candle body (>=70%)
     #   8. Detection confidence >=85%
@@ -15667,99 +15856,108 @@ def generate_signal(sequence, setup_analysis):
         )
     
     # ========================================================
-    # 12. FRESH DIRECTIONAL BOS
+    # 12–13. STRUCTURAL CONFIRMATION PATH
     # ========================================================
     #
-    # A CHoCH is NOT a confirming BOS.
+    # There are now two legitimate confirmation pathways:
     #
-    # The confirming event must be the expected BOS and must
-    # be recent enough to support a next-candle decision.
+    #   A. FRESH BOS / STRUCTURAL BREAKOUT
+    #      A directional BOS is 0–5 candles old.
+    #
+    #   B. STRUCTURAL CONTINUATION
+    #      Current structure remains aligned, the latest structural
+    #      event is aligned, and there is no newer counter-event.
+    #
+    # The old gate incorrectly required pathway A for every setup.
+    # That made the continuation logic above largely pointless.
     # ========================================================
-    
+
     structural_confirming_event = (
         setup_analysis.get(
             "structural_confirming_event"
         )
     )
-    
+
     confirming_event_name = ""
-    
+
     if isinstance(
         structural_confirming_event,
         dict
     ):
-    
+
         confirming_event_name = str(
             structural_confirming_event.get(
                 "event",
                 ""
             )
         ).upper().strip()
-    
-    if (
-        confirming_event_name
-        !=
-        expected_bos
-    ):
-    
-        final_gate_blockers.append(
-            f"NO CONFIRMING {expected_bos} EXISTS"
-        )
-    
-    # ========================================================
-    # 13. AUTHORITATIVE STRUCTURAL BOS AGE
-    # ========================================================
-    #
-    # IMPORTANT:
-    #
-    # Do NOT use Step 14's event_age here.
-    #
-    # The Structural Confirmation Engine is the authority on
-    # whether the BOS actually confirms the current setup.
-    # ========================================================
-    
+
     structural_confirming_event_age = (
         setup_analysis.get(
             "structural_confirming_event_age"
         )
     )
-    
-    if structural_confirming_event_age is None:
-    
-        final_gate_blockers.append(
-            "STRUCTURAL CONFIRMING BOS AGE IS UNKNOWN"
-        )
-    
-    else:
-    
-        try:
-    
+
+    try:
+
+        if structural_confirming_event_age is not None:
+
             structural_confirming_event_age = int(
                 structural_confirming_event_age
             )
-    
-        except Exception:
-    
-            structural_confirming_event_age = None
-    
-            final_gate_blockers.append(
-                "STRUCTURAL CONFIRMING BOS AGE "
-                "COULD NOT BE VALIDATED"
-            )
-    
-    if (
+
+    except Exception:
+
+        structural_confirming_event_age = None
+
+    confirmation_quality_upper = str(
+        setup_analysis.get(
+            "structural_confirmation_quality",
+            ""
+        )
+    ).upper().strip()
+
+    is_fresh_bos_path = (
+        confirming_event_name == expected_bos
+        and
         structural_confirming_event_age is not None
         and
-        (
-            structural_confirming_event_age < 0
-            or
-            structural_confirming_event_age > 5
+        0 <= structural_confirming_event_age <= 5
+    )
+
+    is_continuation_path = (
+        confirmation_quality_upper == "CONTINUATION"
+        and
+        confirming_event_name in (
+            "BULLISH BOS",
+            "BEARISH BOS",
+            "BULLISH CHOCH",
+            "BEARISH CHOCH"
         )
-    ):
-    
+        and
+        structural_confirming_event_age is not None
+        and
+        0 <= structural_confirming_event_age <= 12
+    )
+
+    if not is_fresh_bos_path and not is_continuation_path:
+
         final_gate_blockers.append(
-            "STRUCTURAL CONFIRMING BOS IS NOT FRESH "
-            f"(AGE: {structural_confirming_event_age} CANDLES)"
+            "NO VALID STRUCTURAL CONFIRMATION PATH"
+        )
+
+    if is_continuation_path:
+
+        reasons.append(
+            "STRUCTURAL CONFIRMATION PATH: "
+            "CONTINUATION"
+        )
+
+    elif is_fresh_bos_path:
+
+        reasons.append(
+            "STRUCTURAL CONFIRMATION PATH: "
+            "FRESH BOS / STRUCTURAL BREAKOUT"
         )
     
     # ========================================================
