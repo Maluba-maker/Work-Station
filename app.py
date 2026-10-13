@@ -4,6 +4,9 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 import hashlib
+import csv
+from pathlib import Path
+from datetime import datetime
 
 # ============================================================
 # PAGE CONFIG
@@ -17087,6 +17090,248 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
 
 
 # ============================================================
+# MARKET REGIME DETECTOR + PREDICTION JOURNAL
+# ============================================================
+
+PREDICTION_JOURNAL_PATH = Path(__file__).with_name(
+    "maluz_prediction_journal.csv"
+)
+
+JOURNAL_FIELDS = [
+    "prediction_id", "timestamp", "instrument", "timeframe",
+    "prediction", "strength", "regime", "trend_efficiency",
+    "direction_flip_rate", "relative_latest_range", "actual_outcome",
+    "correct"
+]
+
+
+def detect_market_regime(candles):
+    """Classify visible price behaviour; this is a heuristic, not proof of a regime."""
+    if candles is None or len(candles) < 6:
+        return {
+            "regime": "INSUFFICIENT DATA",
+            "trend_efficiency": 0.0,
+            "direction_flip_rate": 0.0,
+            "relative_latest_range": 1.0,
+            "reason": "At least 6 reconstructed candles are needed for regime classification.",
+        }
+
+    recent = candles[-12:]
+
+    def safe_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    # In screenshot coordinates, lower Y means a higher price.
+    closes = [safe_float(c.get("close", 0.0)) for c in recent]
+    moves = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    total_path = sum(abs(move) for move in moves)
+    net_move = abs(closes[-1] - closes[0])
+    efficiency = net_move / total_path if total_path > 0 else 0.0
+
+    directions = []
+    for c in recent:
+        color = str(c.get("color", "")).upper()
+        if color == "GREEN":
+            directions.append(1)
+        elif color == "RED":
+            directions.append(-1)
+        else:
+            body = safe_float(c.get("body_height", 0.0))
+            directions.append(1 if body < 0 else -1 if body > 0 else 0)
+
+    usable_directions = [d for d in directions if d != 0]
+    pairs = list(zip(usable_directions, usable_directions[1:]))
+    flip_rate = (
+        sum(1 for a, b in pairs if a != b) / len(pairs)
+        if pairs else 0.0
+    )
+
+    ranges = [max(safe_float(c.get("height", 1.0)), 1.0) for c in recent]
+    median_range = float(np.median(ranges)) if ranges else 1.0
+    relative_latest_range = ranges[-1] / max(median_range, 1.0)
+    range_dispersion = float(np.std(ranges) / max(np.mean(ranges), 1.0)) if ranges else 0.0
+
+    if relative_latest_range >= 2.0 or range_dispersion >= 0.85:
+        regime = "UNSTABLE / HIGH VOLATILITY"
+        reason = "Candle ranges are unusually large or inconsistent relative to recent candles."
+    elif efficiency >= 0.45 and flip_rate <= 0.55:
+        regime = "TRENDING"
+        reason = "Price has made relatively efficient progress with limited direction switching."
+    elif efficiency <= 0.25 and flip_rate >= 0.55:
+        regime = "RANGING / CHOPPY"
+        reason = "Price progress is limited relative to its path and candle direction switches frequently."
+    else:
+        regime = "TRANSITION / MIXED"
+        reason = "Trend efficiency and direction switching do not clearly identify a trend or range."
+
+    return {
+        "regime": regime,
+        "trend_efficiency": round(efficiency, 3),
+        "direction_flip_rate": round(flip_rate, 3),
+        "relative_latest_range": round(relative_latest_range, 2),
+        "range_dispersion": round(range_dispersion, 3),
+        "reason": reason,
+    }
+
+
+def _read_prediction_journal():
+    if not PREDICTION_JOURNAL_PATH.exists():
+        return pd.DataFrame(columns=JOURNAL_FIELDS)
+    try:
+        df = pd.read_csv(PREDICTION_JOURNAL_PATH)
+        for field in JOURNAL_FIELDS:
+            if field not in df.columns:
+                df[field] = ""
+        return df[JOURNAL_FIELDS]
+    except Exception:
+        return pd.DataFrame(columns=JOURNAL_FIELDS)
+
+
+def _append_prediction_record(record):
+    file_exists = PREDICTION_JOURNAL_PATH.exists()
+    with PREDICTION_JOURNAL_PATH.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=JOURNAL_FIELDS)
+        if not file_exists or PREDICTION_JOURNAL_PATH.stat().st_size == 0:
+            writer.writeheader()
+        writer.writerow({field: record.get(field, "") for field in JOURNAL_FIELDS})
+
+
+def _save_prediction_journal(df):
+    df[JOURNAL_FIELDS].to_csv(PREDICTION_JOURNAL_PATH, index=False)
+
+
+def render_prediction_testing_panel(prediction_result, regime_result, candles):
+    """Log point-in-time predictions and manually resolve their next-candle outcomes."""
+    st.divider()
+    st.subheader("🧪 Prediction Testing & Regime Monitor")
+    st.caption(
+        "Local CSV journal. Log a prediction before the next candle closes, then resolve it afterward. "
+        "The journal does not place trades and does not alter the prediction engine."
+    )
+
+    journal = _read_prediction_journal()
+    if not journal.empty:
+        journal["actual_outcome"] = journal["actual_outcome"].fillna("").astype(str)
+        journal["correct"] = journal["correct"].fillna("").astype(str)
+
+    instrument = st.text_input(
+        "Instrument / OTC pair (for testing labels)",
+        key="maluz_test_instrument",
+        placeholder="e.g. EUR/USD OTC"
+    )
+    timeframe = st.selectbox(
+        "Chart timeframe",
+        options=["Unknown", "5 seconds", "15 seconds", "30 seconds", "1 minute", "5 minutes", "Other"],
+        key="maluz_test_timeframe"
+    )
+
+    candle_signature = "|".join(
+        f"{c.get('color','?')}:{c.get('open','')}:{c.get('high','')}:{c.get('low','')}:{c.get('close','')}"
+        for c in candles[-8:]
+    )
+    prediction_id = hashlib.sha256(
+        (candle_signature + str(instrument) + str(timeframe)).encode("utf-8")
+    ).hexdigest()[:12]
+    already_logged = (not journal.empty) and prediction_id in journal["prediction_id"].astype(str).values
+
+    log_col1, log_col2 = st.columns([1, 2])
+    with log_col1:
+        if st.button("➕ Log current prediction", disabled=already_logged, key="maluz_log_prediction"):
+            regime_result = regime_result or {}
+            _append_prediction_record({
+                "prediction_id": prediction_id,
+                "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "instrument": instrument.strip() or "UNSPECIFIED",
+                "timeframe": timeframe,
+                "prediction": prediction_result.get("prediction", "UNKNOWN"),
+                "strength": prediction_result.get("strength", 0),
+                "regime": regime_result.get("regime", "UNKNOWN"),
+                "trend_efficiency": regime_result.get("trend_efficiency", ""),
+                "direction_flip_rate": regime_result.get("direction_flip_rate", ""),
+                "relative_latest_range": regime_result.get("relative_latest_range", ""),
+                "actual_outcome": "",
+                "correct": "",
+            })
+            st.success(f"Prediction {prediction_id} logged. Resolve it after the next candle closes.")
+            st.rerun()
+    with log_col2:
+        if already_logged:
+            st.info("This screenshot sequence is already in the journal. Avoid duplicate logging.")
+
+    journal = _read_prediction_journal()
+    if not journal.empty:
+        unresolved = journal[journal["actual_outcome"].fillna("").astype(str).str.strip() == ""]
+        if not unresolved.empty:
+            st.write("**Resolve a prediction after its next candle has closed**")
+            unresolved = unresolved.copy()
+            unresolved["display"] = unresolved.apply(
+                lambda r: f"{r['prediction_id']} | {r['timestamp']} | {r['instrument']} | predicted {r['prediction']} ({r['regime']})",
+                axis=1
+            )
+            selected_display = st.selectbox(
+                "Pending prediction",
+                unresolved["display"].tolist(),
+                key="maluz_pending_prediction"
+            )
+            actual = st.selectbox(
+                "Actual next candle outcome",
+                ["UP", "DOWN", "DOJI / TIE", "UNREADABLE"],
+                key="maluz_actual_outcome"
+            )
+            if st.button("Save actual outcome", key="maluz_resolve_prediction"):
+                idx = unresolved.index[unresolved["display"] == selected_display][0]
+                predicted = str(journal.loc[idx, "prediction"]).upper()
+                correct = "" if actual in ("DOJI / TIE", "UNREADABLE") else str(predicted == actual)
+                journal.loc[idx, "actual_outcome"] = actual
+                journal.loc[idx, "correct"] = correct
+                _save_prediction_journal(journal)
+                st.success("Outcome saved.")
+                st.rerun()
+
+        resolved = journal[journal["correct"].fillna("").astype(str).isin(["True", "False"])]
+        if not resolved.empty:
+            correct_flags = resolved["correct"].astype(str).str.lower().eq("true")
+            overall_accuracy = 100.0 * float(correct_flags.mean())
+            recent = resolved.tail(20)
+            recent_flags = recent["correct"].astype(str).str.lower().eq("true")
+            recent_accuracy = 100.0 * float(recent_flags.mean())
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Resolved predictions", len(resolved))
+            m2.metric("Overall accuracy", f"{overall_accuracy:.1f}%")
+            m3.metric("Last 20 accuracy", f"{recent_accuracy:.1f}%", delta=f"{recent_accuracy - overall_accuracy:+.1f} pp")
+
+            if len(recent) >= 10 and recent_accuracy <= overall_accuracy - 15:
+                st.warning(
+                    "Recent accuracy is at least 15 percentage points below the overall journal accuracy. "
+                    "Treat this as a review flag, not proof of a market-regime change."
+                )
+
+            by_regime = resolved.copy()
+            by_regime["is_correct"] = by_regime["correct"].astype(str).str.lower().eq("true")
+            regime_summary = by_regime.groupby("regime", dropna=False).agg(
+                predictions=("is_correct", "size"),
+                accuracy_percent=("is_correct", lambda x: round(100.0 * float(x.mean()), 1))
+            ).reset_index()
+            st.write("**Accuracy by detected regime**")
+            st.dataframe(regime_summary, use_container_width=True, hide_index=True)
+            st.caption("Regime-level accuracy is descriptive until each regime has enough observations. Do not treat small samples as proof.")
+
+        with st.expander("View prediction journal"):
+            st.dataframe(journal, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download journal CSV",
+                data=journal.to_csv(index=False).encode("utf-8"),
+                file_name="maluz_prediction_journal.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info("No predictions logged yet. Start logging consecutive screenshots to build a meaningful test set.")
+
+
+# ============================================================
 # STEP 14 — ACTUAL BUY / SELL SIGNAL ENGINE
 # ============================================================
 
@@ -17329,6 +17574,27 @@ if (
                 st.write(
                     f"{icon} **{label}:** {direction_label} ({score:.1f})"
                 )
+
+        # ====================================================
+        # MARKET REGIME + OUTCOME TRACKING
+        # ====================================================
+        regime_result = detect_market_regime(
+            st.session_state.get("candles", [])
+        )
+        st.subheader("📊 Market Regime Detection")
+        regime_col1, regime_col2, regime_col3 = st.columns(3)
+        regime_col1.metric("Detected Regime", regime_result["regime"])
+        regime_col2.metric("Trend Efficiency", f"{regime_result['trend_efficiency']:.3f}")
+        regime_col3.metric("Direction Flip Rate", f"{regime_result['direction_flip_rate']:.3f}")
+        st.caption(
+            regime_result["reason"] +
+            f" Relative latest candle range: {regime_result['relative_latest_range']:.2f}x median."
+        )
+        render_prediction_testing_panel(
+            prediction_result,
+            regime_result,
+            st.session_state.get("candles", [])
+        )
 
         # ====================================================
         # TOP METRICS
