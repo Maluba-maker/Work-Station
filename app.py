@@ -17211,6 +17211,7 @@ def render_prediction_testing_panel(prediction_result, regime_result, candles):
         "Local CSV journal. Log a prediction before the next candle closes, then resolve it afterward. "
         "The journal does not place trades and does not alter the prediction engine."
     )
+    st.caption(f"Journal file used by this running app: {PREDICTION_JOURNAL_PATH}")
 
     journal = _read_prediction_journal()
     if not journal.empty:
@@ -17271,25 +17272,59 @@ def render_prediction_testing_panel(prediction_result, regime_result, candles):
                 lambda r: f"{r['prediction_id']} | {r['timestamp']} | {r['instrument']} | predicted {r['prediction']} ({r['regime']})",
                 axis=1
             )
-            selected_display = st.selectbox(
-                "Pending prediction",
-                unresolved["display"].tolist(),
-                key="maluz_pending_prediction"
+            # Keep the selected prediction ID separate from the display label so
+            # duplicate labels or dataframe index changes cannot update the wrong row.
+            pending_options = unresolved["prediction_id"].astype(str).tolist()
+            display_by_id = {
+                str(row["prediction_id"]): (
+                    f"{row['prediction_id']} | {row['timestamp']} | "
+                    f"{row['instrument']} | predicted {row['prediction']} ({row['regime']})"
+                )
+                for _, row in unresolved.iterrows()
+            }
+            selected_id = st.selectbox(
+                "Pending prediction — choose the row you tested",
+                options=pending_options,
+                format_func=lambda pid: display_by_id.get(str(pid), str(pid)),
+                key="maluz_pending_prediction_id"
             )
             actual = st.selectbox(
                 "Actual next candle outcome",
                 ["UP", "DOWN", "DOJI / TIE", "UNREADABLE"],
-                key="maluz_actual_outcome"
+                key="maluz_actual_outcome_v2"
             )
-            if st.button("Save actual outcome", key="maluz_resolve_prediction"):
-                idx = unresolved.index[unresolved["display"] == selected_display][0]
-                predicted = str(journal.loc[idx, "prediction"]).upper()
-                correct = "" if actual in ("DOJI / TIE", "UNREADABLE") else str(predicted == actual)
-                journal.loc[idx, "actual_outcome"] = actual
-                journal.loc[idx, "correct"] = correct
-                _save_prediction_journal(journal)
-                st.success("Outcome saved.")
-                st.rerun()
+            if st.button("Save actual outcome", key="maluz_resolve_prediction_v2"):
+                match = journal.index[journal["prediction_id"].astype(str) == str(selected_id)]
+                if len(match) != 1:
+                    st.error(
+                        f"Could not uniquely identify prediction {selected_id}. "
+                        "No changes were saved. Refresh the app and try again."
+                    )
+                else:
+                    idx = match[0]
+                    predicted = str(journal.loc[idx, "prediction"]).strip().upper()
+                    actual_normalized = str(actual).strip().upper()
+                    correct = (
+                        "" if actual_normalized in ("DOJI / TIE", "UNREADABLE")
+                        else str(predicted == actual_normalized)
+                    )
+                    journal.loc[idx, "actual_outcome"] = actual_normalized
+                    journal.loc[idx, "correct"] = correct
+                    _save_prediction_journal(journal)
+                    # Read the file back to verify persistence before reporting success.
+                    verify = _read_prediction_journal()
+                    saved = verify[verify["prediction_id"].astype(str) == str(selected_id)]
+                    if len(saved) == 1 and str(saved.iloc[0]["actual_outcome"]).strip().upper() == actual_normalized:
+                        st.success(
+                            f"Saved and verified: {selected_id} — predicted {predicted}, "
+                            f"actual {actual_normalized}, correct = {correct or 'not scored'}."
+                        )
+                        st.rerun()
+                    else:
+                        st.error(
+                            "The app could not verify the saved outcome in its journal file. "
+                            f"Journal path: {PREDICTION_JOURNAL_PATH}"
+                        )
 
         resolved = journal[journal["correct"].fillna("").astype(str).isin(["True", "False"])]
         if not resolved.empty:
