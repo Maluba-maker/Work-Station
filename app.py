@@ -16821,6 +16821,20 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
     recent = candles[-min(len(candles), 8):]
     current = recent[-1]
 
+    # Use the same visible-candle regime assessment shown in the UI.
+    # This is a heuristic context signal, not proof of predictability.
+    try:
+        market_regime = detect_market_regime(candles)
+    except Exception:
+        market_regime = {
+            "regime": "TRANSITION / MIXED",
+            "trend_efficiency": 0.0,
+            "direction_flip_rate": 0.5,
+            "relative_latest_range": 1.0,
+            "reason": "Regime could not be assessed reliably."
+        }
+    regime_name = str(market_regime.get("regime", "TRANSITION / MIXED"))
+
     bullish = 0.0
     bearish = 0.0
     evidence = []
@@ -17031,7 +17045,32 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
             add_signed(6.0 * last_three[-1], "Three-candle directional agreement")
 
     # ------------------------------------------------------------
-    # 10. Resolve direction
+    # 10. Regime-aware adjustment
+    # ------------------------------------------------------------
+    # In choppy markets, recent same-colour candles are less trustworthy
+    # as continuation evidence. In a clean trend, give a modest boost to
+    # the existing directional consensus. In unstable markets, do not
+    # invent a new direction; instead reduce confidence later.
+    raw_net_score = bullish - bearish
+    last_three_dirs = [candle_direction(c) for c in recent[-3:]] if len(recent) >= 3 else []
+    if regime_name == "RANGING / CHOPPY":
+        if len(last_three_dirs) == 3 and len(set(last_three_dirs)) == 1:
+            # Penalize chasing a short same-direction run in a range.
+            adjustment = -8.0 * last_three_dirs[-1]
+            add_signed(adjustment, "Choppy-market continuation penalty")
+            reasons.append("Choppy regime detected: short same-direction runs are discounted.")
+    elif regime_name == "TRENDING":
+        if raw_net_score != 0:
+            trend_direction = 1 if raw_net_score > 0 else -1
+            add_signed(4.0 * trend_direction, "Trending-regime alignment")
+            reasons.append("Trending regime detected: directional consensus receives a modest alignment weight.")
+    elif regime_name == "UNSTABLE / HIGH VOLATILITY":
+        reasons.append("Unstable regime detected: prediction strength is reduced because recent candle behaviour is inconsistent.")
+    else:
+        reasons.append("Mixed regime detected: no extra continuation boost is applied.")
+
+    # ------------------------------------------------------------
+    # 11. Resolve direction
     # ------------------------------------------------------------
     net_score = bullish - bearish
 
@@ -17049,10 +17088,20 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
         strength = 50.0
     else:
         directional_purity = abs(net_score) / total_evidence
-        strength = 50.0 + directional_purity * 45.0
+        # The journal showed that the old strength score did not
+        # consistently separate correct from incorrect predictions.
+        # Make the score more conservative and explicitly regime-aware;
+        # it remains a heuristic score, not a success probability.
+        strength = 50.0 + min(abs(net_score) / 2.0, 18.0) + directional_purity * 8.0
 
-    # Keep extreme confidence rare until we have empirical calibration.
-    strength = round(clamp(strength, 50.0, 95.0), 1)
+    regime_penalty = {
+        "TRENDING": 0.0,
+        "RANGING / CHOPPY": 5.0,
+        "TRANSITION / MIXED": 7.0,
+        "UNSTABLE / HIGH VOLATILITY": 12.0,
+        "INSUFFICIENT DATA": 10.0,
+    }.get(regime_name, 7.0)
+    strength = round(clamp(strength - regime_penalty, 50.0, 78.0), 1)
 
     # Human-readable summary of the dominant evidence.
     evidence_sorted = sorted(
@@ -17079,6 +17128,12 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
         "bullish_score": round(bullish, 1),
         "bearish_score": round(bearish, 1),
         "net_score": round(net_score, 1),
+        "regime": regime_name,
+        "regime_reason": market_regime.get("reason", ""),
+        "regime_confidence_note": (
+            "Lower reliability context" if regime_name in ("UNSTABLE / HIGH VOLATILITY", "TRANSITION / MIXED", "INSUFFICIENT DATA")
+            else "Heuristic regime context; not independently validated"
+        ),
         "latest_event": event_name,
         "latest_event_age": event_age,
         "body_percentage": round(body_ratio, 1),
@@ -17596,9 +17651,11 @@ if (
 
         with st.expander("🔬 Prediction evidence", expanded=True):
             st.caption(
-                "Prediction Strength is a model-strength score, not a calibrated probability. "
-                "The prediction engine always chooses UP or DOWN when enough candles are available."
+                "Prediction Strength is a conservative heuristic score, not a calibrated probability. "
+                "It is capped at 78 until testing demonstrates that the score maps to real-world accuracy. "
+                "The engine still chooses UP or DOWN when enough candles are available, but a direction is not a guarantee of an edge."
             )
+            st.write(f"**Regime adjustment:** {prediction_result.get('regime', 'UNKNOWN')} — {prediction_result.get('regime_confidence_note', '')}.")
 
             for reason in prediction_result["reasons"]:
                 st.write(f"• {reason}")
