@@ -16785,362 +16785,232 @@ setup_analysis[
 # ============================================================
 
 def predict_next_candle(candles, sequence=None, setup_analysis=None):
-
-    if candles is None or len(candles) < 3:
+    """Four-part next-candle model: direction, continuation/reversal,
+    contradiction, and market reliability. Scores are heuristic, not probabilities.
+    """
+    if candles is None or len(candles) < 6:
         return {
-            "prediction": "UNKNOWN",
-            "direction": "UNKNOWN",
-            "strength": 0.0,
-            "bullish_score": 0.0,
-            "bearish_score": 0.0,
-            "net_score": 0.0,
-            "reasons": [
-                "At least 3 reconstructed candles are required."
-            ],
-            "evidence": [],
+            "prediction": "UNKNOWN", "direction": "UNKNOWN", "strength": 0.0,
+            "bullish_score": 0.0, "bearish_score": 0.0, "net_score": 0.0,
+            "regime": "INSUFFICIENT DATA", "reliability": "LOW",
+            "reversal_risk": "UNKNOWN", "directional_evidence": "INSUFFICIENT",
+            "reasons": ["At least 6 reconstructed candles are required for the four-part assessment."],
+            "evidence": [], "analysis": {},
         }
 
     sequence = sequence or {}
     setup_analysis = setup_analysis or {}
 
-    # ------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------
-    def clamp(value, low=0.0, high=100.0):
-        return max(low, min(high, float(value)))
+    def clamp(v, lo=-100.0, hi=100.0):
+        return max(lo, min(hi, float(v)))
 
-    def candle_direction(c):
-        return 1 if str(c.get("color", "")).upper() == "GREEN" else -1
-
-    def safe_float(value, default=0.0):
+    def num(c, key, default=0.0):
         try:
-            return float(value)
-        except Exception:
+            v = float(c.get(key, default))
+            return v if np.isfinite(v) else default
+        except (TypeError, ValueError):
             return default
 
-    recent = candles[-min(len(candles), 8):]
+    def sign(c):
+        color = str(c.get("color", "")).upper()
+        if color == "GREEN": return 1
+        if color == "RED": return -1
+        body = num(c, "body_height")
+        return 1 if body < 0 else -1 if body > 0 else 0
+
+    recent = list(candles[-12:])
     current = recent[-1]
+    closes = [num(c, "close") for c in recent]
+    heights = [max(num(c, "height", 1.0), 1.0) for c in recent]
+    directions = [sign(c) for c in recent]
+    valid_dirs = [d for d in directions if d]
+    avg_range = max(float(np.median(heights)), 1.0)
 
-    # Use the same visible-candle regime assessment shown in the UI.
-    # This is a heuristic context signal, not proof of predictability.
     try:
-        market_regime = detect_market_regime(candles)
+        regime = detect_market_regime(candles)
     except Exception:
-        market_regime = {
-            "regime": "TRANSITION / MIXED",
-            "trend_efficiency": 0.0,
-            "direction_flip_rate": 0.5,
-            "relative_latest_range": 1.0,
-            "reason": "Regime could not be assessed reliably."
-        }
-    regime_name = str(market_regime.get("regime", "TRANSITION / MIXED"))
+        regime = {"regime": "TRANSITION / MIXED", "trend_efficiency": 0.0,
+                  "direction_flip_rate": 0.5, "relative_latest_range": 1.0,
+                  "reason": "Regime assessment unavailable."}
+    regime_name = str(regime.get("regime", "TRANSITION / MIXED"))
 
-    bullish = 0.0
-    bearish = 0.0
-    evidence = []
-    reasons = []
+    # PART 1 — DIRECTION: use net price displacement and close-location behaviour.
+    displacement = closes[0] - closes[-1]  # image Y is inverted: lower Y = higher price
+    displacement_norm = displacement / avg_range
+    path_direction_score = clamp(np.tanh(displacement_norm / 1.8) * 34.0)
 
-    def add_signed(score, label):
-        nonlocal bullish, bearish
-        score = float(score)
-        if score > 0:
-            bullish += score
-            evidence.append((label, "BULLISH", round(score, 1)))
-        elif score < 0:
-            bearish += abs(score)
-            evidence.append((label, "BEARISH", round(abs(score), 1)))
+    # A short linear slope is used as a single trend measure, not stacked with
+    # candle counts, body momentum and swing labels as separate votes.
+    x = np.arange(len(closes), dtype=float)
+    try:
+        slope = float(np.polyfit(x, np.asarray(closes, dtype=float), 1)[0])
+        slope_score = clamp(np.tanh((-slope / avg_range) * 5.0) * 18.0)
+    except Exception:
+        slope_score = 0.0
+    direction_score = path_direction_score * 0.70 + slope_score * 0.30
 
-    # ------------------------------------------------------------
-    # 1. Recent candle momentum
-    # ------------------------------------------------------------
-    # Weight the most recent candles more heavily.  This is a
-    # directional continuation signal, not a simple green/red count.
-    momentum_score = 0.0
-    weights = list(range(1, len(recent) + 1))
-    for c, weight in zip(recent, weights):
-        direction = candle_direction(c)
-        height = max(safe_float(c.get("height", 1)), 1.0)
-        body = abs(safe_float(c.get("body_height", 0)))
-        body_ratio = clamp(body / height * 100.0, 0, 100) / 100.0
-        momentum_score += direction * weight * (0.35 + 0.65 * body_ratio)
-
-    max_momentum = max(sum(weights), 1) * 1.0
-    momentum_score = (momentum_score / max_momentum) * 24.0
-    add_signed(momentum_score, "Recent candle momentum")
-
-    # ------------------------------------------------------------
-    # 2. Short-term close slope
-    # ------------------------------------------------------------
-    # Pixel Y coordinates are inverted: a smaller Y means a higher
-    # market price. Therefore previous_close - current_close is
-    # bullish in the reconstructed coordinate system.
-    closes = [safe_float(c.get("close", 0)) for c in recent]
-    slope_score = 0.0
-
-    if len(closes) >= 3:
-        x = np.arange(len(closes), dtype=float)
-        try:
-            slope = float(np.polyfit(x, np.array(closes), 1)[0])
-            avg_range = np.mean([
-                max(abs(safe_float(c.get("height", 1))), 1.0)
-                for c in recent
-            ])
-            normalized_slope = (-slope) / max(avg_range, 1.0)
-            slope_score = float(np.tanh(normalized_slope * 4.0) * 14.0)
-        except Exception:
-            slope_score = 0.0
-
-    add_signed(slope_score, "Short-term price slope")
-
-    # ------------------------------------------------------------
-    # 3. Latest candle body direction and strength
-    # ------------------------------------------------------------
-    current_height = max(safe_float(current.get("height", 1)), 1.0)
-    current_body = abs(safe_float(current.get("body_height", 0)))
-    body_ratio = clamp(current_body / current_height * 100.0, 0, 100)
-    body_direction = candle_direction(current)
-
-    # A strong body is useful evidence, but it is capped so one candle
-    # cannot dominate all other evidence.
-    body_score = (body_ratio / 100.0) * 16.0 * body_direction
-    add_signed(body_score, "Latest candle body")
-
-    # ------------------------------------------------------------
-    # 4. Wick / rejection analysis
-    # ------------------------------------------------------------
-    upper_wick = safe_float(current.get("upper_wick", 0))
-    lower_wick = safe_float(current.get("lower_wick", 0))
-    total_height = max(current_height, 1.0)
-
-    upper_ratio = upper_wick / total_height
-    lower_ratio = lower_wick / total_height
-
-    # A large lower wick can indicate rejection of lower prices;
-    # a large upper wick can indicate rejection of higher prices.
-    rejection_score = 0.0
-    if lower_ratio > upper_ratio * 1.25 and lower_ratio >= 0.18:
-        rejection_score += min(10.0, lower_ratio * 18.0)
-        reasons.append("Latest candle shows meaningful lower-price rejection.")
-    elif upper_ratio > lower_ratio * 1.25 and upper_ratio >= 0.18:
-        rejection_score -= min(10.0, upper_ratio * 18.0)
-        reasons.append("Latest candle shows meaningful upper-price rejection.")
-
-    add_signed(rejection_score, "Latest candle rejection")
-
-    # ------------------------------------------------------------
-    # 5. Candle sequence acceleration / exhaustion
-    # ------------------------------------------------------------
-    # If three or more candles run in the same direction but bodies
-    # are clearly shrinking, reduce continuation confidence.
-    if len(recent) >= 4:
-        last_four = recent[-4:]
-        dirs = [candle_direction(c) for c in last_four]
-        if len(set(dirs)) == 1:
-            body_sizes = [
-                abs(safe_float(c.get("body_height", 0)))
-                for c in last_four
-            ]
-            if body_sizes[-1] < body_sizes[-2] * 0.75:
-                exhaustion_penalty = -7.0 * dirs[-1]
-                add_signed(exhaustion_penalty, "Momentum exhaustion")
-                reasons.append(
-                    "Recent candles are moving in one direction but the latest body is shrinking."
-                )
-
-    # ------------------------------------------------------------
-    # 6. Structural bias
-    # ------------------------------------------------------------
-    structural_bias = str(
-        sequence.get(
-            "structural_bias",
-            setup_analysis.get("structural_bias", "")
-        )
-    ).upper().strip()
-
+    # One structural context vote only. BOS/CHoCH and swing structure are not
+    # separately added because they frequently describe the same movement.
+    structural_bias = str(sequence.get("structural_bias", setup_analysis.get("structural_bias", ""))).upper()
+    structure_vote = 0.0
     if "BULL" in structural_bias:
-        add_signed(18.0, "Structural bias")
-        reasons.append("Current market structure is bullish.")
+        structure_vote = 8.0
     elif "BEAR" in structural_bias:
-        add_signed(-18.0, "Structural bias")
-        reasons.append("Current market structure is bearish.")
+        structure_vote = -8.0
+    direction_score += structure_vote
 
-    # ------------------------------------------------------------
-    # 7. Latest BOS / CHoCH event
-    # ------------------------------------------------------------
-    events = sequence.get("bos_choch_events", []) or []
-    latest_event = sequence.get("last_bos_choch")
+    # PART 2 — CONTINUATION VS REVERSAL: assess the latest candle's close location,
+    # body strength, wick rejection, and whether bodies are contracting.
+    height = max(num(current, "height", 1.0), 1.0)
+    body = abs(num(current, "body_height"))
+    body_ratio = min(1.0, body / height)
+    upper = max(0.0, num(current, "upper_wick")) / height
+    lower = max(0.0, num(current, "lower_wick")) / height
+    current_dir = sign(current)
+    body_strength = body_ratio * 12.0 * current_dir
 
-    if latest_event is None and events:
-        latest_event = events[-1]
+    # Candle close position: reconstructed high/low are in screen coordinates.
+    high_y, low_y, close_y = num(current, "high"), num(current, "low"), num(current, "close")
+    span = max(low_y - high_y, 1.0)
+    close_position = clamp((close_y - high_y) / span, 0.0, 1.0)
+    # A close near the top of the chart candle range supports UP; near bottom supports DOWN.
+    close_location_score = (close_position - 0.5) * -16.0
 
-    event_name = "NONE"
-    event_age = None
+    reversal_score = 0.0
+    reversal_reasons = []
+    if upper >= 0.22 and upper > lower * 1.25:
+        reversal_score -= min(22.0, upper * 28.0)
+        reversal_reasons.append("Upper-wick rejection: buyers failed to hold the higher price area.")
+    if lower >= 0.22 and lower > upper * 1.25:
+        reversal_score += min(22.0, lower * 28.0)
+        reversal_reasons.append("Lower-wick rejection: sellers failed to hold the lower price area.")
 
-    if isinstance(latest_event, dict):
-        event_name = str(
-            latest_event.get("event", "NONE")
-        ).upper().strip()
-        try:
-            event_age = int(
-                latest_event.get(
-                    "age",
-                    latest_event.get("event_age")
-                )
-            )
-        except Exception:
-            event_age = None
+    # Contraction is measured against the previous two candle bodies, not only
+    # the previous candle, to reduce one-candle noise.
+    body_sizes = [abs(num(c, "body_height")) for c in recent]
+    contraction = False
+    if len(body_sizes) >= 4:
+        prior_mean = float(np.mean(body_sizes[-4:-1]))
+        contraction = prior_mean > 0 and body_sizes[-1] < prior_mean * 0.62
+    if contraction and current_dir:
+        reversal_score -= current_dir * 8.0
+        reversal_reasons.append("Latest body has contracted sharply against the preceding three-candle average.")
 
-        # The structural event records in this application normally
-        # store candle_index rather than age. Derive the age from the
-        # last visible candle so historical events are not mistaken
-        # for fresh confirmations.
-        if event_age is None:
-            try:
-                event_index = int(
-                    latest_event.get("candle_index")
-                )
-                event_age = max(
-                    0,
-                    (len(candles) - 1) - event_index
-                )
-            except Exception:
-                event_age = None
+    continuation_score = body_strength + close_location_score
+    # Countertrend rejection can override a weak continuation reading.
+    combined_direction = clamp(direction_score + continuation_score * 0.45 + reversal_score)
 
-    # Only recent structural events get strong predictive weight.
-    recent_event = (
-        event_age is not None
-        and event_age <= 5
-    )
+    # PART 3 — CONTRADICTION: explicitly look for evidence against the candidate.
+    contradiction_points = []
+    candidate_dir = 1 if combined_direction >= 0 else -1
+    if structure_vote and np.sign(structure_vote) != candidate_dir:
+        contradiction_points.append("Current structural bias conflicts with the price-action direction.")
+    if reversal_score and np.sign(reversal_score) != candidate_dir:
+        contradiction_points.append("Latest-candle rejection conflicts with the proposed direction.")
+    if current_dir and current_dir != candidate_dir:
+        contradiction_points.append("The latest candle closes against the proposed direction.")
+    last_three = [d for d in directions[-3:] if d]
+    if len(last_three) == 3 and len(set(last_three)) == 1 and last_three[-1] != candidate_dir:
+        contradiction_points.append("The latest three candles are aligned against the proposed direction.")
 
-    if recent_event:
-        if event_name.startswith("BULLISH"):
-            add_signed(15.0, "Recent bullish BOS / CHoCH")
-            reasons.append(f"Latest structural event is {event_name}.")
-        elif event_name.startswith("BEARISH"):
-            add_signed(-15.0, "Recent bearish BOS / CHoCH")
-            reasons.append(f"Latest structural event is {event_name}.")
+    contradiction_count = len(contradiction_points)
+    contradiction_penalty = min(24.0, contradiction_count * 6.0)
+    final_score = clamp(combined_direction - (candidate_dir * contradiction_penalty))
+    prediction = "UP" if final_score >= 0 else "DOWN"
+    prediction_dir = 1 if prediction == "UP" else -1
 
-    # ------------------------------------------------------------
-    # 8. Swing structure / trend
-    # ------------------------------------------------------------
-    swing_trend = str(
-        sequence.get("trend", "")
-    ).upper().strip()
-    current_structure = str(
-        sequence.get("current_structure", "")
-    ).upper().strip()
+    # PART 4 — RELIABILITY: a separate quality assessment, not another vote
+    # for direction. Regime, disagreement, volatility and reversal risk reduce it.
+    efficiency = float(regime.get("trend_efficiency", 0.0) or 0.0)
+    flip_rate = float(regime.get("direction_flip_rate", 0.0) or 0.0)
+    relative_range = float(regime.get("relative_latest_range", 1.0) or 1.0)
+    reversal_magnitude = abs(reversal_score)
+    reliability_score = 72.0
+    reliability_score -= min(22.0, contradiction_count * 7.0)
+    reliability_score -= min(20.0, reversal_magnitude * 0.75)
+    if regime_name == "RANGING / CHOPPY": reliability_score -= 14.0
+    elif regime_name == "TRANSITION / MIXED": reliability_score -= 9.0
+    elif regime_name == "UNSTABLE / HIGH VOLATILITY": reliability_score -= 24.0
+    elif regime_name == "TRENDING": reliability_score += 4.0
+    if flip_rate >= 0.65: reliability_score -= 8.0
+    if relative_range >= 1.8: reliability_score -= 8.0
+    if efficiency < 0.18: reliability_score -= 6.0
+    reliability_score = round(max(20.0, min(78.0, reliability_score)), 1)
 
-    if "BULL" in swing_trend or "HIGHER" in current_structure:
-        add_signed(10.0, "Swing structure")
-    elif "BEAR" in swing_trend or "LOWER" in current_structure:
-        add_signed(-10.0, "Swing structure")
-
-    # ------------------------------------------------------------
-    # 9. Recent direction agreement
-    # ------------------------------------------------------------
-    # If the latest three candles agree, add modest continuation weight.
-    if len(recent) >= 3:
-        last_three = [candle_direction(c) for c in recent[-3:]]
-        if len(set(last_three)) == 1:
-            add_signed(6.0 * last_three[-1], "Three-candle directional agreement")
-
-    # ------------------------------------------------------------
-    # 10. Regime-aware adjustment
-    # ------------------------------------------------------------
-    # In choppy markets, recent same-colour candles are less trustworthy
-    # as continuation evidence. In a clean trend, give a modest boost to
-    # the existing directional consensus. In unstable markets, do not
-    # invent a new direction; instead reduce confidence later.
-    raw_net_score = bullish - bearish
-    last_three_dirs = [candle_direction(c) for c in recent[-3:]] if len(recent) >= 3 else []
-    if regime_name == "RANGING / CHOPPY":
-        if len(last_three_dirs) == 3 and len(set(last_three_dirs)) == 1:
-            # Penalize chasing a short same-direction run in a range.
-            adjustment = -8.0 * last_three_dirs[-1]
-            add_signed(adjustment, "Choppy-market continuation penalty")
-            reasons.append("Choppy regime detected: short same-direction runs are discounted.")
-    elif regime_name == "TRENDING":
-        if raw_net_score != 0:
-            trend_direction = 1 if raw_net_score > 0 else -1
-            add_signed(4.0 * trend_direction, "Trending-regime alignment")
-            reasons.append("Trending regime detected: directional consensus receives a modest alignment weight.")
-    elif regime_name == "UNSTABLE / HIGH VOLATILITY":
-        reasons.append("Unstable regime detected: prediction strength is reduced because recent candle behaviour is inconsistent.")
+    if reliability_score >= 62:
+        reliability = "HIGHER RELIABILITY"
+    elif reliability_score >= 45:
+        reliability = "MODERATE RELIABILITY"
     else:
-        reasons.append("Mixed regime detected: no extra continuation boost is applied.")
+        reliability = "LOW RELIABILITY"
 
-    # ------------------------------------------------------------
-    # 11. Resolve direction
-    # ------------------------------------------------------------
-    net_score = bullish - bearish
-
-    # Never return NO SIGNAL here.  The old trade engine owns that
-    # decision.  This engine must make a directional prediction.
-    if net_score >= 0:
-        prediction = "UP"
+    if reversal_magnitude >= 12 or contradiction_count >= 2:
+        reversal_risk = "HIGH"
+    elif reversal_magnitude >= 6 or contradiction_count == 1:
+        reversal_risk = "ELEVATED"
     else:
-        prediction = "DOWN"
+        reversal_risk = "LOW"
 
-    # Strength is deliberately described as model strength rather than
-    # probability.  It is not statistically calibrated yet.
-    total_evidence = bullish + bearish
-    if total_evidence <= 0:
-        strength = 50.0
-    else:
-        directional_purity = abs(net_score) / total_evidence
-        # The journal showed that the old strength score did not
-        # consistently separate correct from incorrect predictions.
-        # Make the score more conservative and explicitly regime-aware;
-        # it remains a heuristic score, not a success probability.
-        strength = 50.0 + min(abs(net_score) / 2.0, 18.0) + directional_purity * 8.0
+    abs_direction = abs(final_score)
+    if abs_direction >= 24: directional_evidence = "STRONGER"
+    elif abs_direction >= 11: directional_evidence = "MODERATE"
+    else: directional_evidence = "WEAK"
 
-    regime_penalty = {
-        "TRENDING": 0.0,
-        "RANGING / CHOPPY": 5.0,
-        "TRANSITION / MIXED": 7.0,
-        "UNSTABLE / HIGH VOLATILITY": 12.0,
-        "INSUFFICIENT DATA": 10.0,
-    }.get(regime_name, 7.0)
-    strength = round(clamp(strength - regime_penalty, 50.0, 78.0), 1)
+    # Preserve legacy score fields for the existing UI and journal.
+    bullish_score = max(0.0, final_score)
+    bearish_score = max(0.0, -final_score)
+    reasons = [f"Four-part model favors {prediction}; net directional evidence is {final_score:+.1f}."]
+    reasons.append(f"Continuation assessment: {continuation_score:+.1f}; reversal pressure: {reversal_score:+.1f}.")
+    reasons.append(f"Contradiction checks found {contradiction_count} opposing factor(s).")
+    reasons.append(f"Market regime: {regime_name}. {regime.get('reason', '')}")
+    reasons.extend(reversal_reasons)
+    reasons.extend(contradiction_points)
+    if contraction:
+        reasons.append("Latest candle body is materially smaller than the preceding three-candle average.")
+    if structure_vote:
+        reasons.append(f"Structural bias contributes one context vote ({structural_bias}).")
 
-    # Human-readable summary of the dominant evidence.
-    evidence_sorted = sorted(
-        evidence,
-        key=lambda item: item[2],
-        reverse=True
-    )
-
-    if prediction == "UP":
-        reasons.insert(
-            0,
-            f"Prediction favors UP with a net directional score of {net_score:.1f}."
-        )
-    else:
-        reasons.insert(
-            0,
-            f"Prediction favors DOWN with a net directional score of {abs(net_score):.1f}."
-        )
+    evidence = [
+        ("Price displacement / slope", "BULLISH" if direction_score >= 0 else "BEARISH", round(abs(direction_score), 1)),
+        ("Latest candle continuation", "BULLISH" if continuation_score >= 0 else "BEARISH", round(abs(continuation_score), 1)),
+        ("Reversal pressure", "BULLISH" if reversal_score >= 0 else "BEARISH", round(abs(reversal_score), 1)),
+        ("Structural context", "BULLISH" if structure_vote >= 0 else "BEARISH", round(abs(structure_vote), 1)),
+    ]
+    evidence = [item for item in evidence if item[2] > 0]
 
     return {
-        "prediction": prediction,
-        "direction": prediction,
-        "strength": strength,
-        "bullish_score": round(bullish, 1),
-        "bearish_score": round(bearish, 1),
-        "net_score": round(net_score, 1),
+        "prediction": prediction, "direction": prediction,
+        "strength": reliability_score,
+        "bullish_score": round(bullish_score, 1),
+        "bearish_score": round(bearish_score, 1),
+        "net_score": round(final_score, 1),
         "regime": regime_name,
-        "regime_reason": market_regime.get("reason", ""),
-        "regime_confidence_note": (
-            "Lower reliability context" if regime_name in ("UNSTABLE / HIGH VOLATILITY", "TRANSITION / MIXED", "INSUFFICIENT DATA")
-            else "Heuristic regime context; not independently validated"
-        ),
-        "latest_event": event_name,
-        "latest_event_age": event_age,
-        "body_percentage": round(body_ratio, 1),
-        "upper_wick_percentage": round(upper_ratio * 100.0, 1),
-        "lower_wick_percentage": round(lower_ratio * 100.0, 1),
-        "reasons": reasons[:8],
-        "evidence": evidence_sorted[:8],
+        "regime_reason": regime.get("reason", ""),
+        "regime_confidence_note": reliability,
+        "reliability": reliability,
+        "reliability_score": reliability_score,
+        "reversal_risk": reversal_risk,
+        "directional_evidence": directional_evidence,
+        "continuation_score": round(continuation_score, 1),
+        "reversal_score": round(reversal_score, 1),
+        "contradiction_count": contradiction_count,
+        "contradictions": contradiction_points,
+        "latest_event": "NOT USED AS A SEPARATE VOTE",
+        "latest_event_age": None,
+        "body_percentage": round(body_ratio * 100.0, 1),
+        "upper_wick_percentage": round(upper * 100.0, 1),
+        "lower_wick_percentage": round(lower * 100.0, 1),
+        "reasons": reasons[:12],
+        "evidence": evidence,
+        "analysis": {
+            "direction_score": round(direction_score, 1),
+            "continuation_score": round(continuation_score, 1),
+            "reversal_score": round(reversal_score, 1),
+            "contradiction_count": contradiction_count,
+            "reliability_score": reliability_score,
+            "close_position": round(close_position, 3),
+            "body_contraction": contraction,
+        },
     }
 
 
@@ -17639,6 +17509,11 @@ if (
             f"{prediction_result['net_score']:+.1f}"
         )
 
+        detail_col1, detail_col2, detail_col3 = st.columns(3)
+        detail_col1.metric("Market Reliability", prediction_result.get("reliability", "UNKNOWN"))
+        detail_col2.metric("Reversal Risk", prediction_result.get("reversal_risk", "UNKNOWN"))
+        detail_col3.metric("Directional Evidence", prediction_result.get("directional_evidence", "UNKNOWN"))
+
         score_col1, score_col2 = st.columns(2)
         score_col1.metric(
             "Bullish Evidence",
@@ -17655,7 +17530,9 @@ if (
                 "It is capped at 78 until testing demonstrates that the score maps to real-world accuracy. "
                 "The engine still chooses UP or DOWN when enough candles are available, but a direction is not a guarantee of an edge."
             )
-            st.write(f"**Regime adjustment:** {prediction_result.get('regime', 'UNKNOWN')} — {prediction_result.get('regime_confidence_note', '')}.")
+            st.write(f"**Market regime:** {prediction_result.get('regime', 'UNKNOWN')}.")
+            st.write(f"**Continuation score:** {prediction_result.get('continuation_score', 0):+.1f} | **Reversal pressure:** {prediction_result.get('reversal_score', 0):+.1f} | **Contradictions:** {prediction_result.get('contradiction_count', 0)}")
+            st.write(f"**Reliability assessment:** {prediction_result.get('reliability', 'UNKNOWN')} ({prediction_result.get('reliability_score', 0):.1f}/100). This is a heuristic quality rating, not a probability of winning.")
 
             for reason in prediction_result["reasons"]:
                 st.write(f"• {reason}")
