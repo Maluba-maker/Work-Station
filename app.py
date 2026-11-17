@@ -16915,8 +16915,12 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
 
     contradiction_count = len(contradiction_points)
     contradiction_penalty = min(24.0, contradiction_count * 6.0)
-    final_score = clamp(combined_direction - (candidate_dir * contradiction_penalty))
-    prediction = "UP" if final_score >= 0 else "DOWN"
+    # Contradictions reduce confidence in the candidate direction; they must
+    # never mathematically boost a DOWN candidate toward UP (or vice versa).
+    # Do not let a penalty alone manufacture an opposite-direction prediction.
+    candidate_strength = max(0.01, abs(combined_direction) - contradiction_penalty)
+    final_score = candidate_dir * candidate_strength
+    prediction = "UP" if final_score > 0 else "DOWN"
     prediction_dir = 1 if prediction == "UP" else -1
 
     # PART 4 — RELIABILITY: a separate quality assessment, not another vote
