@@ -16897,8 +16897,86 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
         reversal_reasons.append("Latest body has contracted sharply against the preceding three-candle average.")
 
     continuation_score = body_strength + close_location_score
-    # Countertrend rejection can override a weak continuation reading.
-    combined_direction = clamp(direction_score + continuation_score * 0.45 + reversal_score)
+
+    # REGIME-DRIVEN DIRECTION MODEL: the detected regime selects the model.
+    # All inputs come from this screenshot; no prior screenshots are required.
+    regime_model = regime_name
+    regime_detail = {}
+    prior = recent[:-1] if len(recent) > 1 else recent
+    prior_high_y = min([num(c, "high", num(c, "close")) for c in prior])
+    prior_low_y = max([num(c, "low", num(c, "close")) for c in prior])
+    visible_span = max(prior_low_y - prior_high_y, 1.0)
+    latest_close_y = num(current, "close")
+    range_position = clamp((latest_close_y - prior_high_y) / visible_span, 0.0, 1.0)
+    # In screen coordinates, a larger Y is a lower market price.
+    # Near lower range boundary favours UP rejection; upper boundary favours DOWN.
+    range_rejection_score = (range_position - 0.5) * 34.0
+    breakout_score = 0.0
+    if latest_close_y < prior_high_y:
+        breakout_score = 18.0
+    elif latest_close_y > prior_low_y:
+        breakout_score = -18.0
+
+    recent_three = recent[-3:]
+    short_pressure = clamp(np.tanh(
+        (num(recent_three[0], "close") - num(recent_three[-1], "close"))
+        / avg_range / 1.5
+    ) * 30.0)
+
+    if regime_name == "TRENDING":
+        combined_direction = clamp(
+            direction_score * 0.48 + continuation_score * 0.72
+            + reversal_score * 1.10 + structure_vote * 0.25
+        )
+        regime_detail = {
+            "primary_logic": "Trend continuation versus exhaustion",
+            "trend_pressure": round(direction_score, 1),
+            "continuation_weighted": round(continuation_score * 0.72, 1),
+            "reversal_weighted": round(reversal_score * 1.10, 1),
+        }
+    elif regime_name == "RANGING / CHOPPY":
+        combined_direction = clamp(
+            range_rejection_score * 0.85 + reversal_score * 1.15
+            + breakout_score * 0.65 + continuation_score * 0.18
+            + direction_score * 0.12
+        )
+        regime_detail = {
+            "primary_logic": "Range position, boundary rejection and breakout",
+            "range_position": round(range_position, 3),
+            "range_rejection_score": round(range_rejection_score, 1),
+            "breakout_score": round(breakout_score, 1),
+        }
+    elif regime_name == "TRANSITION / MIXED":
+        combined_direction = clamp(
+            short_pressure * 0.70 + direction_score * 0.22
+            + continuation_score * 0.42 + reversal_score * 1.20
+            + structure_vote * 0.12
+        )
+        regime_detail = {
+            "primary_logic": "Emerging pressure and directional handover",
+            "short_pressure": round(short_pressure, 1),
+            "full_window_direction": round(direction_score, 1),
+            "reversal_weighted": round(reversal_score * 1.20, 1),
+        }
+    elif regime_name == "UNSTABLE / HIGH VOLATILITY":
+        latest_pressure = short_pressure * 0.45 + body_strength * 0.35
+        combined_direction = clamp(
+            latest_pressure + close_location_score * 0.75
+            + reversal_score * 1.25 + direction_score * 0.12
+            + structure_vote * 0.08
+        )
+        regime_detail = {
+            "primary_logic": "Immediate pressure versus volatility-driven rejection",
+            "latest_pressure": round(latest_pressure, 1),
+            "close_location_score": round(close_location_score, 1),
+            "reversal_weighted": round(reversal_score * 1.25, 1),
+        }
+    else:
+        combined_direction = clamp(
+            direction_score + continuation_score * 0.45 + reversal_score
+        )
+        regime_model = "DEFAULT / FALLBACK"
+        regime_detail = {"primary_logic": "Default blended price-action model"}
 
     # PART 3 — CONTRADICTION: explicitly look for evidence against the candidate.
     contradiction_points = []
@@ -16963,10 +17041,11 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
     # Preserve legacy score fields for the existing UI and journal.
     bullish_score = max(0.0, final_score)
     bearish_score = max(0.0, -final_score)
-    reasons = [f"Four-part model favors {prediction}; net directional evidence is {final_score:+.1f}."]
+    reasons = [f"Regime-driven model ({regime_model}) favors {prediction}; net directional evidence is {final_score:+.1f}."]
     reasons.append(f"Continuation assessment: {continuation_score:+.1f}; reversal pressure: {reversal_score:+.1f}.")
     reasons.append(f"Contradiction checks found {contradiction_count} opposing factor(s).")
     reasons.append(f"Market regime: {regime_name}. {regime.get('reason', '')}")
+    reasons.append(f"Selected prediction logic: {regime_detail.get('primary_logic', 'Default price-action model')}.")
     reasons.extend(reversal_reasons)
     reasons.extend(contradiction_points)
     if contraction:
@@ -16989,6 +17068,8 @@ def predict_next_candle(candles, sequence=None, setup_analysis=None):
         "bearish_score": round(bearish_score, 1),
         "net_score": round(final_score, 1),
         "regime": regime_name,
+        "regime_model": regime_model,
+        "regime_detail": regime_detail,
         "regime_reason": regime.get("reason", ""),
         "regime_confidence_note": reliability,
         "reliability": reliability,
